@@ -270,6 +270,41 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
     let nextPOIs = [...currentState.pois];
     let messages = [...currentState.messages];
     let playerResources = { ...currentState.playerResources };
+    let factions = [...currentState.factions];
+
+    // 0. AI INITIALIZATION (Host Only)
+    // Ensure bots have a starting base
+    if (isHost && currentState.gameTick % 50 === 0) {
+        currentState.factions.forEach(faction => {
+            if (faction.type === 'AI') {
+                const hasUnits = nextUnits.some(u => u.factionId === faction.id);
+                const hasCities = nextPOIs.some(p => p.ownerFactionId === faction.id);
+
+                if (!hasUnits && !hasCities) {
+                    // Find a random neutral city
+                    const availableCities = nextPOIs.filter(p => !p.ownerFactionId || p.ownerFactionId === 'NEUTRAL');
+                    if (availableCities.length > 0) {
+                        const city = availableCities[Math.floor(Math.random() * availableCities.length)];
+
+                        // Claim City
+                        city.ownerFactionId = faction.id;
+                        city.tier = 1;
+
+                        // Spawn HQ
+                        const hq = spawnUnit(UnitClass.COMMAND_CENTER, city.position.lat, city.position.lng, faction.id);
+                        nextUnits.push(hq);
+
+                        // Spawn Initial Defense
+                        const guard = spawnUnit(UnitClass.INFANTRY, city.position.lat + 0.01, city.position.lng + 0.01, faction.id);
+                        nextUnits.push(guard);
+
+                        console.log('[GAME LOGIC] Initialized Bot:', faction.name, 'at', city.name);
+                        logEvent(messages, `${faction.name} has established a base at ${city.name}`, 'info');
+                    }
+                }
+            }
+        });
+    }
 
     // --- PROCESS INTENTS ---
     for (const intent of intents) {
@@ -416,7 +451,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
     // Projectile logic moved to loop above for efficiency
 
 
-    let factions = [...currentState.factions];
+    // factions variable moved to top
     // Update factions based on intents (e.g. resource deduction) if we did it above?
     // Actually, let's just handle resource updates in the resource tick or specific intent logic if needed.
 
@@ -730,30 +765,10 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         messages: messages
     };
 
-    export const processGameTick = (currentState: GameState, intents: Intent[] = [], isHost: boolean = true): GameState => {
-        // ... (existing code)
+    // Throttle AI Update (every 5 ticks) - HOST ONLY
+    if (isHost && currentState.gameTick % 5 === 0) {
+        nextState = updateAI(nextState);
+    }
 
-        // ... (at the end)
-        // Throttle AI Update (every 5 ticks) - HOST ONLY
-        if (isHost && currentState.gameTick % 5 === 0) {
-            nextState = updateAI(nextState);
-        }
-
-        return nextState;
-    };
-
-    const fireProjectile = (attacker: GameUnit, defender: GameUnit | POI, projectiles: Projectile[]) => {
-        // Determine Weapon Type
-        const weaponType = WEAPON_MAPPING[attacker.unitClass] || WeaponType.TRACER;
-        const isMissile = weaponType === WeaponType.MISSILE;
-
-        // Projectile logic is purely visual now, damage is applied in the loop to handle capture state immediately
-        const proj = projectilePool.get(
-            attacker.id,
-            defender.id,
-            attacker.position,
-            defender.position,
-            weaponType
-        );
-        projectiles.push(proj);
-    };
+    return nextState;
+};

@@ -113,3 +113,19 @@ export function createAction(
         actionId: `${playerId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     };
 }
+
+// Legacy Intent Interface (for processGameTick compatibility)
+export interface Intent {
+    type: 'SPAWN' | 'MOVE' | 'ATTACK' | 'BUILD_STRUCTURE' | 'SET_TARGET' | 'CHEAT_RESOURCES';
+    clientId: string;
+    unitClass?: UnitClass;
+    lat?: number;
+    lng?: number;
+    unitIds?: string[];
+    attackerId?: string;
+    targetId?: string;
+    structureType?: UnitClass;
+    unitId?: string;
+    gold?: number;
+    oil?: number;
+}
