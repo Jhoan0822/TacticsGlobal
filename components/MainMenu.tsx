@@ -26,7 +26,9 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
     // Initialize Network if Multiplayer
     useEffect(() => {
-        if (mode === 'MULTI_HOST' || mode === 'MULTI_JOIN') {
+        const isNetworkMode = mode === 'MULTI_HOST' || mode === 'MULTI_JOIN' || mode === 'LOBBY';
+
+        if (isNetworkMode) {
             NetworkService.initialize((id) => {
                 setPeerId(id);
                 setConnectionStatus('Network Ready. ID: ' + id);
@@ -38,11 +40,14 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                     if (mode === 'MULTI_HOST') {
                         // Add Client to Lobby
                         setLobbyState(prev => {
+                            // Check if player already exists
+                            if (prev.players.find(p => p.id === e.peerId)) return prev;
+
                             const newState = {
                                 ...prev,
                                 players: [
                                     ...prev.players,
-                                    { id: e.peerId, name: 'Player 2', factionIndex: 1, isHost: false, isReady: false }
+                                    { id: e.peerId, name: `Player ${prev.players.length + 1}`, factionIndex: 1, isHost: false, isReady: false }
                                 ]
                             };
                             NetworkService.sendLobbyUpdate(newState);
@@ -63,7 +68,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
             const unsub = NetworkService.subscribe(handleNetworkEvent);
             return () => { unsub(); NetworkService.disconnect(); };
         }
-    }, [mode]);
+    }, [mode === 'MULTI_HOST' || mode === 'MULTI_JOIN' || mode === 'LOBBY']); // Only re-run if entering/leaving network mode group
 
     // Host Logic: Send Updates when Lobby State changes
     useEffect(() => {

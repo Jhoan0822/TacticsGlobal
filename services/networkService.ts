@@ -13,12 +13,14 @@ type EventHandler = (event: NetworkEvent) => void;
 
 class NetworkServiceImpl {
   private peer: Peer | null = null;
-  private conn: DataConnection | null = null;
+  private conns: DataConnection[] = [];
   private handlers: EventHandler[] = [];
   public myPeerId: string = '';
   public isHost: boolean = false;
 
   initialize(onReady: (id: string) => void) {
+    if (this.peer) return; // Already initialized
+
     // Use public PeerJS server (default)
     this.peer = new Peer();
 
@@ -46,14 +48,14 @@ class NetworkServiceImpl {
   }
 
   private handleConnection(conn: DataConnection) {
-    this.conn = conn;
+    this.conns.push(conn);
 
-    this.conn.on('open', () => {
+    conn.on('open', () => {
       console.log('Connection established with:', conn.peer);
       this.notify({ type: 'CONNECT', peerId: conn.peer });
     });
 
-    this.conn.on('data', (data: any) => {
+    conn.on('data', (data: any) => {
       if (data.type === 'STATE_UPDATE') {
         this.notify({ type: 'STATE_UPDATE', state: data.payload });
       } else if (data.type === 'ACTION') {
@@ -65,39 +67,39 @@ class NetworkServiceImpl {
       }
     });
 
-    this.conn.on('close', () => {
-      console.log('Connection closed');
+    conn.on('close', () => {
+      console.log('Connection closed with:', conn.peer);
+      this.conns = this.conns.filter(c => c !== conn);
       this.notify({ type: 'DISCONNECT' });
-      this.conn = null;
     });
 
-    this.conn.on('error', (err) => {
+    conn.on('error', (err) => {
       console.error('Connection error:', err);
     });
   }
 
+  private broadcast(msg: any) {
+    this.conns.forEach(conn => {
+      if (conn.open) {
+        conn.send(msg);
+      }
+    });
+  }
+
   sendState(state: GameState) {
-    if (this.conn && this.conn.open) {
-      this.conn.send({ type: 'STATE_UPDATE', payload: state });
-    }
+    this.broadcast({ type: 'STATE_UPDATE', payload: state });
   }
 
   sendAction(action: any) {
-    if (this.conn && this.conn.open) {
-      this.conn.send({ type: 'ACTION', payload: action });
-    }
+    this.broadcast({ type: 'ACTION', payload: action });
   }
 
   sendLobbyUpdate(state: LobbyState) {
-    if (this.conn && this.conn.open) {
-      this.conn.send({ type: 'LOBBY_UPDATE', payload: state });
-    }
+    this.broadcast({ type: 'LOBBY_UPDATE', payload: state });
   }
 
   startGame(scenarioId: string, factions: any[], localPlayerId: string) {
-    if (this.conn && this.conn.open) {
-      this.conn.send({ type: 'START_GAME', payload: { scenarioId, factions, localPlayerId } });
-    }
+    this.broadcast({ type: 'START_GAME', payload: { scenarioId, factions, localPlayerId } });
   }
 
   subscribe(handler: EventHandler) {
@@ -112,8 +114,12 @@ class NetworkServiceImpl {
   }
 
   disconnect() {
-    if (this.conn) this.conn.close();
-    if (this.peer) this.peer.destroy();
+    this.conns.forEach(c => c.close());
+    this.conns = [];
+    if (this.peer) {
+      this.peer.destroy();
+      this.peer = null;
+    }
   }
 }
 
