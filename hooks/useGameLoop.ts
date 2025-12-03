@@ -6,6 +6,9 @@ import { AudioService } from '../services/audioService';
 import { GAME_TICK_MS } from '../constants';
 import { NetworkService } from '../services/networkService';
 import { Intent, TurnPacket, SyncPacket } from '../services/schemas';
+import { v4 as uuidv4 } from 'uuid'; // We need a UUID generator, or simple random string
+
+const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const useGameLoop = () => {
     const [gameState, setGameState] = useState<GameState>({
@@ -34,8 +37,9 @@ export const useGameLoop = () => {
     const isPaused = useRef<boolean>(false);
 
     // Multiplayer Buffers
-    const pendingIntents = useRef<Intent[]>([]); // Intents waiting to be processed (Host) or Sent (Client)
-    const serverTurnBuffer = useRef<Intent[]>([]); // Intents received from server (Client)
+    const pendingIntents = useRef<Intent[]>([]); // Host: Intents to process. Client: Intents waiting to send.
+    const processedIntentIds = useRef<Set<string>>(new Set()); // Deduplication Set
+    const serverTurnBuffer = useRef<Intent[]>([]); // Client: Intents received from server
 
     // --- INITIALIZATION ---
     const startGame = async (scenario: Scenario, localPlayerId: string, factions: Faction[], isClient: boolean = false) => {
@@ -66,6 +70,8 @@ export const useGameLoop = () => {
         const unsub = NetworkService.subscribe((msg) => {
             if (msg.type === 'SYNC') {
                 // Full State Sync (Reconciliation)
+                // We should only apply this if we are drifting significantly, or on join.
+                // For now, let's trust the server state but keep our local ID.
                 setGameState(prev => ({
                     ...msg.state,
                     localPlayerId: prev.localPlayerId, // Keep local ID
@@ -73,7 +79,6 @@ export const useGameLoop = () => {
                 }));
             } else if (msg.type === 'TURN') {
                 // Client: Receive Turn
-                // Add to buffer to be applied in next tick
                 serverTurnBuffer.current.push(...msg.intents);
             } else if (msg.type === 'INTENT') {
                 // Host: Receive Client Intent
@@ -94,24 +99,24 @@ export const useGameLoop = () => {
             setGameState(prevState => {
                 if (prevState.gameMode === 'SELECT_BASE') return prevState;
 
-                let intentsToProcess: Intent[] = [];
+                let intentsToApply: Intent[] = [];
 
                 if (NetworkService.isHost) {
                     // HOST LOGIC
                     // 1. Gather all pending intents (Local + Clients)
-                    intentsToProcess = [...pendingIntents.current];
+                    intentsToApply = [...pendingIntents.current];
                     pendingIntents.current = [];
 
-                    // 2. Broadcast Turn (Immediate for fluidity)
-                    if (intentsToProcess.length > 0) {
+                    // 2. Broadcast Turn (Immediate)
+                    if (intentsToApply.length > 0) {
                         NetworkService.broadcast({
                             type: 'TURN',
                             turnNumber: prevState.gameTick,
-                            intents: intentsToProcess
+                            intents: intentsToApply
                         });
                     }
 
-                    // 3. Broadcast Sync (Periodic)
+                    // 3. Broadcast Sync (Periodic - 1Hz)
                     if (prevState.gameTick % 60 === 0) {
                         NetworkService.broadcast({
                             type: 'SYNC',
@@ -119,43 +124,29 @@ export const useGameLoop = () => {
                         });
                     }
                 } else {
-                    // CLIENT LOGIC
-                    // 1. Apply Server Turns (Authoritative)
-                    // 2. Apply Local Prediction? 
-                    //    Actually, 'serverTurnBuffer' contains intents we already predicted if they were ours.
-                    //    Simple approach: Just apply server intents.
-                    //    Optimistic approach: Apply local intents immediately, then re-apply server intents?
-                    //    Let's stick to "Apply Server Intents" + "Apply Local Intents (Prediction)"
-                    //    But we need to know which local intents were already confirmed.
-                    //    For this rewrite, let's try PURE CLIENT PREDICTION:
-                    //    - We apply local intents immediately.
-                    //    - We receive server intents. If they match ours, great.
-                    //    - If we receive SYNC, we snap to it.
+                    // CLIENT LOGIC (Prediction + Deduplication)
 
-                    // Simplified: Just process server buffer. 
-                    // To fix "Lag", we need to process local intents immediately too.
-                    // But we shouldn't process them TWICE (once local, once from server).
-
-                    // FIX: We will rely on the fact that we send intents to server.
-                    // Server broadcasts them back.
-                    // If we apply them locally immediately, we must ignore them when they come back?
-                    // Or we just re-simulate.
-
-                    // Let's do the simplest Fluid fix:
-                    // 1. Process Server Buffer.
-                    // 2. Process Local Pending Intents (Prediction).
-                    // This is complex.
-
-                    // ALTERNATIVE: Just process Server Buffer. 
-                    // Since Host broadcasts Turn IMMEDIATELY upon receiving, latency is just RTT.
-                    // If RTT is low (LAN/Local), it's fine.
-                    // If we want zero-latency, we must predict.
-
-                    intentsToProcess = [...serverTurnBuffer.current];
+                    // 1. Get Server Intents
+                    const serverIntents = [...serverTurnBuffer.current];
                     serverTurnBuffer.current = [];
+
+                    // 2. Filter out intents we already predicted (Deduplication)
+                    const newServerIntents = serverIntents.filter(intent => {
+                        if (processedIntentIds.current.has(intent.id)) {
+                            // We already ran this locally. Ignore it.
+                            processedIntentIds.current.delete(intent.id); // Cleanup
+                            return false;
+                        }
+                        return true;
+                    });
+
+                    // 3. Apply ONLY new server intents (other players' actions)
+                    // Note: Our own actions were applied immediately when dispatched.
+                    intentsToApply = newServerIntents;
                 }
 
-                return processGameTick(prevState, intentsToProcess);
+                // Execute Tick
+                return processGameTick(prevState, intentsToApply);
             });
             lastTickTime.current = timestamp;
         }
@@ -172,51 +163,59 @@ export const useGameLoop = () => {
 
     // --- ACTIONS ---
     const dispatchIntent = (intent: Intent) => {
-        // 1. Send to Network
+        // 1. Assign ID if missing (should be there from helper)
+        if (!intent.id) intent.id = generateId();
+
+        // 2. PREDICTION: Apply locally immediately!
+        // We do this by forcing a state update with just this intent?
+        // No, we can't force a tick.
+        // We should add it to a "Local Prediction Buffer" that gets consumed in the next tick.
+        // BUT, if we are Host, we add to pendingIntents.
+        // If Client, we add to... pendingIntents? No, pendingIntents is for Host processing.
+
         if (NetworkService.isHost) {
             pendingIntents.current.push(intent);
         } else {
+            // CLIENT PREDICTION
+            // Apply locally in next tick
+            // We reuse 'serverTurnBuffer' or a separate 'localPredictionBuffer'?
+            // Let's use a separate one to be clean, OR just inject it into the loop.
+            // Actually, we can just run processGameTick locally right now?
+            // No, must be in loop to be thread-safe with state.
+
+            // Hack: Push to serverTurnBuffer? No, that's for server stuff.
+            // Let's add a 'localIntents' buffer.
+            // Wait, simpler:
+            // Just push to 'serverTurnBuffer' but mark it as local?
+            // No, logic above filters based on ID.
+
+            // CORRECT APPROACH:
+            // 1. Send to Network.
+            // 2. Add to 'serverTurnBuffer' (acting as if we received it immediately).
+            // 3. Add to 'processedIntentIds' so when real one comes back, we ignore it.
+
             NetworkService.sendIntent(intent);
-            // OPTIMISTIC PREDICTION:
-            // Apply locally immediately?
-            // If we do, we need to handle the duplicate when it comes back.
-            // For now, let's try WITHOUT prediction but with 60Hz server updates.
-            // If user complains, we enable prediction.
-            // WAIT, user complained about lag. We MUST enable prediction.
-
-            // Hacky Prediction:
-            // We push to 'serverTurnBuffer' locally so it gets processed next tick.
-            // But we also send it.
-            // When it comes back from server, we might process it again?
-            // Yes.
-            // We need to filter duplicates by ID? Intent doesn't have unique ID.
-            // Let's add ID to BaseIntent if needed.
-
-            // For now, let's just push to buffer locally.
-            serverTurnBuffer.current.push(intent);
+            processedIntentIds.current.add(intent.id);
+            serverTurnBuffer.current.push(intent); // "Simulate" receiving it
         }
     };
 
     // UI Handlers
     const handleUnitAction = (action: string, unitId: string) => {
-        // Implement specific unit actions (e.g. Deploy)
-        // For now, just logging or simple spawn if needed
+        // Implement specific unit actions
     };
 
     const handleBuyUnit = (type: any) => {
-        // Find spawn location
-        // 1. Find owned factories/cities
         const validSpawns = gameState.pois.filter(p => p.ownerFactionId === gameState.localPlayerId && p.type === 'CITY');
-        // Add HQs/Bases if they can spawn
         const validUnits = gameState.units.filter(u => u.factionId === gameState.localPlayerId && (u.unitClass === 'COMMAND_CENTER' || u.unitClass === 'MILITARY_BASE'));
-
         const allSpawns = [...validSpawns, ...validUnits];
 
         if (allSpawns.length > 0) {
             const spawn = allSpawns[Math.floor(Math.random() * allSpawns.length)];
-            const pos = 'position' in spawn ? spawn.position : (spawn as any).position; // POI and Unit both have position
+            const pos = 'position' in spawn ? spawn.position : (spawn as any).position;
 
             dispatchIntent({
+                id: generateId(),
                 type: 'SPAWN',
                 clientId: gameState.localPlayerId,
                 unitClass: type,
@@ -236,13 +235,17 @@ export const useGameLoop = () => {
         if (gameState.gameMode === 'SELECT_BASE') {
             const poi = gameState.pois.find(p => p.id === poiId);
             if (poi) {
+                // 1. Claim Base (Robust ID)
                 dispatchIntent({
+                    id: generateId(),
                     type: 'CLAIM_BASE',
                     clientId: gameState.localPlayerId,
                     poiId: poiId,
                     timestamp: Date.now()
                 });
+                // 2. Spawn HQ
                 dispatchIntent({
+                    id: generateId(),
                     type: 'SPAWN',
                     clientId: gameState.localPlayerId,
                     unitClass: 'COMMAND_CENTER' as any,
@@ -257,19 +260,31 @@ export const useGameLoop = () => {
         }
     };
 
+    const handleMapClick = (lat: number, lng: number) => {
+        if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
+            dispatchIntent({
+                id: generateId(),
+                type: 'MOVE',
+                clientId: gameState.localPlayerId,
+                unitIds: selectedUnitIds,
+                lat,
+                lng,
+                timestamp: Date.now()
+            });
+        }
+    };
+
     const handleTargetCommand = (targetId: string, isPoi: boolean) => {
         if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
-            // Determine if Attack or Set Target
-            // Simple check: Is it me?
             const targetUnit = gameState.units.find(u => u.id === targetId);
             const targetPoi = gameState.pois.find(p => p.id === targetId);
-
             const isHostile = (targetUnit && targetUnit.factionId !== gameState.localPlayerId) ||
                 (targetPoi && targetPoi.ownerFactionId !== gameState.localPlayerId);
 
             if (isHostile) {
                 selectedUnitIds.forEach(id => {
                     dispatchIntent({
+                        id: generateId(),
                         type: 'ATTACK',
                         clientId: gameState.localPlayerId,
                         attackerId: id,
@@ -280,6 +295,7 @@ export const useGameLoop = () => {
             } else {
                 selectedUnitIds.forEach(id => {
                     dispatchIntent({
+                        id: generateId(),
                         type: 'SET_TARGET',
                         clientId: gameState.localPlayerId,
                         unitId: id,
@@ -289,19 +305,6 @@ export const useGameLoop = () => {
                 });
             }
             AudioService.playSuccess();
-        }
-    };
-
-    const handleMapClick = (lat: number, lng: number) => {
-        if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
-            dispatchIntent({
-                type: 'MOVE',
-                clientId: gameState.localPlayerId,
-                unitIds: selectedUnitIds,
-                lat,
-                lng,
-                timestamp: Date.now()
-            });
         }
     };
 
@@ -319,6 +322,6 @@ export const useGameLoop = () => {
         handleBuyUnit,
         setDifficulty: () => { },
         handleAllianceRequest: () => { },
-        handleTargetCommand: () => { }
+        handleTargetCommand
     };
 };

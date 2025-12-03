@@ -77,11 +77,9 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
     // 1. DEEP COPY STATE (Immutability)
     let nextUnits = currentState.units.map(u => ({ ...u }));
     let nextPOIs = currentState.pois.map(p => ({ ...p }));
-    let nextFactions = currentState.factions.map(f => ({ ...f })); // Deep copy needed? Faction objects are simple.
+    let nextFactions = currentState.factions.map(f => ({ ...f }));
     let nextMessages = [...currentState.messages];
-    let nextProjectiles: Projectile[] = []; // Rebuild every frame for simplicity or carry over?
-    // Projectiles are transient visual effects mostly, but missiles have travel time.
-    // Let's copy existing missiles.
+    let nextProjectiles: Projectile[] = [];
     currentState.projectiles.forEach(p => nextProjectiles.push({ ...p }));
     let nextExplosions = currentState.explosions.filter(e => Date.now() - e.timestamp < 1000);
 
@@ -89,30 +87,29 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
     for (const intent of intents) {
         switch (intent.type) {
             case 'CLAIM_BASE': {
+                // ROBUST: Use ID directly
                 const poiIndex = nextPOIs.findIndex(p => p.id === intent.poiId);
                 if (poiIndex !== -1) {
                     nextPOIs[poiIndex].ownerFactionId = intent.clientId;
                     logEvent(nextMessages, `${intent.clientId} claimed ${nextPOIs[poiIndex].name}`, 'info');
+                } else {
+                    console.warn(`[GameLogic] CLAIM_BASE failed: POI ${intent.poiId} not found`);
                 }
                 break;
             }
             case 'SPAWN': {
-                // Deduct Resources from Faction
+                // Deduct Resources
                 const factionIndex = nextFactions.findIndex(f => f.id === intent.clientId);
                 const cost = UNIT_CONFIG[intent.unitClass].cost;
 
                 if (factionIndex !== -1 && cost) {
-                    // Check if enough resources (Server Authority should enforce this, but we do it here too)
-                    // For now, allow negative for responsiveness or enforce?
-                    // Let's enforce.
-                    // Actually, if we are client predicting, we might go negative until server corrects.
                     nextFactions[factionIndex].gold -= cost;
                 }
 
                 const unit = spawnUnit(intent.unitClass, intent.lat, intent.lng, intent.clientId, intent.unitId);
                 nextUnits.push(unit);
 
-                // HQ Spawn Logic (Claim City)
+                // HQ Spawn Logic (Claim City) - Redundant if CLAIM_BASE is used, but good fallback
                 if (unit.unitClass === UnitClass.COMMAND_CENTER) {
                     const cityIndex = nextPOIs.findIndex(p =>
                         Math.abs(p.position.lat - unit.position.lat) < 0.02 &&
@@ -145,6 +142,13 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
             case 'BUILD_STRUCTURE': {
                 const unit = spawnUnit(intent.structureType, intent.lat, intent.lng, intent.clientId);
                 nextUnits.push(unit);
+                break;
+            }
+            case 'SET_TARGET': {
+                const u = nextUnits.find(unit => unit.id === intent.unitId);
+                if (u && u.factionId === intent.clientId) {
+                    u.targetId = intent.targetId;
+                }
                 break;
             }
             case 'CHEAT_RESOURCES': {
@@ -202,9 +206,6 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
                     const bearing = getBearing(unit.position.lat, unit.position.lng, destLat, destLng);
                     const rads = bearing * DEG2RAD;
 
-                    // Simple movement (No steering for now to ensure determinism/simplicity first)
-                    // Add steering back if needed for collision avoidance
-
                     unit.position.lat += Math.cos(rads) * speed;
                     unit.position.lng += Math.sin(rads) * speed;
                     unit.heading = bearing;
@@ -253,7 +254,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
                     timestamp: Date.now(),
                     progress: 0,
                     isHit: false,
-                    speed: 0.1 // Default speed
+                    speed: 0.1
                 });
 
                 // Capture Logic
@@ -288,13 +289,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
         gold: localFaction.gold,
         oil: localFaction.oil,
         intel: localFaction.intel
-    } : playerResources;
-
-    // 6. AI UPDATE (Host Only - handled outside or here?)
-    // If we want pure logic, AI should generate INTENTS.
-    // For now, let's keep AI simple and embedded or skip.
-    // Let's skip AI update inside 'processGameTick' to keep it pure. 
-    // AI should be an external agent that feeds intents.
+    } : currentState.playerResources;
 
     return {
         ...currentState,
