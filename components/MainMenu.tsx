@@ -194,6 +194,10 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                         <p className="text-sm text-gray-400">Lobby ID:</p>
                         <p className="text-xl font-mono text-green-400 select-all">{peerId}</p>
                         <p className="text-xs text-gray-500 mt-1">{connectionStatus}</p>
+                        {/* DEBUG INFO */}
+                        <div className="mt-2 pt-2 border-t border-slate-700 text-xs text-gray-600 font-mono">
+                            Mode: {networkMode} | Host: {isHost ? 'YES' : 'NO'} | Edit: {canEdit ? 'YES' : 'NO'}
+                        </div>
                     </div>
                 )}
             </div>
@@ -276,7 +280,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                         }
                                     }}
                                     className={`w-full p-3 rounded border-l-4 text-left flex justify-between items-center transition-all ${(isSingle ? selectedFactionIndex === idx : lobbyState.players.find(p => p.id === peerId)?.factionIndex === idx)
-                                            ? 'bg-slate-700 border-white' : 'bg-slate-900/50 border-transparent hover:bg-slate-700'
+                                        ? 'bg-slate-700 border-white' : 'bg-slate-900/50 border-transparent hover:bg-slate-700'
                                         }`}
                                     style={{ borderLeftColor: fac.color }}
                                 >
@@ -317,8 +321,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                     onClick={isSingle ? handleSinglePlayerStart : handleHostLobbyStart}
                     disabled={!isSingle && !isHost}
                     className={`px-12 py-4 rounded text-2xl font-bold shadow-lg transition-all ${(!isSingle && !isHost)
-                            ? 'bg-gray-700 cursor-not-allowed text-gray-500'
-                            : 'bg-blue-600 hover:bg-blue-500 hover:scale-105 text-white'
+                        ? 'bg-gray-700 cursor-not-allowed text-gray-500'
+                        : 'bg-blue-600 hover:bg-blue-500 hover:scale-105 text-white'
                         }`}
                 >
                     {isSingle ? 'DEPLOY' : (isHost ? 'DEPLOY ALL' : 'WAITING FOR HOST...')}

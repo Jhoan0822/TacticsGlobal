@@ -159,16 +159,20 @@ const App: React.FC = () => {
                     if (networkMode === 'MULTI_HOST') {
                         // Add Client to Lobby
                         setLobbyState(prev => {
-                            if (prev.players.find(p => p.id === e.peerId)) return prev;
-                            const newState = {
+                            // Check if player exists
+                            const existing = prev.players.find(p => p.id === e.peerId);
+                            if (existing) {
+                                // Force reference change to trigger useEffect broadcast
+                                return { ...prev };
+                            }
+                            // Add new player
+                            return {
                                 ...prev,
                                 players: [
                                     ...prev.players,
                                     { id: e.peerId, name: `Player ${prev.players.length + 1}`, factionIndex: 1, isHost: false, isReady: false }
                                 ]
                             };
-                            NetworkService.sendLobbyUpdate(newState);
-                            return newState;
                         });
                     }
                 } else if (e.type === 'LOBBY_UPDATE') {
