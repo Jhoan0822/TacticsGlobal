@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SCENARIOS, FACTION_PRESETS, DIFFICULTY_CONFIG } from '../constants';
 import { NetworkService } from '../services/networkService';
-import { Scenario, Faction, LobbyState, Difficulty } from '../types';
-import { LobbyUpdatePacket } from '../services/schemas';
+import { Scenario, Faction, LobbyState, LobbyPlayer, Difficulty } from '../types';
 
 interface MainMenuProps {
     onStartGame: (scenario: Scenario, localPlayerId: string, factions: Faction[], isMultiplayer: boolean, isHost: boolean) => void;
@@ -14,260 +13,319 @@ interface MainMenuProps {
 
 const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbyState, networkMode, setNetworkMode }) => {
     const [hostIdInput, setHostIdInput] = useState<string>('');
-    const [status, setStatus] = useState<string>('');
-    const [myId, setMyId] = useState<string>('');
+    const [connectionStatus, setConnectionStatus] = useState<string>('');
+    const [selectedFactionIndex, setSelectedFactionIndex] = useState<number>(0);
+    const [peerId, setPeerId] = useState<string>('');
 
-    // --- NETWORK INIT ---
+    // Sync PeerID
     useEffect(() => {
-        if (networkMode === 'MULTI_HOST' || networkMode === 'MULTI_JOIN') {
-            NetworkService.initialize((id) => {
-                setMyId(id);
-                setStatus(`Connected. ID: ${id}`);
+        const checkId = setInterval(() => {
+            if (NetworkService.myPeerId) {
+                setPeerId(NetworkService.myPeerId);
+                setConnectionStatus('Connected. ID: ' + NetworkService.myPeerId);
+            }
+        }, 1000);
+        return () => clearInterval(checkId);
+    }, []);
 
-                if (networkMode === 'MULTI_HOST') {
-                    NetworkService.startHosting();
-                    // Init Lobby for Host
-                    setLobbyState({
-                        players: [{ id: id, name: 'Host', factionIndex: 0, isHost: true, isReady: true }],
-                        scenarioId: 'WORLD',
-                        difficulty: Difficulty.MEDIUM,
-                        botCount: 2
-                    });
-                }
-            });
+    const handleSinglePlayerStart = () => {
+        const scenario = Object.values(SCENARIOS).find(s => s.id === lobbyState.scenarioId) || SCENARIOS.WORLD;
 
-            const unsub = NetworkService.subscribe((msg) => {
-                if (msg.type === 'LOBBY_UPDATE') {
-                    setLobbyState({
-                        players: msg.players,
-                        scenarioId: msg.scenarioId,
-                        difficulty: msg.difficulty as Difficulty,
-                        botCount: msg.botCount
-                    });
-                } else if (msg.type === 'START_GAME') {
-                    // Client Start
-                    const scenario = Object.values(SCENARIOS).find(s => s.id === msg.scenarioId) || SCENARIOS.WORLD;
-                    onStartGame(scenario, NetworkService.myPeerId, msg.factions, true, false);
-                }
-            });
-            return () => unsub();
-        }
-    }, [networkMode]);
+        const playerFaction = {
+            ...FACTION_PRESETS[selectedFactionIndex],
+            id: 'PLAYER',
+            type: 'PLAYER' as const,
+            gold: 5000,
+            relations: {},
+            aggression: 0
+        };
 
-    // --- HOST LOGIC ---
-    const broadcastLobby = () => {
-        if (NetworkService.isHost) {
-            const packet: LobbyUpdatePacket = {
-                type: 'LOBBY_UPDATE',
-                players: lobbyState.players,
-                scenarioId: lobbyState.scenarioId,
-                difficulty: lobbyState.difficulty,
-                botCount: lobbyState.botCount
-            };
-            NetworkService.broadcast(packet);
-        }
+        // Generate Bots
+        const otherFactions = FACTION_PRESETS
+            .filter((_, i) => i !== selectedFactionIndex)
+            .slice(0, lobbyState.botCount)
+            .map((preset, i) => ({
+                ...preset,
+                id: `ENEMY_${i}`,
+                type: 'AI' as const,
+                gold: 5000,
+                relations: { 'PLAYER': -100 },
+                aggression: 1.0
+            }));
+
+        const allFactions = [playerFaction, ...otherFactions] as Faction[];
+        onStartGame(scenario, 'PLAYER', allFactions, false, true);
     };
 
-    // Broadcast on change
-    useEffect(() => {
-        if (NetworkService.isHost) {
-            broadcastLobby();
-        }
-    }, [lobbyState]);
-
-    // --- ACTIONS ---
-    const handleJoin = () => {
-        if (!hostIdInput) return;
-        setStatus('Connecting...');
-        NetworkService.connectToHost(hostIdInput);
-        // We wait for LOBBY_UPDATE to switch UI
-        setNetworkMode('LOBBY'); // Switch to Lobby View immediately? Or wait?
-        // Let's switch to LOBBY view, it will show "Waiting..." until players list populates
-    };
-
-    const handleStartGame = () => {
-        if (!NetworkService.isHost && networkMode !== 'SINGLE') return;
+    const handleHostLobbyStart = () => {
+        if (networkMode !== 'MULTI_HOST' && networkMode !== 'LOBBY') return;
 
         const scenario = Object.values(SCENARIOS).find(s => s.id === lobbyState.scenarioId) || SCENARIOS.WORLD;
 
-        // Build Factions
+        // Construct Factions from Lobby Players + Bots
         const factions: Faction[] = [];
 
         // 1. Players
-        lobbyState.players.forEach(p => {
+        lobbyState.players.forEach((p, idx) => {
             factions.push({
                 ...FACTION_PRESETS[p.factionIndex],
-                id: p.id,
+                id: p.id, // USE PEER ID AS FACTION ID
+                name: p.name,
                 type: 'PLAYER',
                 gold: 5000,
-                oil: 2000,
-                intel: 0,
                 relations: {},
                 aggression: 0
             });
         });
 
         // 2. Bots
+        const usedIndices = lobbyState.players.map(p => p.factionIndex);
+        const availablePresets = FACTION_PRESETS.filter((_, i) => !usedIndices.includes(i));
+
         for (let i = 0; i < lobbyState.botCount; i++) {
+            if (i >= availablePresets.length) break;
             factions.push({
-                ...FACTION_PRESETS[(i + 2) % FACTION_PRESETS.length], // Simple rotation
+                ...availablePresets[i],
                 id: `BOT_${i}`,
                 type: 'AI',
                 gold: 5000,
-                oil: 2000,
-                intel: 0,
-                relations: {},
-                aggression: 1
+                relations: {}, // Set relations below
+                aggression: 1.0
             });
         }
 
-        // 3. Hostility
+        // Set Hostility
         factions.forEach(f => {
-            factions.forEach(t => {
-                if (f.id !== t.id) f.relations[t.id] = -100;
+            factions.forEach(target => {
+                if (f.id !== target.id) {
+                    f.relations[target.id] = -100;
+                }
             });
         });
 
-        if (NetworkService.isHost) {
-            NetworkService.broadcast({
-                type: 'START_GAME',
-                scenarioId: scenario.id,
-                factions: factions
-            });
-            onStartGame(scenario, NetworkService.myPeerId, factions, true, true);
-        } else {
-            // Single Player
-            onStartGame(scenario, 'PLAYER', factions, false, true);
-        }
+        // Start for Host (Host ID is NetworkService.myPeerId)
+        onStartGame(scenario, NetworkService.myPeerId, factions, true, true);
+
+        // Signal Clients
+        // We broadcast the factions list. Each client will identify themselves by their own Peer ID.
+        NetworkService.startGame(scenario.id, factions);
     };
 
-    // --- RENDER ---
-    const isHost = NetworkService.isHost || networkMode === 'SINGLE';
-    const canEdit = isHost;
+    const handleJoin = () => {
+        setConnectionStatus('Connecting to Host...');
+        NetworkService.connect(hostIdInput);
+        // Do NOT switch to LOBBY yet. Wait for LOBBY_UPDATE from App.tsx which populates lobbyState.players
+    };
 
-    if (!networkMode) {
-        return (
-            <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white space-y-8">
-                <h1 className="text-6xl font-bold text-blue-500">TACTIC OPS</h1>
-                <div className="flex space-x-4">
-                    <button onClick={() => setNetworkMode('SINGLE')} className="btn-primary">SINGLE PLAYER</button>
-                    <button onClick={() => setNetworkMode('MULTI_HOST')} className="btn-success">HOST GAME</button>
-                    <button onClick={() => setNetworkMode('MULTI_JOIN')} className="btn-purple">JOIN GAME</button>
+    const updateLobbySetting = (key: keyof LobbyState, value: any) => {
+        setLobbyState(prev => ({ ...prev, [key]: value }));
+    };
+
+    // Initial Host Setup
+    useEffect(() => {
+        if (networkMode === 'MULTI_HOST' && NetworkService.myPeerId && lobbyState.players.length === 0) {
+            setLobbyState({
+                players: [{ id: NetworkService.myPeerId, name: 'Host', factionIndex: 0, isHost: true, isReady: true }],
+                scenarioId: 'WORLD',
+                difficulty: Difficulty.MEDIUM,
+                botCount: 2
+            });
+            // Stay in MULTI_HOST mode
+        }
+    }, [networkMode, peerId]);
+
+    // RENDERERS
+
+    if (!networkMode || networkMode === 'SINGLE') { // Default Menu View (SINGLE is just a mode flag here, UI handled below)
+        if (networkMode === 'SINGLE') {
+            // Single Player Setup UI is same as Lobby but local
+        } else {
+            return (
+                <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white space-y-8 font-sans">
+                    <h1 className="text-6xl font-bold text-blue-500 tracking-widest drop-shadow-lg">TACTIC OPS</h1>
+                    <div className="flex space-x-4">
+                        <button onClick={() => setNetworkMode('SINGLE')} className="px-8 py-4 bg-blue-600 hover:bg-blue-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">SINGLE PLAYER</button>
+                        <button onClick={() => setNetworkMode('MULTI_HOST')} className="px-8 py-4 bg-green-600 hover:bg-green-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">HOST GAME</button>
+                        <button onClick={() => setNetworkMode('MULTI_JOIN')} className="px-8 py-4 bg-purple-600 hover:bg-purple-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">JOIN GAME</button>
+                    </div>
                 </div>
-            </div>
-        );
+            );
+        }
     }
 
+    // Show Join UI if we are in JOIN mode AND we haven't received the lobby state yet (players empty)
     if (networkMode === 'MULTI_JOIN' && lobbyState.players.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white space-y-4">
-                <h2 className="text-2xl">Join Game</h2>
-                <div className="bg-slate-800 p-6 rounded shadow-lg">
-                    <p className="text-sm text-gray-400">Your ID: {myId}</p>
-                    <input
-                        className="w-full p-2 bg-black text-white border border-gray-600 rounded mt-2"
-                        placeholder="Host ID"
-                        value={hostIdInput}
-                        onChange={e => setHostIdInput(e.target.value)}
-                    />
-                    <button onClick={handleJoin} className="w-full mt-4 btn-purple">CONNECT</button>
-                    <button onClick={() => setNetworkMode(null)} className="w-full mt-2 text-gray-500">Back</button>
+            <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white space-y-8">
+                <h2 className="text-4xl font-bold">JOIN GAME</h2>
+                <div className="bg-slate-800 p-6 rounded-lg shadow-xl w-96 space-y-4">
+                    <div>
+                        <label className="block text-sm text-gray-400 mb-1">Your ID</label>
+                        <div className="font-mono text-green-400 bg-black p-2 rounded">{peerId || 'Generating...'}</div>
+                    </div>
+                    <div>
+                        <label className="block text-sm text-gray-400 mb-1">Host ID</label>
+                        <input
+                            type="text"
+                            placeholder="Enter Host ID"
+                            className="w-full px-4 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
+                            value={hostIdInput}
+                            onChange={e => setHostIdInput(e.target.value)}
+                        />
+                    </div>
+                    <button onClick={handleJoin} className="w-full px-8 py-4 bg-purple-600 hover:bg-purple-500 rounded text-xl font-bold shadow-lg">CONNECT</button>
+                    <button onClick={() => setNetworkMode(null)} className="w-full text-gray-400 hover:text-white text-sm">Back</button>
                 </div>
             </div>
         );
     }
 
+    // SHARED LOBBY / SINGLE PLAYER SETUP UI
+    const isHost = networkMode === 'MULTI_HOST' || (networkMode === 'LOBBY' && lobbyState.players.find(p => p.id === peerId)?.isHost);
+    const isSingle = networkMode === 'SINGLE';
+    const canEdit = isSingle || isHost;
+
     return (
-        <div className="flex flex-col h-screen bg-slate-900 text-white p-8">
+        <div className="flex flex-col h-screen bg-slate-900 text-white p-8 overflow-y-auto">
             <div className="flex justify-between items-center mb-8">
-                <h2 className="text-4xl font-bold">{networkMode === 'SINGLE' ? 'SINGLE PLAYER' : 'LOBBY'}</h2>
-                {!isHost && <div className="text-yellow-500 animate-pulse">Waiting for Host...</div>}
-                {isHost && networkMode !== 'SINGLE' && <div className="text-green-400">Lobby ID: {myId}</div>}
+                <h2 className="text-4xl font-bold tracking-wider">{isSingle ? 'SINGLE PLAYER' : 'LOBBY'}</h2>
+                {!isSingle && (
+                    <div className="bg-slate-800 p-4 rounded border border-slate-700">
+                        <p className="text-sm text-gray-400">Lobby ID:</p>
+                        <p className="text-xl font-mono text-green-400 select-all">{peerId}</p>
+                        <p className="text-xs text-gray-500 mt-1">{connectionStatus}</p>
+                        {/* DEBUG INFO */}
+                        <div className="mt-2 pt-2 border-t border-slate-700 text-xs text-gray-600 font-mono">
+                            Mode: {networkMode} | Host: {isHost ? 'YES' : 'NO'} | Edit: {canEdit ? 'YES' : 'NO'}
+                        </div>
+                    </div>
+                )}
             </div>
 
-            <div className="grid grid-cols-3 gap-8">
-                {/* SETTINGS */}
-                <div className="bg-slate-800 p-6 rounded space-y-4">
-                    <h3 className="text-xl font-bold text-blue-400">Settings</h3>
-                    <div>
-                        <label>Scenario</label>
-                        <div className="flex space-x-2 mt-1">
-                            {Object.values(SCENARIOS).map(s => (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* SETTINGS COLUMN */}
+                <div className="space-y-6 lg:col-span-1">
+                    <div className="bg-slate-800 p-6 rounded-lg shadow-lg space-y-6">
+                        <h3 className="text-2xl font-bold text-blue-400">Game Settings</h3>
+
+                        {/* SCENARIO */}
+                        <div>
+                            <label className="block text-sm text-gray-400 mb-2">Theater</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {Object.values(SCENARIOS).map((scen) => (
+                                    <button
+                                        key={scen.id}
+                                        disabled={!canEdit}
+                                        onClick={() => isSingle ? setLobbyState(p => ({ ...p, scenarioId: scen.id })) : updateLobbySetting('scenarioId', scen.id)}
+                                        className={`p-2 rounded text-sm font-bold border ${lobbyState.scenarioId === scen.id ? 'bg-blue-600 border-blue-400' : 'bg-slate-700 border-slate-600 hover:bg-slate-600'} ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
+                                    >
+                                        {scen.name}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* BOTS */}
+                        <div>
+                            <label className="block text-sm text-gray-400 mb-2">Enemy Factions (Bots): {lobbyState.botCount}</label>
+                            <input
+                                type="range" min="0" max="7"
+                                disabled={!canEdit}
+                                value={lobbyState.botCount}
+                                onChange={(e) => isSingle ? setLobbyState(p => ({ ...p, botCount: parseInt(e.target.value) })) : updateLobbySetting('botCount', parseInt(e.target.value))}
+                                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                <span>0</span><span>7</span>
+                            </div>
+                        </div>
+
+                        {/* DIFFICULTY */}
+                        <div>
+                            <label className="block text-sm text-gray-400 mb-2">Difficulty</label>
+                            <div className="flex space-x-2">
+                                {Object.values(Difficulty).map((diff) => (
+                                    <button
+                                        key={diff}
+                                        disabled={!canEdit}
+                                        onClick={() => isSingle ? setLobbyState(p => ({ ...p, difficulty: diff })) : updateLobbySetting('difficulty', diff)}
+                                        className={`flex-1 p-2 rounded text-xs font-bold border ${lobbyState.difficulty === diff ? 'bg-red-600 border-red-400' : 'bg-slate-700 border-slate-600'} ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
+                                    >
+                                        {diff}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* FACTION SELECTION */}
+                <div className="space-y-6 lg:col-span-1">
+                    <div className="bg-slate-800 p-6 rounded-lg shadow-lg h-full overflow-y-auto">
+                        <h3 className="text-2xl font-bold text-red-400 mb-4">Select Faction</h3>
+                        <div className="space-y-2">
+                            {FACTION_PRESETS.map((fac, idx) => (
                                 <button
-                                    key={s.id}
-                                    disabled={!canEdit}
-                                    onClick={() => canEdit && setLobbyState(prev => ({ ...prev, scenarioId: s.id }))}
-                                    className={`p-2 rounded border ${lobbyState.scenarioId === s.id ? 'bg-blue-600 border-white' : 'bg-slate-700 border-gray-600'} ${!canEdit && 'opacity-50'}`}
+                                    key={idx}
+                                    onClick={() => {
+                                        if (isSingle) setSelectedFactionIndex(idx);
+                                        else {
+                                            // Update My Faction in Lobby
+                                            const myIdx = lobbyState.players.findIndex(p => p.id === peerId);
+                                            if (myIdx !== -1) {
+                                                const newPlayers = [...lobbyState.players];
+                                                newPlayers[myIdx].factionIndex = idx;
+                                                updateLobbySetting('players', newPlayers);
+                                            }
+                                        }
+                                    }}
+                                    className={`w-full p-3 rounded border-l-4 text-left flex justify-between items-center transition-all ${(isSingle ? selectedFactionIndex === idx : lobbyState.players.find(p => p.id === peerId)?.factionIndex === idx)
+                                        ? 'bg-slate-700 border-white' : 'bg-slate-900/50 border-transparent hover:bg-slate-700'
+                                        }`}
+                                    style={{ borderLeftColor: fac.color }}
                                 >
-                                    {s.name}
+                                    <span className="font-bold">{fac.name}</span>
                                 </button>
                             ))}
                         </div>
                     </div>
-                    <div>
-                        <label>Bots: {lobbyState.botCount}</label>
-                        <input
-                            type="range" min="0" max="7"
-                            disabled={!canEdit}
-                            value={lobbyState.botCount}
-                            onChange={e => canEdit && setLobbyState(prev => ({ ...prev, botCount: parseInt(e.target.value) }))}
-                            className="w-full"
-                        />
-                    </div>
                 </div>
 
-                {/* PLAYERS */}
-                <div className="bg-slate-800 p-6 rounded space-y-4">
-                    <h3 className="text-xl font-bold text-green-400">Players</h3>
-                    {lobbyState.players.map((p, i) => (
-                        <div key={i} className="flex justify-between bg-slate-900 p-2 rounded">
-                            <span>{p.name} {p.isHost ? '(Host)' : ''}</span>
-                            <span style={{ color: FACTION_PRESETS[p.factionIndex].color }}>{FACTION_PRESETS[p.factionIndex].name}</span>
+                {/* PLAYERS LIST (Multiplayer Only) */}
+                {!isSingle && (
+                    <div className="space-y-6 lg:col-span-1">
+                        <div className="bg-slate-800 p-6 rounded-lg shadow-lg h-full">
+                            <h3 className="text-2xl font-bold text-green-400 mb-4">Lobby Players</h3>
+                            <div className="space-y-4">
+                                {lobbyState.players.map((p, i) => (
+                                    <div key={i} className="flex items-center justify-between bg-slate-900 p-4 rounded border border-slate-700">
+                                        <div>
+                                            <div className="font-bold text-lg">{p.name} {p.isHost && '(Host)'}</div>
+                                            <div className="text-sm text-gray-400" style={{ color: FACTION_PRESETS[p.factionIndex].color }}>
+                                                {FACTION_PRESETS[p.factionIndex].name}
+                                            </div>
+                                        </div>
+                                        <div className={`w-3 h-3 rounded-full ${p.id ? 'bg-green-500' : 'bg-gray-500'}`}></div>
+                                    </div>
+                                ))}
+                                {lobbyState.players.length === 0 && <div className="text-gray-500 italic">Waiting for players...</div>}
+                            </div>
                         </div>
-                    ))}
-                </div>
-
-                {/* FACTION SELECT */}
-                <div className="bg-slate-800 p-6 rounded space-y-4">
-                    <h3 className="text-xl font-bold text-red-400">My Faction</h3>
-                    <div className="grid grid-cols-1 gap-2">
-                        {FACTION_PRESETS.map((f, i) => (
-                            <button
-                                key={i}
-                                onClick={() => {
-                                    // Update my faction index in lobby state
-                                    // If Host, update directly. If Client, send intent? 
-                                    // For simplicity, Client just updates local state? 
-                                    // NO, Client needs to tell Host.
-                                    // We didn't implement LOBBY_INTENT.
-                                    // For this rewrite, let's assume only Host can change factions for now or just local?
-                                    // Actually, we need to send this to Host.
-                                    // Since we don't have a packet for it, let's skip Client Faction Selection for this MVP 
-                                    // OR implement a quick "LOBBY_ACTION" packet?
-                                    // Let's just let Host assign for now to keep it simple, or just local update if Single Player.
-                                    if (networkMode === 'SINGLE') {
-                                        // Single player logic
-                                    }
-                                }}
-                                className="p-2 bg-slate-700 text-left border-l-4"
-                                style={{ borderLeftColor: f.color }}
-                            >
-                                {f.name}
-                            </button>
-                        ))}
-                        <div className="text-xs text-gray-500 italic">Faction selection locked in MVP</div>
                     </div>
-                </div>
+                )}
             </div>
 
-            <div className="mt-auto flex justify-end space-x-4">
-                <button onClick={() => setNetworkMode(null)} className="btn-secondary">Back</button>
+            <div className="mt-auto pt-8 flex justify-end space-x-4">
+                <button onClick={() => setNetworkMode(null)} className="px-6 py-3 text-gray-400 hover:text-white font-bold">BACK</button>
                 <button
-                    onClick={handleStartGame}
-                    disabled={!isHost}
-                    className={`px-8 py-4 rounded font-bold text-xl ${isHost ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-600 opacity-50 cursor-not-allowed'}`}
+                    onClick={isSingle ? handleSinglePlayerStart : handleHostLobbyStart}
+                    disabled={!isSingle && !isHost}
+                    className={`px-12 py-4 rounded text-2xl font-bold shadow-lg transition-all ${(!isSingle && !isHost)
+                        ? 'bg-gray-700 cursor-not-allowed text-gray-500'
+                        : 'bg-blue-600 hover:bg-blue-500 hover:scale-105 text-white'
+                        }`}
                 >
-                    {isHost ? 'DEPLOY' : 'WAITING...'}
+                    {isSingle ? 'DEPLOY' : (isHost ? 'DEPLOY ALL' : 'WAITING FOR HOST...')}
                 </button>
             </div>
         </div>
