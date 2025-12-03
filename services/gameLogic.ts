@@ -572,12 +572,27 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
                 // Apply Damage
                 target.hp -= damage;
 
-                // --- CITY CAPTURE LOGIC (CONQUEST) ---
-                // Only capture if unit has canCapture = true (Ground units)
+                // --- CITY & RESOURCE CAPTURE LOGIC ---
                 if ('type' in target) {
                     if (target.hp <= 0) {
-                        if (u1.canCapture) {
-                            // Capture the City!
+                        let canCaptureTarget = false;
+
+                        // 1. CITIES: Only Infantry/Tanks (canCapture=true)
+                        if (target.type === POIType.CITY) {
+                            if (u1.canCapture) canCaptureTarget = true;
+                        }
+                        // 2. OIL RIGS: Infantry, Tanks, OR ANY SEA UNIT
+                        else if (target.type === POIType.OIL_RIG) {
+                            const isSeaUnit = [
+                                UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.SUBMARINE,
+                                UnitClass.AIRCRAFT_CARRIER, UnitClass.BATTLESHIP, UnitClass.PATROL_BOAT, UnitClass.MINELAYER
+                            ].includes(u1.unitClass);
+
+                            if (u1.canCapture || isSeaUnit) canCaptureTarget = true;
+                        }
+
+                        if (canCaptureTarget) {
+                            // Capture!
                             target.hp = target.maxHp * 0.5; // Restore partial health
                             target.ownerFactionId = u1.factionId;
 
