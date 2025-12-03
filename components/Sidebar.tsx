@@ -245,8 +245,10 @@ export default React.memo(Sidebar, (prev, next) => {
     // Check unit count
     if (prev.gameState.units.length !== next.gameState.units.length) return false;
 
-    // Check POI ownership changes
-    if (prev.gameState.pois.length !== next.gameState.pois.length) return false;
+    // Check POI ownership changes (Count owned POIs)
+    const prevOwned = prev.gameState.pois.filter(p => p.ownerFactionId === prev.gameState.localPlayerId).length;
+    const nextOwned = next.gameState.pois.filter(p => p.ownerFactionId === next.gameState.localPlayerId).length;
+    if (prevOwned !== nextOwned) return false;
 
     return true;
 });
