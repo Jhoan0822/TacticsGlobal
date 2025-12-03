@@ -1,11 +1,13 @@
 import Peer, { DataConnection } from 'peerjs';
-import { GameState } from '../types';
+import { GameState, LobbyState } from '../types';
 
 export type NetworkEvent =
   | { type: 'CONNECT', peerId: string }
   | { type: 'DISCONNECT' }
   | { type: 'STATE_UPDATE', state: GameState }
-  | { type: 'ACTION', action: any };
+  | { type: 'ACTION', action: any }
+  | { type: 'LOBBY_UPDATE', state: LobbyState }
+  | { type: 'START_GAME', scenarioId: string, factions: any[], localPlayerId: string };
 
 type EventHandler = (event: NetworkEvent) => void;
 
@@ -56,6 +58,10 @@ class NetworkServiceImpl {
         this.notify({ type: 'STATE_UPDATE', state: data.payload });
       } else if (data.type === 'ACTION') {
         this.notify({ type: 'ACTION', action: data.payload });
+      } else if (data.type === 'LOBBY_UPDATE') {
+        this.notify({ type: 'LOBBY_UPDATE', state: data.payload });
+      } else if (data.type === 'START_GAME') {
+        this.notify({ type: 'START_GAME', ...data.payload });
       }
     });
 
@@ -79,6 +85,18 @@ class NetworkServiceImpl {
   sendAction(action: any) {
     if (this.conn && this.conn.open) {
       this.conn.send({ type: 'ACTION', payload: action });
+    }
+  }
+
+  sendLobbyUpdate(state: LobbyState) {
+    if (this.conn && this.conn.open) {
+      this.conn.send({ type: 'LOBBY_UPDATE', payload: state });
+    }
+  }
+
+  startGame(scenarioId: string, factions: any[], localPlayerId: string) {
+    if (this.conn && this.conn.open) {
+      this.conn.send({ type: 'START_GAME', payload: { scenarioId, factions, localPlayerId } });
     }
   }
 

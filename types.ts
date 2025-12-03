@@ -159,6 +159,21 @@ export interface GameState {
   isClient?: boolean;
 }
 
+export interface LobbyPlayer {
+  id: string;
+  name: string;
+  factionIndex: number;
+  isHost: boolean;
+  isReady: boolean;
+}
+
+export interface LobbyState {
+  players: LobbyPlayer[];
+  scenarioId: string;
+  difficulty: Difficulty;
+  botCount: number;
+}
+
 export interface Scenario {
   id: string;
   name: string;
