@@ -36,6 +36,7 @@ export const useGameLoop = () => {
 
     // Multiplayer Refs
     const hostIntentsBuffer = useRef<Intent[]>([]);
+    const clientIntentsBuffer = useRef<Intent[]>([]); // Buffer for intents received from server
     const turnNumber = useRef<number>(0);
 
     // --- INITIALIZATION ---
@@ -114,11 +115,14 @@ export const useGameLoop = () => {
                 });
             } else if (event.type === 'TURN') {
                 // Client receives turn from Host
-                setGameState(prev => {
-                    if (!prev.isClient) return prev; // Host ignores received turns (it generates them)
-                    // Execute the turn
-                    return processGameTick(prev, event.turn.intents);
-                });
+                // Instead of processing immediately, push to buffer for the next tick?
+                // Or process immediately?
+                // If we process immediately, we might jump.
+                // But since we are simulating locally, we need to apply these intents to the running state.
+                // Let's push to buffer and consume in gameLoop to ensure thread safety (JS is single threaded but logic flow matters).
+                if (event.turn.intents.length > 0) {
+                    clientIntentsBuffer.current.push(...event.turn.intents);
+                }
             } else if (event.type === 'INTENT' as any) {
                 // Host receives intent from Client
                 // We need to cast event type because we added INTENT dynamically or need to update NetworkEvent type properly
@@ -139,8 +143,15 @@ export const useGameLoop = () => {
 
         if (timestamp - lastTickTime.current >= GAME_TICK_MS) {
             setGameState(prevState => {
-                // If Client, we don't simulate on tick, we wait for TURN event.
-                if (prevState.isClient) return prevState;
+                // CLIENT LOGIC: Predict/Interpolate
+                if (prevState.isClient) {
+                    // Consume buffered intents from server
+                    const intentsToApply = [...clientIntentsBuffer.current];
+                    clientIntentsBuffer.current = [];
+
+                    // Run simulation locally!
+                    return processGameTick(prevState, intentsToApply);
+                }
 
                 if (prevState.gameMode !== 'PLAYING' && prevState.gameMode !== 'PLACING_STRUCTURE') return prevState;
 
@@ -341,14 +352,21 @@ export const useGameLoop = () => {
 
                 // We need to update POI locally and send intent?
                 // Let's just send SPAWN intent for HQ.
-                dispatchIntent({
+                const spawnIntent: Intent = {
                     type: 'SPAWN',
                     clientId: gameState.localPlayerId,
                     unitClass: UnitClass.COMMAND_CENTER,
                     lat: poi.position.lat,
                     lng: poi.position.lng,
                     unitId: `${gameState.localPlayerId}-HQ` // Deterministic ID for HQ
-                });
+                };
+
+                dispatchIntent(spawnIntent);
+
+                // OPTIMISTIC UPDATE:
+                // If we are Host, we can apply it immediately? 
+                // No, let the loop handle it.
+                // But for UI responsiveness, we might want to set center.
 
                 setCenter({ lat: poi.position.lat, lng: poi.position.lng });
                 setSelectedUnitIds([`${gameState.localPlayerId}-HQ`]); // ID might be different from server?
