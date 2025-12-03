@@ -152,6 +152,14 @@ class NetworkServiceImpl {
     this.broadcast(msg);
   }
 
+  broadcastState(state: GameState) {
+    // Use legacy STATE_UPDATE or define new message?
+    // Legacy STATE_UPDATE is fine as it's already handled by client.
+    // But we should probably define a schema for it if we want to be strict.
+    // For now, reuse legacy payload structure.
+    this.broadcast({ type: 'STATE_UPDATE', payload: state });
+  }
+
   sendWelcome(clientId: string, gameState: GameState, turnNumber: number) {
     const conn = this.conns.find(c => c.peer === clientId);
     if (conn && conn.open) {

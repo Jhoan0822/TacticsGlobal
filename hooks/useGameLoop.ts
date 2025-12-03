@@ -147,7 +147,10 @@ export const useGameLoop = () => {
                 const nextState = processGameTick(prevState, currentIntents);
 
                 // Broadcast State occasionally for late joiners / resync?
-                // NetworkService.sendState(nextState); // Optional, maybe every 100 ticks
+                // Broadcast State every 60 ticks (approx 1s) to sync AI and non-deterministic state
+                if (nextState.gameTick % 60 === 0) {
+                    NetworkService.broadcastState(nextState);
+                }
 
                 return nextState;
             });
@@ -215,7 +218,8 @@ export const useGameLoop = () => {
                 clientId: gameState.localPlayerId, // Or NetworkService.myPeerId
                 unitClass: typeToSpawn,
                 lat: unit.position.lat + offsetLat,
-                lng: unit.position.lng + offsetLng
+                lng: unit.position.lng + offsetLng,
+                unitId: `UNIT-${Math.random().toString(36).substr(2, 9)}`
             });
             AudioService.playSuccess();
         }
@@ -265,7 +269,8 @@ export const useGameLoop = () => {
                 clientId: gameState.localPlayerId,
                 unitClass: type,
                 lat: spawnLat + (Math.random() - 0.5) * 0.05,
-                lng: spawnLng + (Math.random() - 0.5) * 0.05
+                lng: spawnLng + (Math.random() - 0.5) * 0.05,
+                unitId: `UNIT-${Math.random().toString(36).substr(2, 9)}`
             });
             AudioService.playSuccess();
         } else {
@@ -324,7 +329,8 @@ export const useGameLoop = () => {
                     clientId: gameState.localPlayerId,
                     unitClass: UnitClass.COMMAND_CENTER,
                     lat: poi.position.lat,
-                    lng: poi.position.lng
+                    lng: poi.position.lng,
+                    unitId: 'PLAYER-HQ' // Deterministic ID for HQ
                 });
 
                 setCenter({ lat: poi.position.lat, lng: poi.position.lng });
