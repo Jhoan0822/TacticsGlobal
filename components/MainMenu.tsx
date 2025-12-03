@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SCENARIOS, FACTION_PRESETS, DIFFICULTY_CONFIG } from '../constants';
 import { NetworkService } from '../services/networkService';
 import { Scenario, Faction, LobbyState, LobbyPlayer, Difficulty } from '../types';
@@ -23,6 +23,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
     const [localPlayerName, setLocalPlayerName] = useState<string>('Player 1');
     const [selectedFactionIndex, setSelectedFactionIndex] = useState<number>(0);
+
+    const isStartingGame = useRef(false);
 
     // Initialize Network if Multiplayer
     useEffect(() => {
@@ -60,13 +62,19 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                     setMode('LOBBY'); // Switch to Lobby view on update
                 } else if (e.type === 'START_GAME') {
                     // Client Start
+                    isStartingGame.current = true;
                     const scenario = Object.values(SCENARIOS).find(s => s.id === e.scenarioId) || SCENARIOS.WORLD;
                     onStartGame(scenario, e.localPlayerId, e.factions, true, false);
                 }
             };
 
             const unsub = NetworkService.subscribe(handleNetworkEvent);
-            return () => { unsub(); NetworkService.disconnect(); };
+            return () => {
+                unsub();
+                if (!isStartingGame.current) {
+                    NetworkService.disconnect();
+                }
+            };
         }
     }, [mode === 'MULTI_HOST' || mode === 'MULTI_JOIN' || mode === 'LOBBY']); // Only re-run if entering/leaving network mode group
 
@@ -154,6 +162,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
         });
 
         // Start for Host
+        isStartingGame.current = true;
         onStartGame(scenario, 'PLAYER', factions, true, true);
 
         // Signal Client to Start
