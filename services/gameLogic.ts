@@ -248,10 +248,10 @@ class ProjectilePool {
 }
 const projectilePool = new ProjectilePool();
 
-export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: string = 'PLAYER'): GameUnit => {
+export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: string = 'PLAYER', id?: string): GameUnit => {
     const stats = UNIT_CONFIG[type];
     return {
-        id: `SPAWN-${Math.random().toString(36).substr(2, 6)}`,
+        id: id || `SPAWN-${Math.random().toString(36).substr(2, 6)}`,
         unitClass: type,
         factionId: factionId,
         position: { lat, lng },
@@ -284,7 +284,8 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
                 // Since we don't have the lobby state here easily, let's assume the intent creator is the owner.
                 // Actually, we should probably pass the factionId in the intent or look it up.
                 // Let's assume clientId is the factionId for simplicity in this step.
-                const unit = spawnUnit(intent.unitClass, intent.lat, intent.lng, intent.clientId);
+                // Let's assume clientId is the factionId for simplicity in this step.
+                const unit = spawnUnit(intent.unitClass, intent.lat, intent.lng, intent.clientId, intent.unitId);
 
                 // Deduct resources
                 const cost = UNIT_CONFIG[intent.unitClass].cost;
@@ -703,7 +704,8 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
     };
 
     // Throttle AI Update (every 5 ticks)
-    if (currentState.gameTick % 5 === 0) {
+    // Only Host runs AI
+    if (!currentState.isClient && currentState.gameTick % 5 === 0) {
         nextState = updateAI(nextState);
     }
 
