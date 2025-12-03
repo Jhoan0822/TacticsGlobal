@@ -76,8 +76,15 @@ export const useGameLoop = () => {
                 // Only simulate if in PLAYING mode
                 if (prevState.gameMode !== 'PLAYING') return prevState;
 
-                // NO INTENT PROCESSING - Just run simulation (movement, combat, AI)
-                const nextState = processGameTick(prevState, []);
+                const isHost = !prevState.isClient;
+
+                // Run simulation (Host runs AI, Client predicts movement)
+                const nextState = processGameTick(prevState, [], isHost);
+
+                // HOST: Broadcast state periodically to ensure sync
+                if (isHost && nextState.gameTick % 10 === 0) {
+                    NetworkService.broadcastFullState(nextState);
+                }
 
                 return nextState;
             });

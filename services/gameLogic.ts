@@ -263,7 +263,7 @@ export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: 
     };
 };
 
-export const processGameTick = (currentState: GameState, intents: Intent[] = []): GameState => {
+export const processGameTick = (currentState: GameState, intents: Intent[] = [], isHost: boolean = true): GameState => {
     if (currentState.gameMode === 'SELECT_BASE') return currentState;
 
     let nextUnits = [...currentState.units];
@@ -730,26 +730,30 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
         messages: messages
     };
 
-    // Throttle AI Update (every 5 ticks)
-    if (currentState.gameTick % 5 === 0) {
-        nextState = updateAI(nextState);
-    }
+    export const processGameTick = (currentState: GameState, intents: Intent[] = [], isHost: boolean = true): GameState => {
+        // ... (existing code)
 
-    return nextState;
-};
+        // ... (at the end)
+        // Throttle AI Update (every 5 ticks) - HOST ONLY
+        if (isHost && currentState.gameTick % 5 === 0) {
+            nextState = updateAI(nextState);
+        }
 
-const fireProjectile = (attacker: GameUnit, defender: GameUnit | POI, projectiles: Projectile[]) => {
-    // Determine Weapon Type
-    const weaponType = WEAPON_MAPPING[attacker.unitClass] || WeaponType.TRACER;
-    const isMissile = weaponType === WeaponType.MISSILE;
+        return nextState;
+    };
 
-    // Projectile logic is purely visual now, damage is applied in the loop to handle capture state immediately
-    const proj = projectilePool.get(
-        attacker.id,
-        defender.id,
-        attacker.position,
-        defender.position,
-        weaponType
-    );
-    projectiles.push(proj);
-};
+    const fireProjectile = (attacker: GameUnit, defender: GameUnit | POI, projectiles: Projectile[]) => {
+        // Determine Weapon Type
+        const weaponType = WEAPON_MAPPING[attacker.unitClass] || WeaponType.TRACER;
+        const isMissile = weaponType === WeaponType.MISSILE;
+
+        // Projectile logic is purely visual now, damage is applied in the loop to handle capture state immediately
+        const proj = projectilePool.get(
+            attacker.id,
+            defender.id,
+            attacker.position,
+            defender.position,
+            weaponType
+        );
+        projectiles.push(proj);
+    };
