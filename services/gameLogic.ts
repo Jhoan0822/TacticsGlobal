@@ -265,11 +265,12 @@ export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: 
 export const processGameTick = (currentState: GameState, intents: Intent[] = []): GameState => {
     if (currentState.gameMode === 'SELECT_BASE') return currentState;
 
-    let nextUnits = [...currentState.units];
-    let nextPOIs = [...currentState.pois];
+    // IMMUTABILITY FIX: Deep copy arrays to ensure React detects changes
+    let nextUnits = currentState.units.map(u => ({ ...u }));
+    let nextPOIs = currentState.pois.map(p => ({ ...p }));
     let messages = [...currentState.messages];
     let playerResources = { ...currentState.playerResources };
-    let factions = [...currentState.factions];
+    let factions = currentState.factions.map(f => ({ ...f }));
 
     // --- PROCESS INTENTS ---
     for (const intent of intents) {
@@ -308,14 +309,16 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
 
                 // FIX: If spawning HQ on a City, update City ownership immediately
                 if (unit.unitClass === UnitClass.COMMAND_CENTER || unit.unitClass === UnitClass.MOBILE_COMMAND_CENTER) {
-                    const city = nextPOIs.find(p =>
+                    const cityIndex = nextPOIs.findIndex(p =>
                         Math.abs(p.position.lat - unit.position.lat) < 0.01 &&
                         Math.abs(p.position.lng - unit.position.lng) < 0.01
                     );
-                    if (city) {
-                        city.ownerFactionId = intent.clientId;
+                    if (cityIndex !== -1) {
+                        // We already cloned POIs at the start, so we can modify nextPOIs[cityIndex] safely?
+                        // Yes, nextPOIs contains NEW objects.
+                        nextPOIs[cityIndex].ownerFactionId = intent.clientId;
                         // Log capture
-                        logEvent(messages, `${intent.clientId} established base at ${city.name}`, 'info');
+                        logEvent(messages, `${intent.clientId} established base at ${nextPOIs[cityIndex].name}`, 'info');
                     }
                 }
                 break;
