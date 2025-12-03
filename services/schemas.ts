@@ -1,112 +1,115 @@
-import { UnitClass, WeaponType } from '../types';
+import { UnitClass, GameState } from '../types';
 
-export type ClientID = string;
+// ============================================
+// REAL-TIME P2P MULTIPLAYER SYSTEM
+// ============================================
+// Optimistic execution: Actions execute locally FIRST,
+// then broadcast to others. No waiting for server confirmation.
+// Target latency: <100ms (network RTT only)
 
-// --- INTENTS ---
-// Actions sent by clients to the host
-
-export type IntentType =
-    | 'SPAWN'
-    | 'MOVE'
-    | 'ATTACK'
+export type GameActionType =
+    | 'SPAWN_UNIT'
+    | 'MOVE_UNITS'
+    | 'ATTACK_TARGET'
     | 'BUILD_STRUCTURE'
-    | 'SET_TARGET'
-    | 'CHEAT_RESOURCES';
+    | 'SELECT_BASE'
+    | 'CLAIM_POI';
 
-export interface BaseIntent {
-    type: IntentType;
-    clientId: ClientID;
+// Core action structure - simple and fast
+export interface GameAction {
+    playerId: string;           // Who performed this action
+    actionType: GameActionType; // What type of action
+    payload: any;               // Action-specific data
+    timestamp: number;          // When it happened (for ordering)
+    actionId: string;           // Unique ID to prevent duplicates
 }
 
-export interface SpawnIntent extends BaseIntent {
-    type: 'SPAWN';
+// Specific action payloads for type safety
+export interface SpawnUnitPayload {
     unitClass: UnitClass;
     lat: number;
     lng: number;
+    unitId: string;  // Pre-generated ID for consistency
 }
 
-export interface MoveIntent extends BaseIntent {
-    type: 'MOVE';
+export interface MoveUnitsPayload {
     unitIds: string[];
-    lat: number;
-    lng: number;
+    targetLat: number;
+    targetLng: number;
+    isBoosting?: boolean;
 }
 
-export interface AttackIntent extends BaseIntent {
-    type: 'ATTACK';
-    attackerId: string;
+export interface AttackTargetPayload {
+    attackerIds: string[];
     targetId: string;
+    isPoi: boolean;
 }
 
-export interface BuildStructureIntent extends BaseIntent {
-    type: 'BUILD_STRUCTURE';
+export interface BuildStructurePayload {
     structureType: UnitClass;
     lat: number;
     lng: number;
-}
-
-export interface SetTargetIntent extends BaseIntent {
-    type: 'SET_TARGET';
     unitId: string;
-    targetId: string | null;
 }
 
-export interface CheatResourcesIntent extends BaseIntent {
-    type: 'CHEAT_RESOURCES';
-    gold: number;
-    oil: number;
+export interface SelectBasePayload {
+    poiId: string;
+    hqUnitId: string;
 }
 
-export type Intent =
-    | SpawnIntent
-    | MoveIntent
-    | AttackIntent
-    | BuildStructureIntent
-    | SetTargetIntent
-    | CheatResourcesIntent;
-
-// --- TURN ---
-// The authoritative bundle of intents for a specific tick
-
-export interface Turn {
-    turnNumber: number;
-    intents: Intent[];
+export interface ClaimPOIPayload {
+    poiId: string;
+    factionId: string;
 }
 
-// --- MESSAGES ---
-// Network packets
+// Network message types
+export type NetworkMessageType =
+    | 'ACTION'           // GameAction broadcast
+    | 'FULL_STATE'       // Complete state sync (resync/join)
+    | 'LOBBY_UPDATE'     // Lobby changes
+    | 'START_GAME';      // Game start signal
 
-export type MessageType =
-    | 'CLIENT_INTENT'
-    | 'SERVER_TURN'
-    | 'SERVER_FULL_STATE'
-    | 'CLIENT_JOIN'
-    | 'SERVER_WELCOME';
-
-export interface ClientIntentMessage {
-    type: 'CLIENT_INTENT';
-    intent: Intent;
+export interface ActionMessage {
+    type: 'ACTION';
+    action: GameAction;
 }
 
-export interface ServerTurnMessage {
-    type: 'SERVER_TURN';
-    turn: Turn;
+export interface FullStateMessage {
+    type: 'FULL_STATE';
+    gameState: GameState;
+    timestamp: number;
 }
 
-export interface ClientJoinMessage {
-    type: 'CLIENT_JOIN';
-    name: string;
+export interface LobbyUpdateMessage {
+    type: 'LOBBY_UPDATE';
+    payload: any;
 }
 
-export interface ServerWelcomeMessage {
-    type: 'SERVER_WELCOME';
-    clientId: string;
-    gameState: any; // Full state for initial sync
-    turnNumber: number;
+export interface StartGameMessage {
+    type: 'START_GAME';
+    payload: {
+        scenarioId: string;
+        factions: any[];
+    };
 }
 
 export type NetworkMessage =
-    | ClientIntentMessage
-    | ServerTurnMessage
-    | ClientJoinMessage
-    | ServerWelcomeMessage;
+    | ActionMessage
+    | FullStateMessage
+    | LobbyUpdateMessage
+    | StartGameMessage;
+
+// Helper to create action with unique ID
+export function createAction(
+    playerId: string,
+    actionType: GameActionType,
+    payload: any
+): GameAction {
+    return {
+        playerId,
+        actionType,
+        payload,
+        timestamp: Date.now(),
+        actionId: `${playerId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+}
