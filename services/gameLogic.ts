@@ -282,29 +282,27 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
                 const cost = UNIT_CONFIG[intent.unitClass].cost;
                 if (cost) {
                     // Update faction gold in the factions array (not implemented fully yet for all factions)
-                    // For now, if it's the local player, we update playerResources?
-                    // No, processGameTick runs on both.
-                    // We need to update the specific faction's resources in 'factions'.
                 }
                 nextUnits.push(unit);
                 break;
             }
             case 'MOVE': {
-                intent.unitIds.forEach(id => {
-                    const unit = nextUnits.find(u => u.id === id);
-                    if (unit && unit.factionId === intent.clientId) {
-                        unit.destination = { lat: intent.lat, lng: intent.lng };
-                        unit.targetId = null; // Clear target when moving manually
+                // Immutable update for units
+                nextUnits = nextUnits.map(u => {
+                    if (intent.unitIds.includes(u.id) && u.factionId === intent.clientId) {
+                        return { ...u, destination: { lat: intent.lat, lng: intent.lng }, targetId: null };
                     }
+                    return u;
                 });
                 break;
             }
             case 'ATTACK': {
-                const attacker = nextUnits.find(u => u.id === intent.attackerId);
-                if (attacker && attacker.factionId === intent.clientId) {
-                    attacker.targetId = intent.targetId;
-                    attacker.destination = null; // Clear move dest
-                }
+                nextUnits = nextUnits.map(u => {
+                    if (u.id === intent.attackerId && u.factionId === intent.clientId) {
+                        return { ...u, targetId: intent.targetId, destination: null };
+                    }
+                    return u;
+                });
                 break;
             }
             case 'BUILD_STRUCTURE': {
@@ -313,18 +311,23 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
                 break;
             }
             case 'SET_TARGET': {
-                const unit = nextUnits.find(u => u.id === intent.unitId);
-                if (unit && unit.factionId === intent.clientId) {
-                    unit.targetId = intent.targetId;
-                }
+                nextUnits = nextUnits.map(u => {
+                    if (u.id === intent.unitId && u.factionId === intent.clientId) {
+                        return { ...u, targetId: intent.targetId };
+                    }
+                    return u;
+                });
                 break;
             }
             case 'CLAIM_POI': {
-                const poi = nextPOIs.find(p => p.id === intent.poiId);
-                if (poi) {
-                    poi.ownerFactionId = intent.clientId;
-                    poi.tier = 1; // Initial tier
-                    logEvent(messages, `Faction ${intent.clientId} claimed ${poi.name}`, 'info');
+                const poiIndex = nextPOIs.findIndex(p => p.id === intent.poiId);
+                if (poiIndex !== -1) {
+                    nextPOIs[poiIndex] = {
+                        ...nextPOIs[poiIndex],
+                        ownerFactionId: intent.clientId,
+                        tier: 1
+                    };
+                    logEvent(messages, `Faction ${intent.clientId} claimed ${nextPOIs[poiIndex].name}`, 'info');
                 }
                 break;
             }
