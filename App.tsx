@@ -174,7 +174,8 @@ const App: React.FC = () => {
                 } else if (e.type === 'START_GAME') {
                     // Client Start
                     const scenario = Object.values(SCENARIOS).find(s => s.id === e.scenarioId) || SCENARIOS.WORLD;
-                    startGame(scenario, e.localPlayerId, e.factions, true);
+                    // Use MY Peer ID as localPlayerId
+                    startGame(scenario, NetworkService.myPeerId, e.factions, true);
                     setIsInMenu(false);
                 } else if (e.type === 'ACTION') {
                     // Host receives Action

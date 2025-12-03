@@ -7,7 +7,7 @@ export type NetworkEvent =
   | { type: 'STATE_UPDATE', state: GameState }
   | { type: 'ACTION', action: any }
   | { type: 'LOBBY_UPDATE', state: LobbyState }
-  | { type: 'START_GAME', scenarioId: string, factions: any[], localPlayerId: string };
+  | { type: 'START_GAME', scenarioId: string, factions: any[] };
 
 type EventHandler = (event: NetworkEvent) => void;
 
@@ -98,8 +98,8 @@ class NetworkServiceImpl {
     this.broadcast({ type: 'LOBBY_UPDATE', payload: state });
   }
 
-  startGame(scenarioId: string, factions: any[], localPlayerId: string) {
-    this.broadcast({ type: 'START_GAME', payload: { scenarioId, factions, localPlayerId } });
+  startGame(scenarioId: string, factions: any[]) {
+    this.broadcast({ type: 'START_GAME', payload: { scenarioId, factions } });
   }
 
   subscribe(handler: EventHandler) {

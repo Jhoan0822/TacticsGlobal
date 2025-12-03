@@ -69,7 +69,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
         lobbyState.players.forEach((p, idx) => {
             factions.push({
                 ...FACTION_PRESETS[p.factionIndex],
-                id: p.id === NetworkService.myPeerId ? 'PLAYER' : 'REMOTE_PLAYER', // Host is PLAYER, Client is REMOTE
+                id: p.id, // USE PEER ID AS FACTION ID
                 name: p.name,
                 type: 'PLAYER',
                 gold: 5000,
@@ -89,7 +89,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 id: `BOT_${i}`,
                 type: 'AI',
                 gold: 5000,
-                relations: { 'PLAYER': -100, 'REMOTE_PLAYER': -100 },
+                relations: {}, // Set relations below
                 aggression: 1.0
             });
         }
@@ -103,17 +103,12 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             });
         });
 
-        // Start for Host
-        onStartGame(scenario, 'PLAYER', factions, true, true);
+        // Start for Host (Host ID is NetworkService.myPeerId)
+        onStartGame(scenario, NetworkService.myPeerId, factions, true, true);
 
-        // Signal Client to Start
-        const clientFactions = factions.map(f => {
-            if (f.id === 'PLAYER') return { ...f, id: 'REMOTE_PLAYER' }; // Host becomes Remote
-            if (f.id === 'REMOTE_PLAYER') return { ...f, id: 'PLAYER' }; // Client becomes Local
-            return f;
-        });
-
-        NetworkService.startGame(scenario.id, clientFactions, 'PLAYER');
+        // Signal Clients
+        // We broadcast the factions list. Each client will identify themselves by their own Peer ID.
+        NetworkService.startGame(scenario.id, factions);
     };
 
     const handleJoin = () => {
