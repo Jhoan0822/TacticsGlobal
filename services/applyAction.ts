@@ -1,6 +1,7 @@
 import { GameState, UnitClass, POIType } from '../types';
 import { GameAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload, ClaimPOIPayload } from './schemas';
 import { spawnUnit } from './gameLogic';
+import { UNIT_CONFIG } from '../constants';
 
 /**
  * Apply a network action to the game state IMMEDIATELY
@@ -12,9 +13,40 @@ export function applyAction(state: GameState, action: GameAction): GameState {
 
     let nextState = { ...state };
 
+    // Helper to deduct resources
+    const deductResources = (cost: { gold: number, oil: number }) => {
+        // 1. Deduct from Faction (Gold only as per Faction type)
+        nextState.factions = nextState.factions.map(f => {
+            if (f.id === action.playerId) {
+                return {
+                    ...f,
+                    gold: Math.max(0, f.gold - (cost.gold || 0))
+                };
+            }
+            return f;
+        });
+
+        // 2. If Local Player, deduct from playerResources (Gold + Oil)
+        // This keeps the UI in sync and enforces local limits
+        if (action.playerId === state.localPlayerId) {
+            nextState.playerResources = {
+                ...nextState.playerResources,
+                gold: Math.max(0, nextState.playerResources.gold - (cost.gold || 0)),
+                oil: Math.max(0, nextState.playerResources.oil - (cost.oil || 0))
+            };
+        }
+    };
+
     switch (action.actionType) {
         case 'SPAWN_UNIT': {
             const payload = action.payload as SpawnUnitPayload;
+            const stats = UNIT_CONFIG[payload.unitClass];
+
+            // Deduct Resources
+            if (stats && stats.cost) {
+                deductResources(stats.cost);
+            }
+
             const unit = spawnUnit(
                 payload.unitClass,
                 payload.lat,
@@ -64,6 +96,13 @@ export function applyAction(state: GameState, action: GameAction): GameState {
 
         case 'BUILD_STRUCTURE': {
             const payload = action.payload as BuildStructurePayload;
+            const stats = UNIT_CONFIG[payload.structureType];
+
+            // Deduct Resources
+            if (stats && stats.cost) {
+                deductResources(stats.cost);
+            }
+
             const structure = spawnUnit(
                 payload.structureType,
                 payload.lat,
