@@ -1,11 +1,12 @@
 import Peer, { DataConnection } from 'peerjs';
 import { GameState, LobbyState } from '../types';
+import { Intent, Turn, NetworkMessage, ClientIntentMessage, ServerTurnMessage, ServerWelcomeMessage } from './schemas';
 
 export type NetworkEvent =
   | { type: 'CONNECT', peerId: string }
   | { type: 'DISCONNECT' }
-  | { type: 'STATE_UPDATE', state: GameState }
-  | { type: 'ACTION', action: any }
+  | { type: 'STATE_UPDATE', state: GameState } // For initial sync or full resync
+  | { type: 'TURN', turn: Turn }
   | { type: 'LOBBY_UPDATE', state: LobbyState }
   | { type: 'START_GAME', scenarioId: string, factions: any[] };
 
@@ -17,12 +18,13 @@ class NetworkServiceImpl {
   private handlers: EventHandler[] = [];
   public myPeerId: string = '';
   public isHost: boolean = false;
+  public hostConn: DataConnection | null = null; // For clients to talk to host
 
   initialize(onReady: (id: string) => void) {
     if (this.peer) return; // Already initialized
 
     // Use public PeerJS server (default)
-    this.peer = new Peer({ debug: 2 });
+    this.peer = new Peer({ debug: 1 });
 
     this.peer.on('open', (id) => {
       this.myPeerId = id;
@@ -44,6 +46,7 @@ class NetworkServiceImpl {
     if (!this.peer) return;
     console.log('Connecting to:', hostId);
     const conn = this.peer.connect(hostId, { reliable: true });
+    this.hostConn = conn;
     this.handleConnection(conn);
   }
 
@@ -62,50 +65,104 @@ class NetworkServiceImpl {
     });
 
     conn.on('data', (data: any) => {
-      // console.log('[NETWORK] Received:', data.type); // Verbose
-      if (data.type === 'STATE_UPDATE') {
-        this.notify({ type: 'STATE_UPDATE', state: data.payload });
-      } else if (data.type === 'ACTION') {
-        this.notify({ type: 'ACTION', action: data.payload });
-      } else if (data.type === 'LOBBY_UPDATE') {
-        this.notify({ type: 'LOBBY_UPDATE', state: data.payload });
-      } else if (data.type === 'START_GAME') {
-        this.notify({ type: 'START_GAME', ...data.payload });
-      }
+      this.handleMessage(data, conn);
     });
 
     conn.on('close', () => {
       console.log('Connection closed with:', conn.peer);
       this.conns = this.conns.filter(c => c !== conn);
+      if (this.hostConn === conn) {
+        this.hostConn = null;
+      }
       this.notify({ type: 'DISCONNECT' });
     });
 
     conn.on('error', (err) => {
       console.error('Connection error:', err);
-      // Don't close immediately on error, let 'close' event handle it
     });
   }
 
-  private broadcast(msg: any) {
-    console.log('[NETWORK] Broadcasting:', msg.type, msg.payload);
+  private handleMessage(msg: NetworkMessage | any, conn: DataConnection) {
+    // Legacy support or direct event mapping
+    if (msg.type === 'LOBBY_UPDATE') {
+      this.notify({ type: 'LOBBY_UPDATE', state: msg.payload });
+      return;
+    }
+    if (msg.type === 'START_GAME') {
+      this.notify({ type: 'START_GAME', ...msg.payload });
+      return;
+    }
+
+    // New Protocol
+    switch (msg.type) {
+      case 'SERVER_TURN':
+        this.notify({ type: 'TURN', turn: msg.turn });
+        break;
+      case 'SERVER_WELCOME':
+        // Initial state sync
+        this.notify({ type: 'STATE_UPDATE', state: msg.gameState });
+        break;
+      case 'CLIENT_INTENT':
+        // If I am host, I receive intents. I don't notify the game loop directly via event, 
+        // but I should probably expose a way for the game loop to poll intents or subscribe to them.
+        // For now, let's emit a custom event or handle it in the loop.
+        // Actually, the GameLoop needs to know about these.
+        // Let's add INTENT to NetworkEvent for the Host to consume.
+        // But wait, the plan said "Host accumulates intents".
+        // I'll add an INTENT event type for the host.
+        this.notify({ type: 'INTENT', intent: msg.intent } as any);
+        break;
+      default:
+        // Fallback for legacy state updates if any
+        if (msg.type === 'STATE_UPDATE') {
+          this.notify({ type: 'STATE_UPDATE', state: msg.payload });
+        }
+        break;
+    }
+  }
+
+  private broadcast(msg: NetworkMessage | any) {
     this.conns.forEach(conn => {
       if (conn.open) {
         conn.send(msg);
-      } else {
-        console.warn('[NETWORK] Connection not open:', conn.peer);
       }
     });
   }
 
-  sendState(state: GameState) {
-    // Reduce log spam for state updates
-    // console.log('[NETWORK] Sending State'); 
-    this.broadcast({ type: 'STATE_UPDATE', payload: state });
+  // --- CLIENT METHODS ---
+
+  sendIntent(intent: Intent) {
+    if (this.isHost) {
+      // If I am host, I don't send network message, I just loopback?
+      // Or the game loop handles local player intents directly.
+      // Usually local player intents are just added to the buffer directly.
+      console.warn('[NETWORK] Host trying to send intent via network. Should be handled locally.');
+      return;
+    }
+    if (this.hostConn && this.hostConn.open) {
+      const msg: ClientIntentMessage = { type: 'CLIENT_INTENT', intent };
+      this.hostConn.send(msg);
+    }
   }
 
-  sendAction(action: any) {
-    console.log('[NETWORK] Sending Action:', action);
-    this.broadcast({ type: 'ACTION', payload: action });
+  // --- HOST METHODS ---
+
+  broadcastTurn(turn: Turn) {
+    const msg: ServerTurnMessage = { type: 'SERVER_TURN', turn };
+    this.broadcast(msg);
+  }
+
+  sendWelcome(clientId: string, gameState: GameState, turnNumber: number) {
+    const conn = this.conns.find(c => c.peer === clientId);
+    if (conn && conn.open) {
+      const msg: ServerWelcomeMessage = {
+        type: 'SERVER_WELCOME',
+        clientId,
+        gameState,
+        turnNumber
+      };
+      conn.send(msg);
+    }
   }
 
   sendLobbyUpdate(state: LobbyState) {

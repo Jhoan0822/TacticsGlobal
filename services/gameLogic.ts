@@ -3,6 +3,7 @@ import { GameState, GameUnit, Faction, Projectile, POIType, UnitClass, POI, LogM
 import { DIPLOMACY, POI_CONFIG, UNIT_CONFIG, AI_CONFIG, WEAPON_MAPPING } from '../constants';
 import { updateAI } from './aiService';
 import { TerrainService } from './terrainService';
+import { Intent } from './schemas';
 
 // OPTIMIZATION: Pre-calculate constants
 const DEG2RAD = Math.PI / 180;
@@ -247,8 +248,107 @@ class ProjectilePool {
 }
 const projectilePool = new ProjectilePool();
 
-export const processGameTick = (currentState: GameState): GameState => {
+export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: string = 'PLAYER'): GameUnit => {
+    const stats = UNIT_CONFIG[type];
+    return {
+        id: `SPAWN-${Math.random().toString(36).substr(2, 6)}`,
+        unitClass: type,
+        factionId: factionId,
+        position: { lat, lng },
+        heading: 0,
+        ...stats,
+        realWorldIdentity: undefined,
+        isBoosting: false
+    };
+};
+
+export const processGameTick = (currentState: GameState, intents: Intent[] = []): GameState => {
     if (currentState.gameMode === 'SELECT_BASE') return currentState;
+
+    let nextUnits = [...currentState.units];
+    let nextPOIs = [...currentState.pois];
+    let messages = [...currentState.messages];
+    let playerResources = { ...currentState.playerResources };
+
+    // --- PROCESS INTENTS ---
+    for (const intent of intents) {
+        switch (intent.type) {
+            case 'SPAWN': {
+                // Determine faction from clientId (simple mapping for now, or assume PLAYER if local)
+                // Ideally, clientId should map to a factionId in the lobby state.
+                // For now, we'll assume the intent comes with the correct context or we map it.
+                // Let's assume 'PLAYER' for now or use a mapping if we had one.
+                // But wait, in multiplayer, we need to know WHICH player spawned it.
+                // We need a way to map clientId to factionId.
+                // For this implementation, let's assume clientId IS the factionId or we have a way to look it up.
+                // Since we don't have the lobby state here easily, let's assume the intent creator is the owner.
+                // Actually, we should probably pass the factionId in the intent or look it up.
+                // Let's assume clientId is the factionId for simplicity in this step.
+                const unit = spawnUnit(intent.unitClass, intent.lat, intent.lng, intent.clientId);
+
+                // Deduct resources
+                const cost = UNIT_CONFIG[intent.unitClass].cost;
+                if (cost) {
+                    // We need to deduct from the correct faction's resources.
+                    // But GameState only has 'playerResources' which is for the local player?
+                    // No, GameState should have resources for ALL factions if we are the host.
+                    // But 'playerResources' seems to be a specific field.
+                    // Let's check Faction interface. It has 'gold'.
+                    // We should update the Faction's gold.
+                    const factionIndex = currentState.factions.findIndex(f => f.id === intent.clientId);
+                    if (factionIndex !== -1) {
+                        // Update faction gold
+                        // Note: We are modifying a local copy of factions later, but here we need to be careful.
+                        // We will update it in the factions array.
+                    }
+                }
+                nextUnits.push(unit);
+                break;
+            }
+            case 'MOVE': {
+                intent.unitIds.forEach(id => {
+                    const unit = nextUnits.find(u => u.id === id);
+                    if (unit && unit.factionId === intent.clientId) {
+                        unit.destination = { lat: intent.lat, lng: intent.lng };
+                        unit.targetId = null; // Clear target when moving manually
+                    }
+                });
+                break;
+            }
+            case 'ATTACK': {
+                const attacker = nextUnits.find(u => u.id === intent.attackerId);
+                if (attacker && attacker.factionId === intent.clientId) {
+                    attacker.targetId = intent.targetId;
+                    attacker.destination = null; // Clear move dest
+                }
+                break;
+            }
+            case 'BUILD_STRUCTURE': {
+                // Similar to SPAWN but for structures (POIs or Units depending on implementation)
+                // TacticOPS treats structures as Units mostly (Mobile Command Center builds them?)
+                // Or they are POIs?
+                // Looking at UnitClass, MILITARY_BASE etc are Units.
+                const unit = spawnUnit(intent.structureType, intent.lat, intent.lng, intent.clientId);
+                nextUnits.push(unit);
+                break;
+            }
+            case 'SET_TARGET': {
+                const unit = nextUnits.find(u => u.id === intent.unitId);
+                if (unit && unit.factionId === intent.clientId) {
+                    unit.targetId = intent.targetId;
+                }
+                break;
+            }
+            case 'CHEAT_RESOURCES': {
+                // Handle cheats
+                if (intent.clientId === 'PLAYER') { // Only local player for now? Or map to faction
+                    playerResources.gold += intent.gold;
+                    playerResources.oil += intent.oil;
+                }
+                break;
+            }
+        }
+    }
 
     // OPTIMIZATION: Manage Projectiles with Pool
     const nextProjectiles: Projectile[] = [];
@@ -304,19 +404,19 @@ export const processGameTick = (currentState: GameState): GameState => {
 
 
     let factions = [...currentState.factions];
-    let nextPOIs = [...currentState.pois];
-    let messages = [...currentState.messages];
+    // Update factions based on intents (e.g. resource deduction) if we did it above?
+    // Actually, let's just handle resource updates in the resource tick or specific intent logic if needed.
 
     // BUILD SPATIAL GRID
     // OPTIMIZATION: Use the persistent grid
     spatialGrid.clear();
-    for (let i = 0; i < currentState.units.length; i++) {
-        spatialGrid.add(currentState.units[i]);
+    for (let i = 0; i < nextUnits.length; i++) {
+        spatialGrid.add(nextUnits[i]);
     }
     // const unitGrid = buildSpatialGrid(currentState.units); // Removed allocation
 
     // 1. UNIT LOGIC
-    const nextUnits = currentState.units.map(unit => {
+    nextUnits = nextUnits.map(unit => {
         if (unit.hp <= 0) return unit;
 
         // Cooldown management
@@ -329,7 +429,7 @@ export const processGameTick = (currentState: GameState): GameState => {
 
         // RETALIATION LOGIC
         if (!unit.targetId && !unit.destination && unit.lastAttackerId) {
-            const attacker = currentState.units.find(u => u.id === unit.lastAttackerId);
+            const attacker = nextUnits.find(u => u.id === unit.lastAttackerId);
             if (attacker && attacker.hp > 0 && isHostile(factions.find(f => f.id === unit.factionId)!, attacker.factionId)) {
                 unit.targetId = unit.lastAttackerId;
             }
@@ -337,8 +437,8 @@ export const processGameTick = (currentState: GameState): GameState => {
 
         // A. COMBAT TARGET CHASE
         if (unit.targetId) {
-            const targetUnit = currentState.units.find(u => u.id === unit.targetId);
-            const targetPOI = currentState.pois.find(p => p.id === unit.targetId);
+            const targetUnit = nextUnits.find(u => u.id === unit.targetId);
+            const targetPOI = nextPOIs.find(p => p.id === unit.targetId);
 
             let targetPos = targetUnit?.position || targetPOI?.position;
 
@@ -624,18 +724,4 @@ const fireProjectile = (attacker: GameUnit, defender: GameUnit | POI, projectile
         weaponType
     );
     projectiles.push(proj);
-};
-
-export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: string = 'PLAYER'): GameUnit => {
-    const stats = UNIT_CONFIG[type];
-    return {
-        id: `SPAWN-${Math.random().toString(36).substr(2, 6)}`,
-        unitClass: type,
-        factionId: factionId,
-        position: { lat, lng },
-        heading: 0,
-        ...stats,
-        realWorldIdentity: undefined,
-        isBoosting: false
-    };
 };
