@@ -96,6 +96,7 @@ class NetworkServiceImpl {
     // New Protocol
     switch (msg.type) {
       case 'SERVER_TURN':
+        // console.log('[NETWORK] Received Turn:', msg.turn.turnNumber);
         this.notify({ type: 'TURN', turn: msg.turn });
         break;
       case 'SERVER_WELCOME':
@@ -148,6 +149,7 @@ class NetworkServiceImpl {
   // --- HOST METHODS ---
 
   broadcastTurn(turn: Turn) {
+    // console.log('[NETWORK] Broadcasting Turn:', turn.turnNumber, 'Intents:', turn.intents.length);
     const msg: ServerTurnMessage = { type: 'SERVER_TURN', turn };
     this.broadcast(msg);
   }
