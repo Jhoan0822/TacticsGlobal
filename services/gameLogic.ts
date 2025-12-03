@@ -59,7 +59,7 @@ const logEvent = (msgs: LogMessage[], text: string, type: LogMessage['type']) =>
 
 export const evaluateAllianceRequest = (gameState: GameState, targetFactionId: string): { accepted: boolean, reason: string, chance: number } => {
     const targetFaction = gameState.factions.find(f => f.id === targetFactionId);
-    const playerFaction = gameState.factions.find(f => f.id === 'PLAYER');
+    const playerFaction = gameState.factions.find(f => f.id === gameState.localPlayerId);
 
     if (!targetFaction || !playerFaction) return { accepted: false, reason: 'Faction not found', chance: 0 };
 
@@ -269,6 +269,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
     let nextPOIs = [...currentState.pois];
     let messages = [...currentState.messages];
     let playerResources = { ...currentState.playerResources };
+    let factions = [...currentState.factions];
 
     // --- PROCESS INTENTS ---
     for (const intent of intents) {
@@ -355,9 +356,25 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
             }
             case 'CHEAT_RESOURCES': {
                 // Handle cheats
-                if (intent.clientId === 'PLAYER') { // Only local player for now? Or map to faction
-                    playerResources.gold += intent.gold;
-                    playerResources.oil += intent.oil;
+                // Find the faction to give resources to
+                const factionIndex = currentState.factions.findIndex(f => f.id === intent.clientId);
+                if (factionIndex !== -1) {
+                    // We need to update the faction in the factions array
+                    // But here we only have local 'playerResources' which is for the LOCAL player.
+                    // If we are Host, we should update the Faction's gold in the array.
+                    // If we are Client, we update local 'playerResources' IF it matches us.
+
+                    // Update Faction (Host Authority)
+                    factions[factionIndex] = {
+                        ...factions[factionIndex],
+                        gold: factions[factionIndex].gold + intent.gold
+                    };
+
+                    // Update Local Resources if it's us
+                    if (intent.clientId === currentState.localPlayerId) {
+                        playerResources.gold += intent.gold;
+                        playerResources.oil += intent.oil;
+                    }
                 }
                 break;
             }
@@ -417,7 +434,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
     // Projectile logic moved to loop above for efficiency
 
 
-    let factions = [...currentState.factions];
+    // let factions = [...currentState.factions]; // Moved to top
     // Update factions based on intents (e.g. resource deduction) if we did it above?
     // Actually, let's just handle resource updates in the resource tick or specific intent logic if needed.
 
@@ -688,16 +705,34 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
     let incomeGold = 0;
     let incomeOil = 0;
     if (isResourceTick) {
-        const playerUnits = nextUnits.filter(u => u.factionId === 'PLAYER').length;
-        incomeGold += 5 + (playerUnits * 0.5);
-        incomeOil += 2;
-        nextPOIs.forEach(poi => {
-            if (poi.ownerFactionId === 'PLAYER') {
-                const config = POI_CONFIG[poi.type];
-                incomeGold += config.incomeGold;
-                incomeOil += config.incomeOil;
-            }
-        });
+        // Calculate income for the LOCAL player to update UI
+        // But wait, 'playerResources' in GameState is specifically for the local view?
+        // Or is it the "Player" faction resources?
+        // It seems 'playerResources' is a legacy field for the UI.
+        // We should sync it with the local player's actual faction resources.
+
+        const localFaction = factions.find(f => f.id === currentState.localPlayerId);
+        if (localFaction) {
+            // We already calculated income in the loop above (lines 678-685)
+            // So we just sync here?
+            // Actually, the loop above updates 'factions'.
+            // We should just grab the updated gold from there.
+            // But 'playerResources' has oil/intel which Faction might not have fully?
+            // Faction interface has 'gold'.
+            // Let's assume for now we calculate it here again for the UI or migrate UI to use Faction.
+            // For safety, let's calculate it here for 'playerResources'.
+
+            const playerUnits = nextUnits.filter(u => u.factionId === currentState.localPlayerId).length;
+            incomeGold += 5 + (playerUnits * 0.5);
+            incomeOil += 2;
+            nextPOIs.forEach(poi => {
+                if (poi.ownerFactionId === currentState.localPlayerId) {
+                    const config = POI_CONFIG[poi.type];
+                    incomeGold += config.incomeGold;
+                    incomeOil += config.incomeOil;
+                }
+            });
+        }
     }
 
     let nextState: GameState = {

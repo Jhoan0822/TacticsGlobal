@@ -202,7 +202,7 @@ export const useGameLoop = () => {
         // React state 'gameState' will be the render cycle's state.
 
         const unit = gameState.units.find(u => u.id === unitId);
-        if (!unit || unit.factionId !== 'PLAYER') return;
+        if (!unit || unit.factionId !== gameState.localPlayerId) return;
 
         let typeToSpawn: UnitClass | null = null;
         if (action === 'DEPLOY_TANK') typeToSpawn = UnitClass.GROUND_TANK;
@@ -243,8 +243,8 @@ export const useGameLoop = () => {
         const isSea = seaUnits.includes(type);
 
         if (isSea) {
-            const validCities = gameState.pois.filter(p => p.ownerFactionId === 'PLAYER' && p.type === POIType.CITY && p.isCoastal);
-            const validPorts = gameState.units.filter(u => u.factionId === 'PLAYER' && u.unitClass === UnitClass.PORT);
+            const validCities = gameState.pois.filter(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY && p.isCoastal);
+            const validPorts = gameState.units.filter(u => u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.PORT);
             const allSites = [...validCities, ...validPorts];
 
             if (allSites.length > 0) {
@@ -253,8 +253,8 @@ export const useGameLoop = () => {
             }
         } else {
             const validSites = [
-                ...gameState.pois.filter(p => p.ownerFactionId === 'PLAYER' && p.type === POIType.CITY),
-                ...gameState.units.filter(u => u.factionId === 'PLAYER' && (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MILITARY_BASE || u.unitClass === UnitClass.AIRBASE))
+                ...gameState.pois.filter(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY),
+                ...gameState.units.filter(u => u.factionId === gameState.localPlayerId && (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MILITARY_BASE || u.unitClass === UnitClass.AIRBASE))
             ];
             if (validSites.length > 0) {
                 const site = validSites[Math.floor(Math.random() * validSites.length)];
@@ -330,11 +330,11 @@ export const useGameLoop = () => {
                     unitClass: UnitClass.COMMAND_CENTER,
                     lat: poi.position.lat,
                     lng: poi.position.lng,
-                    unitId: 'PLAYER-HQ' // Deterministic ID for HQ
+                    unitId: `${gameState.localPlayerId}-HQ` // Deterministic ID for HQ
                 });
 
                 setCenter({ lat: poi.position.lat, lng: poi.position.lng });
-                setSelectedUnitIds(['PLAYER-HQ']); // ID might be different from server?
+                setSelectedUnitIds([`${gameState.localPlayerId}-HQ`]); // ID might be different from server?
                 // Server generates ID. We won't know it immediately.
                 // This is a UI issue with authoritative servers.
                 // We can use a temporary ID or wait for update.
