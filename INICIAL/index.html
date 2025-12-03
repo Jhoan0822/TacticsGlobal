@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenFront: Live Ops</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+  <style>
+    /* Custom Scrollbar for tactical feel */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a; 
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155; 
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569; 
+    }
+    .leaflet-container {
+      background: #000000 !important; /* OCEAN IS BLACK */
+    }
+    
+    /* PREVENT OVERLAYS FROM BLOCKING CLICKS */
+    .leaflet-interactive {
+        cursor: pointer;
+    }
+    .non-interactive-layer {
+        pointer-events: none !important;
+    }
+
+    .world-vector-layer {
+        pointer-events: auto; /* Allow map clicks on land */
+    }
+
+    /* Hex grid pattern overlay */
+    .hex-overlay {
+      background-color: transparent;
+      opacity: 0.1;
+      background-image:  repeating-linear-gradient(120deg, transparent, transparent 10px, #064e3b 10px, #064e3b 11px),
+      repeating-linear-gradient(60deg, transparent, transparent 10px, #064e3b 10px, #064e3b 11px);
+      pointer-events: none;
+      z-index: 400;
+    }
+
+    /* SMOOTH MOVEMENT INTERPOLATION */
+    /* Transition is slightly longer than tick rate (50ms) to bridge gaps */
+    .leaflet-marker-icon {
+      transition: transform 0.1s linear; 
+    }
+
+    /* COMBAT EFFECTS: Tracer Rounds */
+    @keyframes tracer-fire {
+      0% { stroke-dashoffset: 0; } 
+      100% { stroke-dashoffset: -40; } /* Negative for forward motion */
+    }
+
+    .tracer-beam {
+      /* IMPORTANT: Force these styles to override SVG attributes */
+      stroke-dasharray: 6 40 !important; /* Short bullet (6px), Long gap (40px) */
+      animation: tracer-fire 0.2s linear infinite !important; /* Faster speed */
+      stroke-linecap: round !important;
+      stroke-width: 3px !important;
+      fill: none !important;
+      pointer-events: none !important; /* CRITICAL: Allows clicking through bullets */
+    }
+
+    .laser-player {
+      stroke: #00ffff !important; /* Cyan */
+      filter: drop-shadow(0 0 4px #00ffff);
+    }
+
+    .laser-enemy {
+      stroke: #ff0000 !important; /* Red */
+      filter: drop-shadow(0 0 4px #ff0000);
+    }
+
+    /* EXPLOSIONS */
+    @keyframes explosion-fade {
+        0% { transform: scale(0.5); opacity: 1; }
+        50% { transform: scale(1.2); opacity: 0.8; }
+        100% { transform: scale(1.5); opacity: 0; }
+    }
+
+    .explosion-visual {
+        background: radial-gradient(circle, #ffaa00 20%, #ff4500 60%, transparent 100%);
+        border-radius: 50%;
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+    }
+    .explosion-small { width: 20px; height: 20px; }
+    .explosion-medium { width: 40px; height: 40px; }
+    .explosion-large { width: 80px; height: 80px; }
+
+  </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "leaflet/": "https://aistudiocdn.com/leaflet@^1.9.4/",
+    "leaflet": "https://aistudiocdn.com/leaflet@^1.9.4",
+    "react-leaflet": "https://aistudiocdn.com/react-leaflet@^5.0.0",
+    "d3": "https://aistudiocdn.com/d3@^7.9.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-slate-900 text-slate-100 overflow-hidden" oncontextmenu="return false;">
+  <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

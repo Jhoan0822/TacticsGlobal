@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+
+.leaflet-container {
+    background: #000000 !important;
+    /* OCEAN IS BLACK */
+}
+
+/* PREVENT OVERLAYS FROM BLOCKING CLICKS */
+.leaflet-interactive {
+    cursor: pointer;
+}
+
+.non-interactive-layer {
+    pointer-events: none !important;
+}
+
+.world-vector-layer {
+    pointer-events: auto;
+    /* Allow map clicks on land */
+}
+
+/* Hex grid pattern overlay */
+.hex-overlay {
+    background-color: transparent;
+    opacity: 0.1;
+    background-image: repeating-linear-gradient(120deg, transparent, transparent 10px, #064e3b 10px, #064e3b 11px),
+        repeating-linear-gradient(60deg, transparent, transparent 10px, #064e3b 10px, #064e3b 11px);
+    pointer-events: none;
+    z-index: 400;
+}
+
+/* SMOOTH MOVEMENT INTERPOLATION */
+.leaflet-marker-icon {
+    transition: transform 0.1s linear;
+}
+
+/* COMBAT EFFECTS: Tracer Rounds */
+@keyframes tracer-fire {
+    0% {
+        stroke-dashoffset: 0;
+    }
+
+    100% {
+        stroke-dashoffset: -40;
+    }
+}
+
+.tracer-beam {
+    stroke-dasharray: 6 40 !important;
+    animation: tracer-fire 0.2s linear infinite !important;
+    stroke-linecap: round !important;
+    stroke-width: 3px !important;
+    fill: none !important;
+    pointer-events: none !important;
+}
+
+.laser-player {
+    stroke: #00ffff !important;
+    filter: drop-shadow(0 0 4px #00ffff);
+}
+
+.laser-enemy {
+    stroke: #ff0000 !important;
+    filter: drop-shadow(0 0 4px #ff0000);
+}
+
+/* EXPLOSIONS */
+@keyframes explosion-fade {
+    0% {
+        transform: scale(0.5);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.2);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
+}
+
+.explosion-visual {
+    background: radial-gradient(circle, #ffaa00 20%, #ff4500 60%, transparent 100%);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.explosion-small {
+    width: 20px;
+    height: 20px;
+}
+
+.explosion-medium {
+    width: 40px;
+    height: 40px;
+}
+
+.explosion-large {
+    width: 80px;
+    height: 80px;
+}

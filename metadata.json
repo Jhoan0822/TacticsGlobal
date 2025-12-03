@@ -1,0 +1,7 @@
+{
+  "name": "OpenFront: Live Ops",
+  "description": "A real-time strategy game layer powered by live real-world ADS-B and AIS data. Convert civilian traffic into military assets and conquer territory.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
