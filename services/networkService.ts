@@ -79,18 +79,24 @@ class NetworkServiceImpl {
   }
 
   private broadcast(msg: any) {
+    console.log('[NETWORK] Broadcasting:', msg.type, msg.payload);
     this.conns.forEach(conn => {
       if (conn.open) {
         conn.send(msg);
+      } else {
+        console.warn('[NETWORK] Connection not open:', conn.peer);
       }
     });
   }
 
   sendState(state: GameState) {
+    // Reduce log spam for state updates
+    // console.log('[NETWORK] Sending State'); 
     this.broadcast({ type: 'STATE_UPDATE', payload: state });
   }
 
   sendAction(action: any) {
+    console.log('[NETWORK] Sending Action:', action);
     this.broadcast({ type: 'ACTION', payload: action });
   }
 

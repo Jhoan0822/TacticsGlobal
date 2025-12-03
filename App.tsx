@@ -39,6 +39,7 @@ const App: React.FC = () => {
 
     // --- REMOTE ACTION HANDLER (HOST) ---
     const handleRemoteAction = (action: any) => {
+        console.log('[HOST] Received Action:', action);
         setGameState(prev => {
             // 1. MOVE UNIT
             if (action.type === 'MOVE_UNIT') {
@@ -48,6 +49,7 @@ const App: React.FC = () => {
                         if (action.unitIds.includes(u.id) && u.factionId === action.playerId) {
                             // Validate Move (Optional, but good for security)
                             if (!TerrainService.isValidMove(u.unitClass, action.destination.lat, action.destination.lng, prev.pois)) {
+                                console.warn('[HOST] Invalid Move Rejected');
                                 return u;
                             }
                             return {
@@ -223,13 +225,25 @@ const App: React.FC = () => {
         if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
             const targetUnit = gameState.units.find(u => u.id === id);
             if (targetUnit && targetUnit.factionId !== gameState.localPlayerId) {
+                // OPTIMISTIC UPDATE + NETWORK ACTION
                 if (gameState.isClient) {
+                    console.log('[CLIENT] Sending TARGET_UNIT Action', { unitIds: selectedUnitIds, targetId: id });
                     NetworkService.sendAction({
                         type: 'TARGET_UNIT',
                         unitIds: selectedUnitIds,
                         targetId: id,
                         playerId: gameState.localPlayerId
                     });
+                    // Optimistic Local Update
+                    setGameState(prev => ({
+                        ...prev,
+                        units: prev.units.map(u => {
+                            if (selectedUnitIds.includes(u.id) && u.factionId === gameState.localPlayerId) {
+                                return { ...u, targetId: id, destination: null };
+                            }
+                            return u;
+                        })
+                    }));
                 } else {
                     setGameState(prev => ({
                         ...prev,
@@ -250,13 +264,25 @@ const App: React.FC = () => {
         if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
             const targetPoi = gameState.pois.find(p => p.id === id);
             if (targetPoi && targetPoi.ownerFactionId !== gameState.localPlayerId) {
+                // OPTIMISTIC UPDATE + NETWORK ACTION
                 if (gameState.isClient) {
+                    console.log('[CLIENT] Sending TARGET_POI Action', { unitIds: selectedUnitIds, targetId: id });
                     NetworkService.sendAction({
                         type: 'TARGET_POI',
                         unitIds: selectedUnitIds,
                         targetId: id,
                         playerId: gameState.localPlayerId
                     });
+                    // Optimistic Local Update
+                    setGameState(prev => ({
+                        ...prev,
+                        units: prev.units.map(u => {
+                            if (selectedUnitIds.includes(u.id) && u.factionId === gameState.localPlayerId) {
+                                return { ...u, targetId: id, destination: null };
+                            }
+                            return u;
+                        })
+                    }));
                 } else {
                     setGameState(prev => ({
                         ...prev,
@@ -281,7 +307,9 @@ const App: React.FC = () => {
             lastRightClick.current = now;
             const isDouble = timeDiff < 250;
 
+            // OPTIMISTIC UPDATE + NETWORK ACTION
             if (gameState.isClient) {
+                console.log('[CLIENT] Sending MOVE_UNIT Action', { unitIds: selectedUnitIds, lat, lng });
                 NetworkService.sendAction({
                     type: 'MOVE_UNIT',
                     unitIds: selectedUnitIds,
@@ -289,6 +317,24 @@ const App: React.FC = () => {
                     isBoosting: isDouble,
                     playerId: gameState.localPlayerId
                 });
+                // Optimistic Local Update
+                setGameState(prev => ({
+                    ...prev,
+                    units: prev.units.map(u => {
+                        if (selectedUnitIds.includes(u.id) && u.factionId === gameState.localPlayerId) {
+                            if (!TerrainService.isValidMove(u.unitClass, lat, lng, gameState.pois)) {
+                                return u;
+                            }
+                            return {
+                                ...u,
+                                destination: { lat, lng },
+                                targetId: null,
+                                isBoosting: isDouble
+                            };
+                        }
+                        return u;
+                    })
+                }));
             } else {
                 setGameState(prev => ({
                     ...prev,
@@ -329,6 +375,7 @@ const App: React.FC = () => {
     // Wrapper for Buy Unit
     const handleBuyUnit = (type: UnitClass) => {
         if (gameState.isClient) {
+            console.log('[CLIENT] Sending BUY_UNIT Action', { type });
             NetworkService.sendAction({
                 type: 'BUY_UNIT',
                 unitType: type,
