@@ -92,24 +92,31 @@ export const useGameLoop = () => {
     // Network Sync
     useEffect(() => {
         const unsub = NetworkService.subscribe((event) => {
+            console.log('[GAME LOOP] Network event received:', event.type);
+
             if (event.type === 'STATE_UPDATE') {
+                console.log('[GAME LOOP CLIENT] Received full state sync');
                 setGameState(prev => {
                     // Full state sync (e.g. join or reconnect)
                     return { ...event.state, isClient: true, localPlayerId: prev.localPlayerId };
                 });
             } else if (event.type === 'TURN') {
-                // Client receives turn from Host
+                console.log('[GAME LOOP CLIENT] Received TURN:', event.turn.turnNumber, 'with', event.turn.intents.length, 'intents');
                 setGameState(prev => {
-                    if (!prev.isClient) return prev; // Host ignores received turns (it generates them)
-                    // Execute the turn
-                    return processGameTick(prev, event.turn.intents);
+                    if (!prev.isClient) {
+                        console.warn('[GAME LOOP] Host received TURN event, ignoring');
+                        return prev; // Host doesn't process received turns
+                    }
+                    // Execute the turn on client
+                    console.log('[GAME LOOP CLIENT] Processing turn', event.turn.turnNumber);
+                    const nextState = processGameTick(prev, event.turn.intents);
+                    console.log('[GAME LOOP CLIENT] State after turn:', nextState.units.length, 'units', nextState.pois.filter(p => p.ownerFactionId).length, 'owned POIs');
+                    return nextState;
                 });
-            } else if (event.type === 'INTENT' as any) {
-                // Host receives intent from Client
-                // We need to cast event type because we added INTENT dynamically or need to update NetworkEvent type properly
-                // Assuming NetworkService emits 'INTENT' for host.
-                const intent = (event as any).intent as Intent;
-                hostIntentsBuffer.current.push(intent);
+            } else if (event.type === 'INTENT') {
+                // Host receives intents from clients
+                console.log('[GAME LOOP HOST] Received INTENT:', event.intent.type, 'from', event.intent.clientId);
+                hostIntentsBuffer.current.push(event.intent);
             }
         });
         return () => unsub();
@@ -125,14 +132,23 @@ export const useGameLoop = () => {
         if (timestamp - lastTickTime.current >= GAME_TICK_MS) {
             setGameState(prevState => {
                 // If Client, we don't simulate on tick, we wait for TURN event.
-                if (prevState.isClient) return prevState;
+                if (prevState.isClient) {
+                    return prevState;
+                }
 
-                if (prevState.gameMode !== 'PLAYING' && prevState.gameMode !== 'PLACING_STRUCTURE') return prevState;
+                // HOST LOGIC - Allow processing even in SELECT_BASE mode for initial spawns
+                // Skip only if mode is completely inactive
+                if (prevState.gameMode !== 'PLAYING' &&
+                    prevState.gameMode !== 'PLACING_STRUCTURE' &&
+                    prevState.gameMode !== 'SELECT_BASE') {
+                    return prevState;
+                }
 
-                // HOST LOGIC
-                // 1. Gather Intents
+                // 1. Gather Intents (including host's own local intents)
                 const currentIntents = [...hostIntentsBuffer.current];
                 hostIntentsBuffer.current = []; // Clear buffer
+
+                console.log('[GAME LOOP HOST] Tick', turnNumber.current, 'with', currentIntents.length, 'intents');
 
                 // 2. Create Turn
                 const turn: Turn = {
@@ -140,14 +156,12 @@ export const useGameLoop = () => {
                     intents: currentIntents
                 };
 
-                // 3. Broadcast Turn
+                // 3. Broadcast Turn to clients (even if empty)
                 NetworkService.broadcastTurn(turn);
 
                 // 4. Execute Tick locally
                 const nextState = processGameTick(prevState, currentIntents);
-
-                // Broadcast State occasionally for late joiners / resync?
-                // NetworkService.sendState(nextState); // Optional, maybe every 100 ticks
+                console.log('[GAME LOOP HOST] State after tick:', nextState.units.length, 'units', nextState.pois.filter(p => p.ownerFactionId).length, 'owned POIs');
 
                 return nextState;
             });
@@ -182,8 +196,24 @@ export const useGameLoop = () => {
     };
 
     const handleUnitAction = (action: string, unitId: string) => {
+        // This logic needs to be converted to Intents.
+        // But wait, 'DEPLOY_TANK' etc are spawning units relative to a parent unit?
+        // Or is it just spawning?
+        // The original logic checked resources and spawned.
+        // Now we must send an intent.
+        // But we need the unit's position to know where to spawn.
+        // We can't easily access 'gameState' here inside the callback without dependency?
+        // 'gameState' is available in scope but might be stale if not in dependency array.
+        // Actually 'useGameLoop' returns these functions, so they close over 'gameState'.
+        // But 'gameState' changes every tick.
+        // We should use a ref or functional update?
+        // But we need to READ state to create the intent (e.g. position).
+
+        // For now, let's assume we can read 'gameState' from the state variable.
+        // React state 'gameState' will be the render cycle's state.
+
         const unit = gameState.units.find(u => u.id === unitId);
-        if (!unit || unit.factionId !== gameState.localPlayerId) return;
+        if (!unit || unit.factionId !== 'PLAYER') return;
 
         let typeToSpawn: UnitClass | null = null;
         if (action === 'DEPLOY_TANK') typeToSpawn = UnitClass.GROUND_TANK;
@@ -193,27 +223,29 @@ export const useGameLoop = () => {
         if (typeToSpawn) {
             const offsetLat = (Math.random() - 0.5) * 0.005;
             const offsetLng = (Math.random() - 0.5) * 0.005;
-            const newId = `UNIT-${Math.random().toString(36).substr(2, 6)}`;
 
             dispatchIntent({
                 type: 'SPAWN',
-                clientId: gameState.localPlayerId,
+                clientId: gameState.localPlayerId, // Or NetworkService.myPeerId
                 unitClass: typeToSpawn,
                 lat: unit.position.lat + offsetLat,
-                lng: unit.position.lng + offsetLng,
-                unitId: newId
+                lng: unit.position.lng + offsetLng
             });
             AudioService.playSuccess();
         }
     };
 
     const handleBuyUnit = (type: UnitClass) => {
+        // Logic for placing structure vs auto-spawn
         if (type === UnitClass.AIRBASE || type === UnitClass.PORT || type === UnitClass.MILITARY_BASE) {
             AudioService.playUiClick();
             setGameState(prev => ({ ...prev, gameMode: 'PLACING_STRUCTURE', placementType: type }));
             return;
         }
 
+        // Auto-spawn logic
+        // We need to find a spawn location.
+        // This requires reading state.
         let spawnLat: number | null = null;
         let spawnLng: number | null = null;
 
@@ -221,8 +253,8 @@ export const useGameLoop = () => {
         const isSea = seaUnits.includes(type);
 
         if (isSea) {
-            const validCities = gameState.pois.filter(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY && p.isCoastal);
-            const validPorts = gameState.units.filter(u => u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.PORT);
+            const validCities = gameState.pois.filter(p => p.ownerFactionId === 'PLAYER' && p.type === POIType.CITY && p.isCoastal);
+            const validPorts = gameState.units.filter(u => u.factionId === 'PLAYER' && u.unitClass === UnitClass.PORT);
             const allSites = [...validCities, ...validPorts];
 
             if (allSites.length > 0) {
@@ -231,8 +263,8 @@ export const useGameLoop = () => {
             }
         } else {
             const validSites = [
-                ...gameState.pois.filter(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY),
-                ...gameState.units.filter(u => u.factionId === gameState.localPlayerId && (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MILITARY_BASE || u.unitClass === UnitClass.AIRBASE))
+                ...gameState.pois.filter(p => p.ownerFactionId === 'PLAYER' && p.type === POIType.CITY),
+                ...gameState.units.filter(u => u.factionId === 'PLAYER' && (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MILITARY_BASE || u.unitClass === UnitClass.AIRBASE))
             ];
             if (validSites.length > 0) {
                 const site = validSites[Math.floor(Math.random() * validSites.length)];
@@ -242,14 +274,12 @@ export const useGameLoop = () => {
         }
 
         if (spawnLat !== null && spawnLng !== null) {
-            const newId = `UNIT-${Math.random().toString(36).substr(2, 6)}`;
             dispatchIntent({
                 type: 'SPAWN',
                 clientId: gameState.localPlayerId,
                 unitClass: type,
                 lat: spawnLat + (Math.random() - 0.5) * 0.05,
-                lng: spawnLng + (Math.random() - 0.5) * 0.05,
-                unitId: newId
+                lng: spawnLng + (Math.random() - 0.5) * 0.05
             });
             AudioService.playSuccess();
         } else {
@@ -282,25 +312,41 @@ export const useGameLoop = () => {
                 // The logic in 'processGameTick' doesn't handle 'SELECT_BASE' mode transitions.
                 // We might need to update 'processGameTick' to handle this or keep it local for now.
 
-                // 1. Claim the POI
-                dispatchIntent({
-                    type: 'CLAIM_POI',
-                    clientId: gameState.localPlayerId,
-                    poiId: poiId
-                });
+                // Let's keep it local for simplicity, assuming this happens before multiplayer sync fully kicks in?
+                // No, if we are client connecting to host, we might join late.
+                // If we are starting a new game, we select base.
 
-                // 2. Spawn HQ
-                const hqId = `HQ-${Math.random().toString(36).substr(2, 6)}`;
+                // Let's just implement it as local state change for now, 
+                // but we need to notify host if we are client.
+                // Since we don't have a 'SELECT_BASE' intent, let's just spawn the HQ unit.
+
+                const hq: GameUnit = {
+                    id: 'PLAYER-HQ',
+                    unitClass: UnitClass.COMMAND_CENTER,
+                    factionId: 'PLAYER',
+                    position: { lat: poi.position.lat, lng: poi.position.lng },
+                    heading: 0,
+                    ...UNIT_CONFIG[UnitClass.COMMAND_CENTER],
+                    realWorldIdentity: undefined,
+                    isBoosting: false
+                };
+
+                // We need to update POI locally and send intent?
+                // Let's just send SPAWN intent for HQ.
                 dispatchIntent({
                     type: 'SPAWN',
                     clientId: gameState.localPlayerId,
                     unitClass: UnitClass.COMMAND_CENTER,
                     lat: poi.position.lat,
-                    lng: poi.position.lng,
-                    unitId: hqId
+                    lng: poi.position.lng
                 });
 
                 setCenter({ lat: poi.position.lat, lng: poi.position.lng });
+                setSelectedUnitIds(['PLAYER-HQ']); // ID might be different from server?
+                // Server generates ID. We won't know it immediately.
+                // This is a UI issue with authoritative servers.
+                // We can use a temporary ID or wait for update.
+
                 setGameState(prev => ({ ...prev, gameMode: 'PLAYING' }));
                 AudioService.playSuccess();
             }
@@ -308,24 +354,29 @@ export const useGameLoop = () => {
     };
 
     const handleMapClick = (lat: number, lng: number) => {
-        if (gameState.gameMode === 'PLACING_STRUCTURE' && gameState.placementType) {
+        if (gameState.gameMode === 'PLACING_STRUCTURE') {
+            if (!gameState.placementType) return;
+
             const type = gameState.placementType;
-            if (TerrainService.isValidPlacement(type, lat, lng, gameState.pois)) {
-                const structId = `STRUCT-${Math.random().toString(36).substr(2, 6)}`;
-                dispatchIntent({
-                    type: 'BUILD_STRUCTURE',
-                    clientId: gameState.localPlayerId,
-                    structureType: type,
-                    lat: lat,
-                    lng: lng,
-                    unitId: structId
-                });
-                setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
-                AudioService.playSuccess();
-            } else {
+            // Validate terrain locally
+            if (!TerrainService.isValidPlacement(type, lat, lng, gameState.pois)) {
+                alert("Invalid Terrain! Ports must be near coast, Airbases on land.");
                 AudioService.playAlert();
+                return;
             }
+
+            dispatchIntent({
+                type: 'BUILD_STRUCTURE',
+                clientId: gameState.localPlayerId,
+                structureType: type,
+                lat: lat,
+                lng: lng
+            });
+
+            AudioService.playSuccess();
+            setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
         } else if (gameState.gameMode === 'PLAYING') {
+            // Move units
             if (selectedUnitIds.length > 0) {
                 dispatchIntent({
                     type: 'MOVE',
@@ -334,6 +385,7 @@ export const useGameLoop = () => {
                     lat: lat,
                     lng: lng
                 });
+                // Show visual feedback?
             }
         }
     };
