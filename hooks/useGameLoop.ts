@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GameState, GameUnit, POI, UnitClass, POIType, Faction, Difficulty } from '../types';
-import { GAME_SETTINGS, UNIT_CONFIG } from '../constants';
+import { UNIT_CONFIG } from '../constants';
 import { processGameTick, spawnUnit } from '../services/gameLogic';
 import { NetworkService } from '../services/networkService';
 import { AudioService } from '../services/audioService';
@@ -90,20 +90,13 @@ export const useGameLoop = () => {
     // START GAME
     // ============================================
     const startGame = (scenario: Scenario, localPlayerId: string, factions: Faction[], isClient: boolean) => {
-        const newPois: POI[] = scenario.pois.map((p, i) => ({
-            id: `POI-${i}`,
-            name: p.name,
-            type: p.type,
-            position: p.position,
-            ownerFactionId: p.type === POIType.NEUTRAL_TERRITORY ? 'NEUTRAL' : undefined,
-            tier: 0,
-            isCoastal: p.isCoastal ?? false,
-            specialIcon: p.specialIcon
-        }));
+        console.log('[START GAME]', scenario.id, 'localPlayerId:', localPlayerId, 'isClient:', isClient);
 
+        // Start with empty POIs - they will be loaded separately
+        // The App.tsx or terrain service handles POI data loading
         setGameState({
             units: [],
-            pois: newPois,
+            pois: [], // Empty for now - will be populated by game init
             factions: factions,
             projectiles: [],
             explosions: [],
@@ -118,11 +111,11 @@ export const useGameLoop = () => {
 
         NetworkService.isHost = !isClient;
 
-        if (factions.length > 0) {
-            const myFaction = factions.find(f => f.id === localPlayerId);
-            if (myFaction) {
-                setCenter({ lat: myFaction.startLat || 20, lng: myFaction.startLng || 0 });
-            }
+        // Set initial camera position
+        const myFaction = factions.find(f => f.id === localPlayerId);
+        if (myFaction) {
+            // Center on faction's region or world center
+            setCenter({ lat: 20, lng: 0 });
         }
 
         AudioService.playSuccess();
