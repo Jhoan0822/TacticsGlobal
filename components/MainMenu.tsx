@@ -1,89 +1,32 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SCENARIOS, FACTION_PRESETS, DIFFICULTY_CONFIG } from '../constants';
 import { NetworkService } from '../services/networkService';
 import { Scenario, Faction, LobbyState, LobbyPlayer, Difficulty } from '../types';
 
 interface MainMenuProps {
     onStartGame: (scenario: Scenario, localPlayerId: string, factions: Faction[], isMultiplayer: boolean, isHost: boolean) => void;
+    lobbyState: LobbyState;
+    setLobbyState: React.Dispatch<React.SetStateAction<LobbyState>>;
+    networkMode: 'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | null;
+    setNetworkMode: React.Dispatch<React.SetStateAction<'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | null>>;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
-    const [mode, setMode] = useState<'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'MENU' | 'LOBBY'>('MENU');
-    const [peerId, setPeerId] = useState<string>('');
+const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbyState, networkMode, setNetworkMode }) => {
     const [hostIdInput, setHostIdInput] = useState<string>('');
     const [connectionStatus, setConnectionStatus] = useState<string>('');
-
-    // Lobby State (Local or Synced)
-    const [lobbyState, setLobbyState] = useState<LobbyState>({
-        players: [],
-        scenarioId: 'WORLD',
-        difficulty: Difficulty.MEDIUM,
-        botCount: 3 // Default 3 bots
-    });
-
-    const [localPlayerName, setLocalPlayerName] = useState<string>('Player 1');
     const [selectedFactionIndex, setSelectedFactionIndex] = useState<number>(0);
+    const [peerId, setPeerId] = useState<string>('');
 
-    const isStartingGame = useRef(false);
-
-    // Initialize Network if Multiplayer
+    // Sync PeerID
     useEffect(() => {
-        const isNetworkMode = mode === 'MULTI_HOST' || mode === 'MULTI_JOIN' || mode === 'LOBBY';
-
-        if (isNetworkMode) {
-            NetworkService.initialize((id) => {
-                setPeerId(id);
-                setConnectionStatus('Network Ready. ID: ' + id);
-            });
-
-            const handleNetworkEvent = (e: any) => {
-                if (e.type === 'CONNECT') {
-                    setConnectionStatus(`Connected to ${e.peerId}`);
-                    if (mode === 'MULTI_HOST') {
-                        // Add Client to Lobby
-                        setLobbyState(prev => {
-                            // Check if player already exists
-                            if (prev.players.find(p => p.id === e.peerId)) return prev;
-
-                            const newState = {
-                                ...prev,
-                                players: [
-                                    ...prev.players,
-                                    { id: e.peerId, name: `Player ${prev.players.length + 1}`, factionIndex: 1, isHost: false, isReady: false }
-                                ]
-                            };
-                            NetworkService.sendLobbyUpdate(newState);
-                            return newState;
-                        });
-                        setMode('LOBBY');
-                    }
-                } else if (e.type === 'LOBBY_UPDATE') {
-                    setLobbyState(e.state);
-                    setMode('LOBBY'); // Switch to Lobby view on update
-                } else if (e.type === 'START_GAME') {
-                    // Client Start
-                    isStartingGame.current = true;
-                    const scenario = Object.values(SCENARIOS).find(s => s.id === e.scenarioId) || SCENARIOS.WORLD;
-                    onStartGame(scenario, e.localPlayerId, e.factions, true, false);
-                }
-            };
-
-            const unsub = NetworkService.subscribe(handleNetworkEvent);
-            return () => {
-                unsub();
-                if (!isStartingGame.current) {
-                    NetworkService.disconnect();
-                }
-            };
-        }
-    }, [mode === 'MULTI_HOST' || mode === 'MULTI_JOIN' || mode === 'LOBBY']); // Only re-run if entering/leaving network mode group
-
-    // Host Logic: Send Updates when Lobby State changes
-    useEffect(() => {
-        if (mode === 'LOBBY' && lobbyState.players.find(p => p.id === peerId)?.isHost) {
-            NetworkService.sendLobbyUpdate(lobbyState);
-        }
-    }, [lobbyState, mode, peerId]);
+        const checkId = setInterval(() => {
+            if (NetworkService.myPeerId) {
+                setPeerId(NetworkService.myPeerId);
+                setConnectionStatus('Connected. ID: ' + NetworkService.myPeerId);
+            }
+        }, 1000);
+        return () => clearInterval(checkId);
+    }, []);
 
     const handleSinglePlayerStart = () => {
         const scenario = Object.values(SCENARIOS).find(s => s.id === lobbyState.scenarioId) || SCENARIOS.WORLD;
@@ -115,7 +58,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     };
 
     const handleHostLobbyStart = () => {
-        if (mode !== 'LOBBY') return;
+        if (networkMode !== 'LOBBY') return;
 
         const scenario = Object.values(SCENARIOS).find(s => s.id === lobbyState.scenarioId) || SCENARIOS.WORLD;
 
@@ -126,7 +69,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
         lobbyState.players.forEach((p, idx) => {
             factions.push({
                 ...FACTION_PRESETS[p.factionIndex],
-                id: p.id === peerId ? 'PLAYER' : 'REMOTE_PLAYER', // Host is PLAYER, Client is REMOTE
+                id: p.id === NetworkService.myPeerId ? 'PLAYER' : 'REMOTE_PLAYER', // Host is PLAYER, Client is REMOTE
                 name: p.name,
                 type: 'PLAYER',
                 gold: 5000,
@@ -151,8 +94,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
             });
         }
 
-        // Set Hostility between players?
-        // For now, everyone is hostile to everyone not in their faction (which is unique)
+        // Set Hostility
         factions.forEach(f => {
             factions.forEach(target => {
                 if (f.id !== target.id) {
@@ -162,23 +104,9 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
         });
 
         // Start for Host
-        isStartingGame.current = true;
         onStartGame(scenario, 'PLAYER', factions, true, true);
 
         // Signal Client to Start
-        // We need to send the Client's ID as 'PLAYER' for them, and Host as 'REMOTE_PLAYER'
-        // Actually, the game logic uses 'PLAYER' for local. 
-        // So we send the same factions array, but the Client needs to know which ID maps to their 'PLAYER'
-        // Wait, the engine expects 'PLAYER' to be the local player.
-        // So we need to swap IDs for the client? 
-        // Or we just use PeerIDs as FactionIDs and 'PLAYER' is an alias?
-        // Let's stick to 'PLAYER' = Local.
-
-        // Client Factions:
-        // Host -> REMOTE_PLAYER
-        // Client -> PLAYER
-        // Bots -> BOT_X
-
         const clientFactions = factions.map(f => {
             if (f.id === 'PLAYER') return { ...f, id: 'REMOTE_PLAYER' }; // Host becomes Remote
             if (f.id === 'REMOTE_PLAYER') return { ...f, id: 'PLAYER' }; // Client becomes Local
@@ -191,6 +119,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     const handleJoin = () => {
         setConnectionStatus('Connecting...');
         NetworkService.connect(hostIdInput);
+        setNetworkMode('LOBBY'); // Assume success for UI transition, real sync comes from App.tsx events
     };
 
     const updateLobbySetting = (key: keyof LobbyState, value: any) => {
@@ -199,32 +128,37 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
     // Initial Host Setup
     useEffect(() => {
-        if (mode === 'MULTI_HOST' && peerId && lobbyState.players.length === 0) {
+        if (networkMode === 'MULTI_HOST' && NetworkService.myPeerId && lobbyState.players.length === 0) {
             setLobbyState({
-                players: [{ id: peerId, name: 'Host', factionIndex: 0, isHost: true, isReady: true }],
+                players: [{ id: NetworkService.myPeerId, name: 'Host', factionIndex: 0, isHost: true, isReady: true }],
                 scenarioId: 'WORLD',
                 difficulty: Difficulty.MEDIUM,
                 botCount: 2
             });
+            setNetworkMode('LOBBY');
         }
-    }, [mode, peerId]);
+    }, [networkMode, peerId]);
 
     // RENDERERS
 
-    if (mode === 'MENU') {
-        return (
-            <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white space-y-8 font-sans">
-                <h1 className="text-6xl font-bold text-blue-500 tracking-widest drop-shadow-lg">TACTIC OPS</h1>
-                <div className="flex space-x-4">
-                    <button onClick={() => setMode('SINGLE')} className="px-8 py-4 bg-blue-600 hover:bg-blue-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">SINGLE PLAYER</button>
-                    <button onClick={() => setMode('MULTI_HOST')} className="px-8 py-4 bg-green-600 hover:bg-green-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">HOST GAME</button>
-                    <button onClick={() => setMode('MULTI_JOIN')} className="px-8 py-4 bg-purple-600 hover:bg-purple-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">JOIN GAME</button>
+    if (!networkMode || networkMode === 'SINGLE') { // Default Menu View (SINGLE is just a mode flag here, UI handled below)
+        if (networkMode === 'SINGLE') {
+            // Single Player Setup UI is same as Lobby but local
+        } else {
+            return (
+                <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white space-y-8 font-sans">
+                    <h1 className="text-6xl font-bold text-blue-500 tracking-widest drop-shadow-lg">TACTIC OPS</h1>
+                    <div className="flex space-x-4">
+                        <button onClick={() => setNetworkMode('SINGLE')} className="px-8 py-4 bg-blue-600 hover:bg-blue-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">SINGLE PLAYER</button>
+                        <button onClick={() => setNetworkMode('MULTI_HOST')} className="px-8 py-4 bg-green-600 hover:bg-green-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">HOST GAME</button>
+                        <button onClick={() => setNetworkMode('MULTI_JOIN')} className="px-8 py-4 bg-purple-600 hover:bg-purple-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">JOIN GAME</button>
+                    </div>
                 </div>
-            </div>
-        );
+            );
+        }
     }
 
-    if (mode === 'MULTI_JOIN' && !connectionStatus.includes('Connected')) {
+    if (networkMode === 'MULTI_JOIN' && !connectionStatus.includes('Connected')) {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white space-y-8">
                 <h2 className="text-4xl font-bold">JOIN GAME</h2>
@@ -244,15 +178,15 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                         />
                     </div>
                     <button onClick={handleJoin} className="w-full px-8 py-4 bg-purple-600 hover:bg-purple-500 rounded text-xl font-bold shadow-lg">CONNECT</button>
-                    <button onClick={() => setMode('MENU')} className="w-full text-gray-400 hover:text-white text-sm">Back</button>
+                    <button onClick={() => setNetworkMode(null)} className="w-full text-gray-400 hover:text-white text-sm">Back</button>
                 </div>
             </div>
         );
     }
 
     // SHARED LOBBY / SINGLE PLAYER SETUP UI
-    const isHost = mode === 'MULTI_HOST' || (mode === 'LOBBY' && lobbyState.players.find(p => p.id === peerId)?.isHost);
-    const isSingle = mode === 'SINGLE';
+    const isHost = networkMode === 'MULTI_HOST' || (networkMode === 'LOBBY' && lobbyState.players.find(p => p.id === peerId)?.isHost);
+    const isSingle = networkMode === 'SINGLE';
     const canEdit = isSingle || isHost;
 
     return (
@@ -382,7 +316,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
             </div>
 
             <div className="mt-auto pt-8 flex justify-end space-x-4">
-                <button onClick={() => setMode('MENU')} className="px-6 py-3 text-gray-400 hover:text-white font-bold">BACK</button>
+                <button onClick={() => setNetworkMode(null)} className="px-6 py-3 text-gray-400 hover:text-white font-bold">BACK</button>
                 <button
                     onClick={isSingle ? handleSinglePlayerStart : handleHostLobbyStart}
                     disabled={!isSingle && !isHost}

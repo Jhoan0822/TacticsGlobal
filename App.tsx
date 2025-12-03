@@ -1,5 +1,4 @@
-
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import GameMap from './components/GameMap';
 import Sidebar from './components/Sidebar';
 import EventLog from './components/EventLog';
@@ -7,10 +6,19 @@ import MainMenu from './components/MainMenu';
 import { useGameLoop } from './hooks/useGameLoop';
 import { TerrainService } from './services/terrainService';
 import { AudioService } from './services/audioService';
-import { Scenario, Faction } from './types';
+import { NetworkService } from './services/networkService';
+import { Scenario, Faction, LobbyState, Difficulty } from './types';
+import { SCENARIOS } from './constants';
 
 const App: React.FC = () => {
     const [isInMenu, setIsInMenu] = useState(true);
+    const [lobbyState, setLobbyState] = useState<LobbyState>({
+        players: [],
+        scenarioId: 'WORLD',
+        difficulty: Difficulty.MEDIUM,
+        botCount: 3
+    });
+    const [networkMode, setNetworkMode] = useState<'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | null>(null);
 
     const {
         gameState,
@@ -28,9 +36,62 @@ const App: React.FC = () => {
         startGame
     } = useGameLoop();
 
+    // --- NETWORK INITIALIZATION ---
+    useEffect(() => {
+        if (networkMode === 'MULTI_HOST' || networkMode === 'MULTI_JOIN') {
+            NetworkService.initialize((id) => {
+                // Peer ID ready
+            });
+
+            const handleNetworkEvent = (e: any) => {
+                if (e.type === 'CONNECT') {
+                    if (networkMode === 'MULTI_HOST') {
+                        // Add Client to Lobby
+                        setLobbyState(prev => {
+                            if (prev.players.find(p => p.id === e.peerId)) return prev;
+                            const newState = {
+                                ...prev,
+                                players: [
+                                    ...prev.players,
+                                    { id: e.peerId, name: `Player ${prev.players.length + 1}`, factionIndex: 1, isHost: false, isReady: false }
+                                ]
+                            };
+                            NetworkService.sendLobbyUpdate(newState);
+                            return newState;
+                        });
+                    }
+                } else if (e.type === 'LOBBY_UPDATE') {
+                    setLobbyState(e.state);
+                } else if (e.type === 'START_GAME') {
+                    // Client Start
+                    const scenario = Object.values(SCENARIOS).find(s => s.id === e.scenarioId) || SCENARIOS.WORLD;
+                    startGame(scenario, e.localPlayerId, e.factions, true);
+                    setIsInMenu(false);
+                }
+            };
+
+            const unsub = NetworkService.subscribe(handleNetworkEvent);
+            return () => {
+                unsub();
+                // We DO NOT disconnect here automatically anymore, 
+                // unless we explicitly leave the lobby/game.
+            };
+        }
+    }, [networkMode]);
+
+    // Host Logic: Send Updates when Lobby State changes
+    useEffect(() => {
+        if (networkMode === 'MULTI_HOST' || networkMode === 'LOBBY') {
+            // Only Host sends updates
+            // We need to know if we are host. 
+            // NetworkService.isHost isn't reactive, but we can check our ID against lobbyState
+            if (lobbyState.players.find(p => p.id === NetworkService.myPeerId)?.isHost) {
+                NetworkService.sendLobbyUpdate(lobbyState);
+            }
+        }
+    }, [lobbyState, networkMode]);
+
     const handleStartGame = (scenario: Scenario, localPlayerId: string, factions: Faction[], isMultiplayer: boolean, isHost: boolean) => {
-        // If Client, we wait for state, but we need to initialize the view.
-        // startGame handles initialization.
         startGame(scenario, localPlayerId, factions, isMultiplayer && !isHost);
         setIsInMenu(false);
     };
@@ -133,7 +194,15 @@ const App: React.FC = () => {
     };
 
     if (isInMenu) {
-        return <MainMenu onStartGame={handleStartGame} />;
+        return (
+            <MainMenu
+                onStartGame={handleStartGame}
+                lobbyState={lobbyState}
+                setLobbyState={setLobbyState}
+                networkMode={networkMode}
+                setNetworkMode={setNetworkMode}
+            />
+        );
     }
 
     return (
