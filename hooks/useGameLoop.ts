@@ -8,6 +8,7 @@ import { TerrainService } from '../services/terrainService';
 import { GameAction, createAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload } from '../services/schemas';
 import { applyAction } from '../services/applyAction';
 import { Scenario } from '../types';
+import { getMockCities } from '../services/mockDataService';
 
 const GAME_TICK_MS = 40; // 25 FPS
 
@@ -96,7 +97,7 @@ export const useGameLoop = () => {
         // The App.tsx or terrain service handles POI data loading
         setGameState({
             units: [],
-            pois: [], // Empty for now - will be populated by game init
+            pois: getMockCities(), // Load all cities!
             factions: factions,
             projectiles: [],
             explosions: [],
