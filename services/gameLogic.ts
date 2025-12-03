@@ -4,6 +4,7 @@ import { DIPLOMACY, POI_CONFIG, UNIT_CONFIG, AI_CONFIG, WEAPON_MAPPING } from '.
 import { updateAI } from './aiService';
 import { TerrainService } from './terrainService';
 import { Intent } from './schemas';
+import { GameAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload, ClaimPOIPayload } from './schemas';
 
 // OPTIMIZATION: Pre-calculate constants
 const DEG2RAD = Math.PI / 180;
