@@ -60,9 +60,11 @@ class NetworkServiceImpl {
     }
 
     private handleConnection(conn: DataConnection) {
-        if (this.conns.find(c => c.peer === conn.peer)) {
-            console.warn('[NETWORK] Duplicate connection:', conn.peer);
-            return;
+        const existingIdx = this.conns.findIndex(c => c.peer === conn.peer);
+        if (existingIdx !== -1) {
+            console.warn('[NETWORK] Duplicate connection, replacing:', conn.peer);
+            // Remove old connection from array to prevent duplicate handling
+            this.conns.splice(existingIdx, 1);
         }
 
         this.conns.push(conn);
