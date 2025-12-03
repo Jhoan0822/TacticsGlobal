@@ -689,50 +689,53 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
         return poi;
     });
 
-    // 4. RESOURCE GEN
     const isResourceTick = currentState.gameTick % 40 === 0;
     if (isResourceTick) {
-        factions = factions.map(faction => {
-            let income = 5;
-            const ownedCities = nextPOIs.filter(p => p.ownerFactionId === faction.id);
-            ownedCities.forEach(c => {
-                income += POI_CONFIG[c.type].incomeGold;
-            });
-            return { ...faction, gold: faction.gold + income };
-        });
-    }
-
-    let incomeGold = 0;
-    let incomeOil = 0;
-    if (isResourceTick) {
         // Calculate income for the LOCAL player to update UI
-        // But wait, 'playerResources' in GameState is specifically for the local view?
-        // Or is it the "Player" faction resources?
-        // It seems 'playerResources' is a legacy field for the UI.
-        // We should sync it with the local player's actual faction resources.
-
+        // Sync local playerResources with the Faction's actual resources
         const localFaction = factions.find(f => f.id === currentState.localPlayerId);
         if (localFaction) {
-            // We already calculated income in the loop above (lines 678-685)
-            // So we just sync here?
-            // Actually, the loop above updates 'factions'.
-            // We should just grab the updated gold from there.
-            // But 'playerResources' has oil/intel which Faction might not have fully?
-            // Faction interface has 'gold'.
-            // Let's assume for now we calculate it here again for the UI or migrate UI to use Faction.
-            // For safety, let's calculate it here for 'playerResources'.
+            // We need to calculate income for the Faction first (already done in loop above? No, loop above only did gold)
+            // Let's update the loop above to handle oil/intel too.
+        }
+    }
 
-            const playerUnits = nextUnits.filter(u => u.factionId === currentState.localPlayerId).length;
-            incomeGold += 5 + (playerUnits * 0.5);
-            incomeOil += 2;
-            nextPOIs.forEach(poi => {
-                if (poi.ownerFactionId === currentState.localPlayerId) {
-                    const config = POI_CONFIG[poi.type];
+    // 4. RESOURCE GEN (Updated)
+    if (isResourceTick) {
+        factions = factions.map(faction => {
+            let incomeGold = 5;
+            let incomeOil = 2;
+            let incomeIntel = 0;
+
+            const ownedCities = nextPOIs.filter(p => p.ownerFactionId === faction.id);
+            ownedCities.forEach(c => {
+                const config = POI_CONFIG[c.type];
+                if (config) {
                     incomeGold += config.incomeGold;
                     incomeOil += config.incomeOil;
                 }
             });
-        }
+
+            // Unit Upkeep? (Optional)
+
+            return {
+                ...faction,
+                gold: faction.gold + incomeGold,
+                oil: (faction.oil || 0) + incomeOil,
+                intel: (faction.intel || 0) + incomeIntel
+            };
+        });
+    }
+
+    // Sync local playerResources for UI
+    // We update the 'playerResources' variable which was declared at the top (line 271)
+    const updatedLocalFaction = factions.find(f => f.id === currentState.localPlayerId);
+    if (updatedLocalFaction) {
+        playerResources = {
+            gold: updatedLocalFaction.gold,
+            oil: updatedLocalFaction.oil,
+            intel: updatedLocalFaction.intel
+        };
     }
 
     let nextState: GameState = {
@@ -742,11 +745,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
         pois: nextPOIs,
         projectiles: nextProjectiles,
         explosions: newExplosions,
-        playerResources: {
-            ...currentState.playerResources,
-            gold: isResourceTick ? currentState.playerResources.gold + incomeGold : currentState.playerResources.gold,
-            oil: isResourceTick ? currentState.playerResources.oil + incomeOil : currentState.playerResources.oil
-        },
+        playerResources: playerResources, // Use the updated object
         gameTick: currentState.gameTick + 1,
         messages: messages
     };

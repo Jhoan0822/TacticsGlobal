@@ -45,10 +45,12 @@ export interface Faction {
   id: string;
   name: string;
   color: string;
-  type: 'PLAYER' | 'AI' | 'NEUTRAL';
+  type: 'PLAYER' | 'AI';
   gold: number;
-  relations: Record<string, number>;
-  aggression?: number;
+  oil: number;
+  intel: number;
+  relations: { [factionId: string]: number }; // -100 to 100
+  aggression: number; // 0 to 1
   lastAiUpdate?: number;
   maxUnits?: number;
 }

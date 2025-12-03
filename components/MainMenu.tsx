@@ -36,6 +36,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             id: 'PLAYER',
             type: 'PLAYER' as const,
             gold: 5000,
+            oil: 2000,
+            intel: 0,
             relations: {},
             aggression: 0
         };
@@ -49,6 +51,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 id: `ENEMY_${i}`,
                 type: 'AI' as const,
                 gold: 5000,
+                oil: 2000,
+                intel: 0,
                 relations: { 'PLAYER': -100 },
                 aggression: 1.0
             }));
@@ -73,6 +77,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 name: p.name,
                 type: 'PLAYER',
                 gold: 5000,
+                oil: 2000,
+                intel: 0,
                 relations: {},
                 aggression: 0
             });
@@ -89,6 +95,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 id: `BOT_${i}`,
                 type: 'AI',
                 gold: 5000,
+                oil: 2000,
+                intel: 0,
                 relations: {}, // Set relations below
                 aggression: 1.0
             });

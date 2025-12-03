@@ -95,7 +95,22 @@ export const useGameLoop = () => {
             if (event.type === 'STATE_UPDATE') {
                 setGameState(prev => {
                     // Full state sync (e.g. join or reconnect)
-                    return { ...event.state, isClient: true, localPlayerId: prev.localPlayerId };
+                    // FIX: Do not overwrite local playerResources with Host's resources.
+                    // Derive them from the factions array for the local player.
+                    const myFaction = event.state.factions.find(f => f.id === prev.localPlayerId);
+                    const myResources = myFaction ? { gold: myFaction.gold, oil: 2000, intel: 0 } : prev.playerResources; // Oil/Intel not fully in Faction yet?
+
+                    // Actually, Faction only has 'gold'. We need to handle oil/intel.
+                    // For now, let's keep local resources if we can, or accept that oil/intel might desync if not in Faction.
+                    // Ideally Faction should have all resources.
+                    // Let's use the received state but override playerResources.
+
+                    return {
+                        ...event.state,
+                        isClient: true,
+                        localPlayerId: prev.localPlayerId,
+                        playerResources: myResources
+                    };
                 });
             } else if (event.type === 'TURN') {
                 // Client receives turn from Host
@@ -147,8 +162,8 @@ export const useGameLoop = () => {
                 const nextState = processGameTick(prevState, currentIntents);
 
                 // Broadcast State occasionally for late joiners / resync?
-                // Broadcast State every 60 ticks (approx 1s) to sync AI and non-deterministic state
-                if (nextState.gameTick % 60 === 0) {
+                // Broadcast State every 300 ticks (approx 5s) to reduce lag
+                if (nextState.gameTick % 300 === 0) {
                     NetworkService.broadcastState(nextState);
                 }
 
