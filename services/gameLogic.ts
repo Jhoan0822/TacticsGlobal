@@ -248,10 +248,10 @@ class ProjectilePool {
 }
 const projectilePool = new ProjectilePool();
 
-export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: string = 'PLAYER', id?: string): GameUnit => {
+export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: string = 'PLAYER'): GameUnit => {
     const stats = UNIT_CONFIG[type];
     return {
-        id: id || `SPAWN-${Math.random().toString(36).substr(2, 6)}`,
+        id: `SPAWN-${Math.random().toString(36).substr(2, 6)}`,
         unitClass: type,
         factionId: factionId,
         position: { lat, lng },
@@ -263,8 +263,7 @@ export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: 
 };
 
 export const processGameTick = (currentState: GameState, intents: Intent[] = []): GameState => {
-    // if (currentState.gameMode === 'SELECT_BASE') return currentState; // Allow processing even in select base for multiplayer sync?
-    // Actually, SELECT_BASE is local UI state. The game might be running.
+    if (currentState.gameMode === 'SELECT_BASE') return currentState;
 
     let nextUnits = [...currentState.units];
     let nextPOIs = [...currentState.pois];
@@ -275,59 +274,80 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
     for (const intent of intents) {
         switch (intent.type) {
             case 'SPAWN': {
-                // Use deterministic ID from intent
-                const unit = spawnUnit(intent.unitClass, intent.lat, intent.lng, intent.clientId, intent.unitId);
+                console.log('[GAME LOGIC] Processing SPAWN intent:', intent.unitClass, 'for', intent.clientId, 'at', intent.lat, intent.lng);
 
-                // Deduct resources
+                const unit = spawnUnit(intent.unitClass, intent.lat, intent.lng, intent.clientId);
+
+                // CRITICAL: If spawning a COMMAND_CENTER (HQ), claim the nearest city
+                if (intent.unitClass === UnitClass.COMMAND_CENTER) {
+                    console.log('[GAME LOGIC] COMMAND_CENTER spawned, finding nearby city to claim');
+                    // Find nearest POI to claim
+                    let nearestPOI = null;
+                    let minDist = Infinity;
+
+                    nextPOIs.forEach(poi => {
+                        if (poi.type === POIType.CITY && !poi.ownerFactionId) {
+                            const dist = getDistanceKm(poi.position.lat, poi.position.lng, intent.lat, intent.lng);
+                            if (dist < minDist) {
+                                minDist = dist;
+                                nearestPOI = poi;
+                            }
+                        }
+                    });
+
+                    if (nearestPOI && minDist < 50) { // Within 50km
+                        console.log('[GAME LOGIC] Claiming city:', nearestPOI.name, 'for', intent.clientId);
+                        nearestPOI.ownerFactionId = intent.clientId;
+                        nearestPOI.tier = 1;
+                        logEvent(messages, `${intent.clientId} established HQ at ${nearestPOI.name}`, 'info');
+                    }
+                }
+
+                // Deduct resources from faction
                 const cost = UNIT_CONFIG[intent.unitClass].cost;
                 if (cost) {
-                    // Update faction gold in the factions array (not implemented fully yet for all factions)
+                    const faction = factions.find(f => f.id === intent.clientId);
+                    if (faction && faction.gold >= cost.gold) {
+                        faction.gold -= cost.gold;
+                        console.log('[GAME LOGIC] Deducted', cost.gold, 'gold from', intent.clientId, 'new balance:', faction.gold);
+                    }
                 }
+
                 nextUnits.push(unit);
+                console.log('[GAME LOGIC] Unit spawned, total units:', nextUnits.length);
                 break;
             }
             case 'MOVE': {
-                // Immutable update for units
-                nextUnits = nextUnits.map(u => {
-                    if (intent.unitIds.includes(u.id) && u.factionId === intent.clientId) {
-                        return { ...u, destination: { lat: intent.lat, lng: intent.lng }, targetId: null };
+                intent.unitIds.forEach(id => {
+                    const unit = nextUnits.find(u => u.id === id);
+                    if (unit && unit.factionId === intent.clientId) {
+                        unit.destination = { lat: intent.lat, lng: intent.lng };
+                        unit.targetId = null; // Clear target when moving manually
                     }
-                    return u;
                 });
                 break;
             }
             case 'ATTACK': {
-                nextUnits = nextUnits.map(u => {
-                    if (u.id === intent.attackerId && u.factionId === intent.clientId) {
-                        return { ...u, targetId: intent.targetId, destination: null };
-                    }
-                    return u;
-                });
+                const attacker = nextUnits.find(u => u.id === intent.attackerId);
+                if (attacker && attacker.factionId === intent.clientId) {
+                    attacker.targetId = intent.targetId;
+                    attacker.destination = null; // Clear move dest
+                }
                 break;
             }
             case 'BUILD_STRUCTURE': {
-                const unit = spawnUnit(intent.structureType, intent.lat, intent.lng, intent.clientId, intent.unitId);
+                // Similar to SPAWN but for structures (POIs or Units depending on implementation)
+                // TacticOPS treats structures as Units mostly (Mobile Command Center builds them?)
+                // Or they are POIs?
+                // Looking at UnitClass, MILITARY_BASE etc are Units.
+                const unit = spawnUnit(intent.structureType, intent.lat, intent.lng, intent.clientId);
                 nextUnits.push(unit);
                 break;
             }
             case 'SET_TARGET': {
-                nextUnits = nextUnits.map(u => {
-                    if (u.id === intent.unitId && u.factionId === intent.clientId) {
-                        return { ...u, targetId: intent.targetId };
-                    }
-                    return u;
-                });
-                break;
-            }
-            case 'CLAIM_POI': {
-                const poiIndex = nextPOIs.findIndex(p => p.id === intent.poiId);
-                if (poiIndex !== -1) {
-                    nextPOIs[poiIndex] = {
-                        ...nextPOIs[poiIndex],
-                        ownerFactionId: intent.clientId,
-                        tier: 1
-                    };
-                    logEvent(messages, `Faction ${intent.clientId} claimed ${nextPOIs[poiIndex].name}`, 'info');
+                const unit = nextUnits.find(u => u.id === intent.unitId);
+                if (unit && unit.factionId === intent.clientId) {
+                    unit.targetId = intent.targetId;
                 }
                 break;
             }

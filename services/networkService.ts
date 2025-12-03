@@ -7,6 +7,7 @@ export type NetworkEvent =
     | { type: 'DISCONNECT' }
     | { type: 'STATE_UPDATE', state: GameState } // For initial sync or full resync
     | { type: 'TURN', turn: Turn }
+    | { type: 'INTENT', intent: Intent } // HOST receives intents from clients
     | { type: 'LOBBY_UPDATE', state: LobbyState }
     | { type: 'START_GAME', scenarioId: string, factions: any[] };
 
@@ -83,6 +84,8 @@ class NetworkServiceImpl {
     }
 
     private handleMessage(msg: NetworkMessage | any, conn: DataConnection) {
+        console.log('[NETWORK] Received message:', msg.type, 'from:', conn.peer);
+
         // Legacy support or direct event mapping
         if (msg.type === 'LOBBY_UPDATE') {
             this.notify({ type: 'LOBBY_UPDATE', state: msg.payload });
@@ -96,21 +99,17 @@ class NetworkServiceImpl {
         // New Protocol
         switch (msg.type) {
             case 'SERVER_TURN':
+                console.log('[NETWORK] Processing SERVER_TURN, turnNumber:', msg.turn.turnNumber, 'intents count:', msg.turn.intents.length);
                 this.notify({ type: 'TURN', turn: msg.turn });
                 break;
             case 'SERVER_WELCOME':
+                console.log('[NETWORK] Processing SERVER_WELCOME for client:', msg.clientId);
                 // Initial state sync
                 this.notify({ type: 'STATE_UPDATE', state: msg.gameState });
                 break;
             case 'CLIENT_INTENT':
-                // If I am host, I receive intents. I don't notify the game loop directly via event, 
-                // but I should probably expose a way for the game loop to poll intents or subscribe to them.
-                // For now, let's emit a custom event or handle it in the loop.
-                // Actually, the GameLoop needs to know about these.
-                // Let's add INTENT to NetworkEvent for the Host to consume.
-                // But wait, the plan said "Host accumulates intents".
-                // I'll add an INTENT event type for the host.
-                this.notify({ type: 'INTENT', intent: msg.intent } as any);
+                console.log('[NETWORK] Processing CLIENT_INTENT from:', conn.peer, 'intent type:', msg.intent.type);
+                this.notify({ type: 'INTENT', intent: msg.intent });
                 break;
             default:
                 // Fallback for legacy state updates if any
@@ -133,15 +132,15 @@ class NetworkServiceImpl {
 
     sendIntent(intent: Intent) {
         if (this.isHost) {
-            // If I am host, I don't send network message, I just loopback?
-            // Or the game loop handles local player intents directly.
-            // Usually local player intents are just added to the buffer directly.
             console.warn('[NETWORK] Host trying to send intent via network. Should be handled locally.');
             return;
         }
         if (this.hostConn && this.hostConn.open) {
             const msg: ClientIntentMessage = { type: 'CLIENT_INTENT', intent };
+            console.log('[NETWORK CLIENT] Sending CLIENT_INTENT:', intent.type, 'to host');
             this.hostConn.send(msg);
+        } else {
+            console.error('[NETWORK CLIENT] Cannot send intent, no connection to host!');
         }
     }
 
@@ -149,6 +148,7 @@ class NetworkServiceImpl {
 
     broadcastTurn(turn: Turn) {
         const msg: ServerTurnMessage = { type: 'SERVER_TURN', turn };
+        console.log('[NETWORK HOST] Broadcasting SERVER_TURN:', turn.turnNumber, 'intents:', turn.intents.length, 'to', this.conns.length, 'clients');
         this.broadcast(msg);
     }
 
