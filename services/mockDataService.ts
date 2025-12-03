@@ -169,6 +169,24 @@ const GLOBAL_CITIES: WorldCity[] = [
 
 const randomId = () => Math.random().toString(36).substr(2, 9);
 
+// Export function to get cities for games
+export const getMockCities = (): POI[] => {
+  return GLOBAL_CITIES.map((city, idx) => {
+    const defaultStats = POI_CONFIG[POIType.CITY];
+    return {
+      id: `CITY-${city.name.replace(/ /g, '').toUpperCase()}`,
+      type: POIType.CITY,
+      name: city.name,
+      position: { lat: city.lat, lng: city.lng },
+      ownerFactionId: undefined, // Unclaimed at start
+      tier: 0,
+      isCoastal: city.isCoastal,
+      hp: defaultStats.defaultHp,
+      maxHp: defaultStats.defaultHp
+    };
+  });
+};
+
 export const fetchWorldData = async (centerLat: number, centerLng: number, radiusKm: number): Promise<{ units: GameUnit[], pois: POI[], factions: Faction[] }> => {
   const units: GameUnit[] = [];
   const pois: POI[] = [];
