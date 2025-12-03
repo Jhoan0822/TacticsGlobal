@@ -309,8 +309,8 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [])
                 // FIX: If spawning HQ on a City, update City ownership immediately
                 if (unit.unitClass === UnitClass.COMMAND_CENTER || unit.unitClass === UnitClass.MOBILE_COMMAND_CENTER) {
                     const city = nextPOIs.find(p =>
-                        Math.abs(p.position.lat - unit.position.lat) < 0.001 &&
-                        Math.abs(p.position.lng - unit.position.lng) < 0.001
+                        Math.abs(p.position.lat - unit.position.lat) < 0.01 &&
+                        Math.abs(p.position.lng - unit.position.lng) < 0.01
                     );
                     if (city) {
                         city.ownerFactionId = intent.clientId;

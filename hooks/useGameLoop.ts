@@ -156,16 +156,9 @@ export const useGameLoop = () => {
                 };
 
                 // 3. Broadcast Turn
-                // RTS OPTIMIZATION: Broadcast frequently for responsiveness.
-                // If there are intents, broadcast IMMEDIATELY.
-                // If no intents, broadcast heartbeat every 3 ticks (approx 50ms) to keep clock synced.
-                // Actually, for smoothness, we should broadcast every tick if possible, but that might flood.
-                // Let's try every tick if intents > 0, else every 5 ticks.
-
-                const hasIntents = turn.intents.length > 0;
-                if (hasIntents || prevState.gameTick % 5 === 0) {
-                    NetworkService.broadcastTurn(turn);
-                }
+                // RTS OPTIMIZATION: Broadcast EVERY TICK for 60Hz fluidity.
+                // This is bandwidth heavy but necessary for smooth RTS movement.
+                NetworkService.broadcastTurn(turn);
 
                 // 4. Execute Tick locally
                 const nextState = processGameTick(prevState, currentIntents);
