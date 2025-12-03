@@ -4,6 +4,7 @@ import { UnitClass, GameState, Faction } from '../types';
 export type IntentType = 'SPAWN' | 'MOVE' | 'ATTACK' | 'CLAIM_BASE' | 'BUILD_STRUCTURE' | 'SET_TARGET' | 'CHEAT_RESOURCES';
 
 export interface BaseIntent {
+    id: string; // Unique ID for deduplication (UUID)
     type: IntentType;
     clientId: string; // The PeerID of the player issuing the command
     timestamp: number;
@@ -32,7 +33,7 @@ export interface AttackIntent extends BaseIntent {
 
 export interface ClaimBaseIntent extends BaseIntent {
     type: 'CLAIM_BASE';
-    poiId: string;
+    poiId: string; // Explicit POI ID
 }
 
 export interface BuildStructureIntent extends BaseIntent {
