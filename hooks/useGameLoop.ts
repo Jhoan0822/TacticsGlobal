@@ -41,15 +41,36 @@ export const useGameLoop = () => {
 
         // Filter POIs by Scenario Bounds
         const bounds = scenario.bounds;
-        const filteredPois = data.pois.filter(p =>
+        let filteredPois = data.pois.filter(p =>
             p.position.lat >= bounds.minLat && p.position.lat <= bounds.maxLat &&
             p.position.lng >= bounds.minLng && p.position.lng <= bounds.maxLng
         );
 
+        // Spawn HQs for AI
+        const aiUnits: GameUnit[] = [];
+
+        // We need to update POI ownership for AI starts
+        filteredPois = filteredPois.map(p => ({ ...p })); // Clone
+
+        factions.forEach(f => {
+            if (f.type === 'AI') {
+                const validCities = filteredPois.filter(p => p.type === POIType.CITY && !p.ownerFactionId);
+                if (validCities.length > 0) {
+                    const city = validCities[Math.floor(Math.random() * validCities.length)];
+                    city.ownerFactionId = f.id;
+                    city.tier = 1;
+
+                    const hq = spawnUnit(UnitClass.COMMAND_CENTER, city.position.lat, city.position.lng);
+                    hq.factionId = f.id;
+                    aiUnits.push(hq);
+                }
+            }
+        });
+
         setGameState(prev => ({
             ...prev,
             factions: factions,
-            units: [],
+            units: aiUnits,
             pois: filteredPois,
             messages: [{ id: 'init', text: 'Global Command Link Established.', type: 'info', timestamp: Date.now() }],
             scenario: scenario,

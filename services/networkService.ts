@@ -48,6 +48,12 @@ class NetworkServiceImpl {
   }
 
   private handleConnection(conn: DataConnection) {
+    // Prevent duplicate connections
+    if (this.conns.find(c => c.peer === conn.peer)) {
+      console.warn('[NETWORK] Duplicate connection attempt from:', conn.peer);
+      return;
+    }
+
     this.conns.push(conn);
 
     conn.on('open', () => {
@@ -56,6 +62,7 @@ class NetworkServiceImpl {
     });
 
     conn.on('data', (data: any) => {
+      // console.log('[NETWORK] Received:', data.type); // Verbose
       if (data.type === 'STATE_UPDATE') {
         this.notify({ type: 'STATE_UPDATE', state: data.payload });
       } else if (data.type === 'ACTION') {
@@ -75,6 +82,7 @@ class NetworkServiceImpl {
 
     conn.on('error', (err) => {
       console.error('Connection error:', err);
+      // Don't close immediately on error, let 'close' event handle it
     });
   }
 
