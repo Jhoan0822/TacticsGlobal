@@ -112,6 +112,12 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
         });
 
         // Start for Host (Host ID is NetworkService.myPeerId)
+        // CRITICAL: Ensure Host Faction ID matches myPeerId exactly.
+        const hostFaction = factions.find(f => f.id === NetworkService.myPeerId);
+        if (!hostFaction) {
+            // Should have been added in step 1 (Players loop)
+            console.error("Host faction not found in factions list!");
+        }
         onStartGame(scenario, NetworkService.myPeerId, factions, true, true);
 
         // Signal Clients
@@ -224,7 +230,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                     <button
                                         key={scen.id}
                                         disabled={!canEdit}
-                                        onClick={() => isSingle ? setLobbyState(p => ({ ...p, scenarioId: scen.id })) : updateLobbySetting('scenarioId', scen.id)}
+                                        onClick={() => isSingle ? setLobbyState(p => ({ ...p, scenarioId: scen.id })) : (canEdit && updateLobbySetting('scenarioId', scen.id))}
                                         className={`p-2 rounded text-sm font-bold border ${lobbyState.scenarioId === scen.id ? 'bg-blue-600 border-blue-400' : 'bg-slate-700 border-slate-600 hover:bg-slate-600'} ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
                                     >
                                         {scen.name}
@@ -240,7 +246,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                 type="range" min="0" max="7"
                                 disabled={!canEdit}
                                 value={lobbyState.botCount}
-                                onChange={(e) => isSingle ? setLobbyState(p => ({ ...p, botCount: parseInt(e.target.value) })) : updateLobbySetting('botCount', parseInt(e.target.value))}
+                                onChange={(e) => isSingle ? setLobbyState(p => ({ ...p, botCount: parseInt(e.target.value) })) : (canEdit && updateLobbySetting('botCount', parseInt(e.target.value)))}
                                 className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
                             />
                             <div className="flex justify-between text-xs text-gray-500 mt-1">
@@ -256,7 +262,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                     <button
                                         key={diff}
                                         disabled={!canEdit}
-                                        onClick={() => isSingle ? setLobbyState(p => ({ ...p, difficulty: diff })) : updateLobbySetting('difficulty', diff)}
+                                        onClick={() => isSingle ? setLobbyState(p => ({ ...p, difficulty: diff })) : (canEdit && updateLobbySetting('difficulty', diff))}
                                         className={`flex-1 p-2 rounded text-xs font-bold border ${lobbyState.difficulty === diff ? 'bg-red-600 border-red-400' : 'bg-slate-700 border-slate-600'} ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
                                     >
                                         {diff}
