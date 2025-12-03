@@ -59,8 +59,8 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
         )
     }
 
-    const playerFaction = gameState.factions.find(f => f.id === 'PLAYER');
-    const playerUnits = gameState.units.filter(u => u.factionId === 'PLAYER');
+    const playerFaction = gameState.factions.find(f => f.id === gameState.localPlayerId);
+    const playerUnits = gameState.units.filter(u => u.factionId === gameState.localPlayerId);
     const selectedUnit = selectedUnitIds.length === 1 ? gameState.units.find(u => u.id === selectedUnitIds[0]) : null;
     const isMultiSelect = selectedUnitIds.length > 1;
 
@@ -68,7 +68,7 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
     const baseIncomeOil = 2;
     let poiGold = 0; let poiOil = 0;
     gameState.pois?.forEach(poi => {
-        if (poi.ownerFactionId === 'PLAYER') {
+        if (poi.ownerFactionId === gameState.localPlayerId) {
             poiGold += POI_CONFIG[poi.type].incomeGold; poiOil += POI_CONFIG[poi.type].incomeOil;
         }
     });
@@ -85,10 +85,10 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
     const airUnits = [UnitClass.FIGHTER_JET, UnitClass.HEAVY_BOMBER, UnitClass.TROOP_TRANSPORT, UnitClass.HELICOPTER];
     const groundUnits = [UnitClass.INFANTRY, UnitClass.GROUND_TANK, UnitClass.MISSILE_LAUNCHER, UnitClass.SAM_LAUNCHER, UnitClass.MOBILE_COMMAND_CENTER];
 
-    const hasCity = gameState.pois.some(p => p.ownerFactionId === 'PLAYER' && p.type === POIType.CITY);
-    const hasNavalCap = gameState.pois.some(p => p.ownerFactionId === 'PLAYER' && p.type === POIType.CITY && p.isCoastal) ||
-        gameState.units.some(u => u.factionId === 'PLAYER' && u.unitClass === UnitClass.PORT);
-    const hasAirCap = hasCity || gameState.units.some(u => u.factionId === 'PLAYER' && (u.unitClass === UnitClass.AIRBASE || u.unitClass === UnitClass.MILITARY_BASE));
+    const hasCity = gameState.pois.some(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY);
+    const hasNavalCap = gameState.pois.some(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY && p.isCoastal) ||
+        gameState.units.some(u => u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.PORT);
+    const hasAirCap = hasCity || gameState.units.some(u => u.factionId === gameState.localPlayerId && (u.unitClass === UnitClass.AIRBASE || u.unitClass === UnitClass.MILITARY_BASE));
 
     const renderBuildList = (list: UnitClass[], title: string, reqMet: boolean, reqText: string) => (
         <div className="mb-4">
@@ -155,7 +155,7 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                 )}
                 {activeTab === 'DIPLOMACY' && (
                     <div className="space-y-3">
-                        {gameState.factions.filter(f => f.id !== 'PLAYER' && f.id !== 'NEUTRAL').map(faction => {
+                        {gameState.factions.filter(f => f.id !== gameState.localPlayerId && f.id !== 'NEUTRAL').map(faction => {
                             const relation = playerFaction?.relations[faction.id] || 0;
                             const allianceAnalysis = evaluateAllianceRequest(gameState, faction.id);
                             let status = 'NEUTRAL';
