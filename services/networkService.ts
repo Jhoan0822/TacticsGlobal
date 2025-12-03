@@ -22,7 +22,7 @@ class NetworkServiceImpl {
     if (this.peer) return; // Already initialized
 
     // Use public PeerJS server (default)
-    this.peer = new Peer();
+    this.peer = new Peer({ debug: 2 });
 
     this.peer.on('open', (id) => {
       this.myPeerId = id;
@@ -43,7 +43,7 @@ class NetworkServiceImpl {
   connect(hostId: string) {
     if (!this.peer) return;
     console.log('Connecting to:', hostId);
-    const conn = this.peer.connect(hostId);
+    const conn = this.peer.connect(hostId, { reliable: true });
     this.handleConnection(conn);
   }
 
@@ -128,6 +128,7 @@ class NetworkServiceImpl {
   }
 
   disconnect() {
+    console.log('[NETWORK] Disconnecting all connections...');
     this.conns.forEach(c => c.close());
     this.conns = [];
     if (this.peer) {
