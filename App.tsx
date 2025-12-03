@@ -40,60 +40,8 @@ const App: React.FC = () => {
     } = useGameLoop();
 
     // --- NETWORK INITIALIZATION ---
-    useEffect(() => {
-        if (networkMode === 'MULTI_HOST' || networkMode === 'MULTI_JOIN') {
-            NetworkService.initialize((id) => {
-                // Peer ID ready
-            });
-
-            const handleNetworkEvent = (e: any) => {
-                if (e.type === 'CONNECT') {
-                    if (networkMode === 'MULTI_HOST') {
-                        // Add Client to Lobby
-                        setLobbyState(prev => {
-                            // Check if player exists
-                            const existing = prev.players.find(p => p.id === e.peerId);
-                            if (existing) {
-                                // Force reference change to trigger useEffect broadcast
-                                return { ...prev };
-                            }
-                            // Add new player
-                            return {
-                                ...prev,
-                                players: [
-                                    ...prev.players,
-                                    { id: e.peerId, name: `Player ${prev.players.length + 1}`, factionIndex: 1, isHost: false, isReady: false }
-                                ]
-                            };
-                        });
-                    }
-                } else if (e.type === 'LOBBY_UPDATE') {
-                    setLobbyState(e.state);
-                } else if (e.type === 'START_GAME') {
-                    // Client Start
-                    const scenario = Object.values(SCENARIOS).find(s => s.id === e.scenarioId) || SCENARIOS.WORLD;
-                    // Use MY Peer ID as localPlayerId
-                    startGame(scenario, NetworkService.myPeerId, e.factions, true);
-                    setIsInMenu(false);
-                }
-                // Note: Game events (TURN, INTENT) are handled by useGameLoop subscription
-            };
-
-            const unsub = NetworkService.subscribe(handleNetworkEvent);
-            return () => {
-                unsub();
-            };
-        }
-    }, [networkMode]);
-
-    // Host Logic: Send Updates when Lobby State changes
-    useEffect(() => {
-        if (networkMode === 'MULTI_HOST' || networkMode === 'LOBBY') {
-            if (lobbyState.players.find(p => p.id === NetworkService.myPeerId)?.isHost) {
-                NetworkService.sendLobbyUpdate(lobbyState);
-            }
-        }
-    }, [lobbyState, networkMode]);
+    // MOVED TO MainMenu.tsx to avoid double initialization and race conditions.
+    // App.tsx only cares about the final startGame call.
 
     const handleStartGame = (scenario: Scenario, localPlayerId: string, factions: Faction[], isMultiplayer: boolean, isHost: boolean) => {
         startGame(scenario, localPlayerId, factions, isMultiplayer && !isHost);
