@@ -153,7 +153,20 @@ export const useGameLoop = () => {
     const handleBuyUnit = (type: UnitClass) => {
         console.log('[HANDLE BUY UNIT]', type);
 
-        // Find spawn location
+        // Structures need manual placement
+        const structures = [UnitClass.AIRBASE, UnitClass.PORT, UnitClass.MILITARY_BASE];
+        if (structures.includes(type)) {
+            console.log('[HANDLE BUY UNIT] Entering PLACING_STRUCTURE mode for', type);
+            setGameState(prev => ({
+                ...prev,
+                gameMode: 'PLACING_STRUCTURE',
+                placementType: type
+            }));
+            AudioService.playUiClick();
+            return;
+        }
+
+        // Find spawn location for units
         let spawnLat: number | null = null;
         let spawnLng: number | null = null;
 
