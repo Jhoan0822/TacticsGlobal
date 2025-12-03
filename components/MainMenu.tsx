@@ -58,7 +58,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
     };
 
     const handleHostLobbyStart = () => {
-        if (networkMode !== 'LOBBY') return;
+        if (networkMode !== 'MULTI_HOST' && networkMode !== 'LOBBY') return;
 
         const scenario = Object.values(SCENARIOS).find(s => s.id === lobbyState.scenarioId) || SCENARIOS.WORLD;
 
@@ -117,9 +117,9 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
     };
 
     const handleJoin = () => {
-        setConnectionStatus('Connecting...');
+        setConnectionStatus('Connecting to Host...');
         NetworkService.connect(hostIdInput);
-        setNetworkMode('LOBBY'); // Assume success for UI transition, real sync comes from App.tsx events
+        // Do NOT switch to LOBBY yet. Wait for LOBBY_UPDATE from App.tsx which populates lobbyState.players
     };
 
     const updateLobbySetting = (key: keyof LobbyState, value: any) => {
@@ -135,7 +135,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 difficulty: Difficulty.MEDIUM,
                 botCount: 2
             });
-            setNetworkMode('LOBBY');
+            // Stay in MULTI_HOST mode
         }
     }, [networkMode, peerId]);
 
@@ -158,7 +158,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
         }
     }
 
-    if (networkMode === 'MULTI_JOIN' && !connectionStatus.includes('Connected')) {
+    // Show Join UI if we are in JOIN mode AND we haven't received the lobby state yet (players empty)
+    if (networkMode === 'MULTI_JOIN' && lobbyState.players.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white space-y-8">
                 <h2 className="text-4xl font-bold">JOIN GAME</h2>
