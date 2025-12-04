@@ -308,7 +308,9 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
                 ctx.translate(pos.x, pos.y);
 
                 // City Shape
-                if (isCity) {
+                // POI Rendering
+                if (poi.type === POIType.CITY) {
+                    // City Shape
                     // Glow
                     ctx.shadowColor = color;
                     ctx.shadowBlur = 10;
@@ -347,21 +349,37 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
                     ctx.lineWidth = 1;
                     ctx.strokeRect(-16, -20, 32, 4);
 
-                } else {
-                    // Oil Rig / Other
+                } else if (poi.type === POIType.OIL_RIG) {
+                    // Oil Rig (Black Tower)
+                    ctx.fillStyle = '#1e293b'; // Slate 800
                     ctx.beginPath();
-                    ctx.arc(0, 0, 10, 0, Math.PI * 2);
-                    ctx.fillStyle = color;
+                    ctx.moveTo(-8, 8); ctx.lineTo(8, 8); ctx.lineTo(0, -12); ctx.closePath();
                     ctx.fill();
-                    ctx.strokeStyle = 'white';
+                    ctx.strokeStyle = '#f59e0b'; // Amber border
                     ctx.lineWidth = 2;
                     ctx.stroke();
 
-                    ctx.fillStyle = 'white';
+                    ctx.fillStyle = '#fbbf24';
                     ctx.font = 'bold 10px Arial';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText('O', 0, 0);
+                    ctx.fillText('OIL', 0, 4);
+
+                } else if (poi.type === POIType.GOLD_MINE) {
+                    // Gold Mine (Yellow Diamond)
+                    ctx.fillStyle = '#fbbf24'; // Amber 400
+                    ctx.beginPath();
+                    ctx.moveTo(0, -10); ctx.lineTo(10, 0); ctx.lineTo(0, 10); ctx.lineTo(-10, 0); ctx.closePath();
+                    ctx.fill();
+                    ctx.strokeStyle = '#78350f'; // Brown border
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#78350f';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('Au', 0, 0);
                 }
 
                 ctx.restore();
