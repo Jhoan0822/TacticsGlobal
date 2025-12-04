@@ -84,11 +84,6 @@ export const useGameLoop = () => {
 
         if (timestamp - lastTickTime.current >= GAME_TICK_MS) {
             setGameState(prevState => {
-                // DEBUG: Log game state every 100 ticks
-                if (prevState.gameTick % 100 === 0) {
-                    console.log('[GAME LOOP] Tick:', prevState.gameTick, 'Mode:', prevState.gameMode, 'isClient:', prevState.isClient);
-                }
-
                 // Only simulate if in PLAYING mode
                 if (prevState.gameMode !== 'PLAYING') return prevState;
 
@@ -133,7 +128,7 @@ export const useGameLoop = () => {
             projectiles: [],
             explosions: [],
             messages: [],
-            playerResources: { gold: 5000, oil: 1000, intel: 100 },
+            playerResources: { gold: 3000, oil: 500, intel: 100 },
             gameMode: 'SELECT_BASE',
             gameTick: 0,
             controlGroups: {},

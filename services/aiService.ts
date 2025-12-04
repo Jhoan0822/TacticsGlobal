@@ -11,10 +11,6 @@ export const updateAI = (gameState: GameState, unitGrid?: Map<string, GameUnit[]
   // 2. Run Faction Logic for EVERY BOT
   const now = Date.now();
 
-  // DEBUG: Log all factions
-  const botFactions = newState.factions.filter(f => f.type === 'BOT');
-  console.log('[AI] Running AI for', botFactions.length, 'BOT factions. Total factions:', newState.factions.map(f => ({ id: f.id, type: f.type, gold: f.gold })));
-
   newState.factions.forEach(faction => {
     // ONLY process BOT factions
     if (faction.type !== 'BOT') return;
@@ -25,17 +21,11 @@ export const updateAI = (gameState: GameState, unitGrid?: Map<string, GameUnit[]
 
     faction.lastAiUpdate = now;
 
-    console.log('[AI]', faction.id, 'has', faction.gold, 'gold,', faction.oil, 'oil');
-
     // AGGRESSIVE AI: Evaluate targets and take action
     const targets = evaluateTargets(faction, newState, unitGrid);
-    console.log('[AI]', faction.id, 'found', targets.length, 'targets');
 
     // FORCE PRODUCTION: AI always tries to build if it has money
-    const unitsBefore = newState.units.filter(u => u.factionId === faction.id).length;
     newState = executeProductionAggressive(faction, newState, targets);
-    const unitsAfter = newState.units.filter(u => u.factionId === faction.id).length;
-    console.log('[AI]', faction.id, 'built', unitsAfter - unitsBefore, 'units. Total:', unitsAfter);
 
     // FORCE MOVEMENT: AI always assigns targets to idle units
     newState = executeMovementAggressive(faction, newState, targets);
@@ -236,6 +226,11 @@ const executeMovementAggressive = (faction: Faction, gameState: GameState, targe
 
   const myUnits = gameState.units.filter(u => u.factionId === faction.id);
 
+  // Separate targets by type
+  const cityTargets = targets.filter(t => t.type === 'CITY');
+  const unitTargets = targets.filter(t => t.type === 'UNIT');
+  const resourceTargets = targets.filter(t => t.type === 'RESOURCE');
+
   // Find all idle units (no target and no destination)
   const idleUnits = myUnits.filter(u =>
     !u.targetId &&
@@ -250,11 +245,55 @@ const executeMovementAggressive = (faction: Faction, gameState: GameState, targe
 
   const assignedUnits = [...gameState.units];
 
-  // Assign each idle unit to a target
-  idleUnits.forEach((unit, idx) => {
-    // Spread units across multiple targets
-    const targetIndex = idx % Math.min(targets.length, 3);
-    const target = targets[targetIndex];
+  // STRATEGIC ASSIGNMENT
+  idleUnits.forEach((unit) => {
+    let target: ScoredTarget | null = null;
+
+    // Infantry: prioritize capturing cities, then resources
+    if (unit.unitClass === UnitClass.INFANTRY || unit.unitClass === UnitClass.SPECIAL_FORCES) {
+      if (cityTargets.length > 0) {
+        target = cityTargets[Math.floor(Math.random() * Math.min(cityTargets.length, 3))];
+      } else if (resourceTargets.length > 0) {
+        target = resourceTargets[Math.floor(Math.random() * resourceTargets.length)];
+      }
+    }
+    // Combat units: prioritize attacking enemies, then cities
+    else if (unit.unitClass === UnitClass.GROUND_TANK ||
+      unit.unitClass === UnitClass.FIGHTER_JET ||
+      unit.unitClass === UnitClass.HELICOPTER ||
+      unit.unitClass === UnitClass.MISSILE_LAUNCHER) {
+      if (unitTargets.length > 0) {
+        target = unitTargets[Math.floor(Math.random() * Math.min(unitTargets.length, 5))];
+      } else if (cityTargets.length > 0) {
+        target = cityTargets[Math.floor(Math.random() * cityTargets.length)];
+      }
+    }
+    // Naval units
+    else if (unit.unitClass === UnitClass.DESTROYER ||
+      unit.unitClass === UnitClass.FRIGATE ||
+      unit.unitClass === UnitClass.BATTLESHIP) {
+      // Attack enemy ships or coastal cities
+      const navalTargets = unitTargets.filter(t => {
+        const targetUnit = gameState.units.find(u => u.id === t.id);
+        return targetUnit && (
+          targetUnit.unitClass === UnitClass.DESTROYER ||
+          targetUnit.unitClass === UnitClass.FRIGATE ||
+          targetUnit.unitClass === UnitClass.BATTLESHIP ||
+          targetUnit.unitClass === UnitClass.SUBMARINE
+        );
+      });
+      if (navalTargets.length > 0) {
+        target = navalTargets[0];
+      } else if (unitTargets.length > 0) {
+        target = unitTargets[0];
+      }
+    }
+    // Default: attack anything
+    else {
+      if (targets.length > 0) {
+        target = targets[Math.floor(Math.random() * Math.min(targets.length, 3))];
+      }
+    }
 
     if (target) {
       const unitIndex = assignedUnits.findIndex(u => u.id === unit.id);
