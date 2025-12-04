@@ -179,10 +179,49 @@ const App: React.FC = () => {
         setSelectedUnitIds([]);
     }, []);
 
+    // Auto-Control: Toggle auto-target for selected units
+    const handleToggleAutoTarget = useCallback(() => {
+        if (selectedUnitIds.length === 0) return;
+        setGameState(prev => ({
+            ...prev,
+            units: prev.units.map(u =>
+                selectedUnitIds.includes(u.id) && u.factionId === prev.localPlayerId
+                    ? { ...u, autoTarget: !u.autoTarget }
+                    : u
+            )
+        }));
+    }, [selectedUnitIds, setGameState]);
+
+    // Auto-Control: Cycle through auto-modes
+    const handleCycleAutoMode = useCallback(() => {
+        if (selectedUnitIds.length === 0) return;
+        const modes: Array<'NONE' | 'DEFEND' | 'ATTACK' | 'PATROL'> = ['NONE', 'DEFEND', 'ATTACK', 'PATROL'];
+        setGameState(prev => ({
+            ...prev,
+            units: prev.units.map(u => {
+                if (selectedUnitIds.includes(u.id) && u.factionId === prev.localPlayerId) {
+                    const currentMode = u.autoMode || 'NONE';
+                    const nextIdx = (modes.indexOf(currentMode) + 1) % modes.length;
+                    const newMode = modes[nextIdx];
+                    return {
+                        ...u,
+                        autoMode: newMode,
+                        homePosition: newMode !== 'NONE' ? { ...u.position } : undefined,
+                        targetId: null,
+                        destination: null
+                    };
+                }
+                return u;
+            })
+        }));
+    }, [selectedUnitIds, setGameState]);
+
     useHotkeys({
         onBuyUnit: originalHandleBuyUnit,
         onSelectAll: handleSelectAll,
         onDeselectAll: handleDeselectAll,
+        onToggleAutoTarget: handleToggleAutoTarget,
+        onCycleAutoMode: handleCycleAutoMode,
         enabled: !isInMenu && gameState.gameMode === 'PLAYING'
     });
 

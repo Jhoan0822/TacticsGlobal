@@ -5,6 +5,7 @@ import { updateAI } from './aiService';
 import { TerrainService } from './terrainService';
 import { Intent } from './schemas';
 import { GameAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload, ClaimPOIPayload } from './schemas';
+import { processPlayerAutoControl } from './autoControl';
 
 // OPTIMIZATION: Pre-calculate constants
 const DEG2RAD = Math.PI / 180;
@@ -908,6 +909,11 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
                 } as any]
             };
         }
+    }
+
+    // Process Player Auto-Control (DEFEND/ATTACK/PATROL modes)
+    if (currentState.gameTick % 3 === 0) {
+        nextState = processPlayerAutoControl(nextState);
     }
 
     // Throttle AI Update (every 5 ticks) - HOST ONLY
