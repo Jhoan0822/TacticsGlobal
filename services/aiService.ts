@@ -11,6 +11,10 @@ export const updateAI = (gameState: GameState, unitGrid?: Map<string, GameUnit[]
   // 2. Run Faction Logic for EVERY BOT
   const now = Date.now();
 
+  // DEBUG: Log all factions
+  const botFactions = newState.factions.filter(f => f.type === 'BOT');
+  console.log('[AI] Running AI for', botFactions.length, 'BOT factions. Total factions:', newState.factions.map(f => ({ id: f.id, type: f.type, gold: f.gold })));
+
   newState.factions.forEach(faction => {
     // ONLY process BOT factions
     if (faction.type !== 'BOT') return;
@@ -21,11 +25,17 @@ export const updateAI = (gameState: GameState, unitGrid?: Map<string, GameUnit[]
 
     faction.lastAiUpdate = now;
 
+    console.log('[AI]', faction.id, 'has', faction.gold, 'gold,', faction.oil, 'oil');
+
     // AGGRESSIVE AI: Evaluate targets and take action
     const targets = evaluateTargets(faction, newState, unitGrid);
+    console.log('[AI]', faction.id, 'found', targets.length, 'targets');
 
     // FORCE PRODUCTION: AI always tries to build if it has money
+    const unitsBefore = newState.units.filter(u => u.factionId === faction.id).length;
     newState = executeProductionAggressive(faction, newState, targets);
+    const unitsAfter = newState.units.filter(u => u.factionId === faction.id).length;
+    console.log('[AI]', faction.id, 'built', unitsAfter - unitsBefore, 'units. Total:', unitsAfter);
 
     // FORCE MOVEMENT: AI always assigns targets to idle units
     newState = executeMovementAggressive(faction, newState, targets);
