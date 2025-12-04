@@ -123,6 +123,7 @@ export const useGameLoop = () => {
         // HOST LOGIC: Assign Cities & Spawn HQs
         if (!isClient) {
             let allCities = getMockCities();
+            const initialUnits: GameUnit[] = [];
 
             // Filter by Scenario Bounds
             if (scenario.bounds) {
@@ -151,15 +152,21 @@ export const useGameLoop = () => {
                     city.tier = 1;
 
                     // Spawn HQ
-                    // We need to add this unit to the initial state
-                    // But we can't easily call spawnUnit here without gameLogic context?
-                    // We can manually create the unit object.
-                    // WAIT: spawnUnit is exported from gameLogic.
+                    const hq = spawnUnit(UnitClass.COMMAND_CENTER, city.position.lat, city.position.lng, bot.id);
+                    initialUnits.push(hq);
+
+                    // Spawn Guard
+                    const guard = spawnUnit(UnitClass.INFANTRY, city.position.lat + 0.01, city.position.lng + 0.01, bot.id);
+                    initialUnits.push(guard);
+
+                    console.log('[START GAME] Assigned', city.name, 'to bot', bot.name);
                 }
             });
 
-            // Update POIs in initial state
+            // Update POIs and Units in initial state
             initialState.pois = allCities;
+            initialState.units = initialUnits;
+
         }
 
         setGameState(initialState);
