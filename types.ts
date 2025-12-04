@@ -165,6 +165,7 @@ export interface GameState {
   scenario: Scenario;
   localPlayerId: string;
   isClient?: boolean;
+  pendingBotFactions?: string[]; // Bot faction IDs awaiting city assignment
   // Victory/Defeat State
   gameResult?: 'VICTORY' | 'DEFEAT' | null;
   gameStats?: {
