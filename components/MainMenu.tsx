@@ -35,7 +35,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             ...FACTION_PRESETS[selectedFactionIndex],
             id: 'PLAYER',
             type: 'PLAYER' as const,
-            gold: 5000,
+            gold: 50000,
+            oil: 10000,
             relations: {},
             aggression: 0
         };
@@ -47,8 +48,9 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             .map((preset, i) => ({
                 ...preset,
                 id: `ENEMY_${i}`,
-                type: 'AI' as const,
-                gold: 5000,
+                type: 'BOT' as const,
+                gold: 50000,
+                oil: 10000,
                 relations: { 'PLAYER': -100 },
                 aggression: 1.0
             }));
@@ -72,7 +74,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 id: p.id, // USE PEER ID AS FACTION ID
                 name: p.name,
                 type: 'PLAYER',
-                gold: 5000,
+                gold: 50000,
+                oil: 10000,
                 relations: {},
                 aggression: 0
             });
@@ -87,8 +90,9 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             factions.push({
                 ...availablePresets[i],
                 id: `BOT_${i}`,
-                type: 'AI',
-                gold: 5000,
+                type: 'BOT',
+                gold: 50000,
+                oil: 10000,
                 relations: {}, // Set relations below
                 aggression: 1.0
             });
