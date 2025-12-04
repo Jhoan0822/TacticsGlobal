@@ -68,6 +68,43 @@ export const processPlayerAutoControl = (gameState: GameState): GameState => {
         // Handle AUTO-MODES
         switch (unit.autoMode) {
             case 'DEFEND': {
+                // NEUTRAL_DEFENDER: Simple defense - only protect home city, never patrol elsewhere
+                if (unit.factionId === 'NEUTRAL_DEFENDER') {
+                    // Simple radius-based defense around home position only
+                    const enemiesInArea = enemiesWithDist.filter(e => e.distToHome < DEFEND_RADIUS);
+                    const distFromHome = getDistanceKm(unit.position.lat, unit.position.lng, homePos.lat, homePos.lng);
+
+                    if (enemiesInArea.length > 0) {
+                        // Attack closest enemy near home
+                        updatedUnits[unitIdx] = {
+                            ...updatedUnits[unitIdx],
+                            targetId: enemiesInArea[0].enemy.id,
+                            destination: null
+                        };
+                    } else if (distFromHome > DEFEND_RADIUS * 0.5) {
+                        // Return to home if wandered too far
+                        updatedUnits[unitIdx] = {
+                            ...updatedUnits[unitIdx],
+                            destination: homePos,
+                            targetId: null
+                        };
+                    } else if (!unit.destination) {
+                        // Patrol small area around home only (10-30km)
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = 10 + Math.random() * 20;
+                        updatedUnits[unitIdx] = {
+                            ...updatedUnits[unitIdx],
+                            destination: {
+                                lat: homePos.lat + Math.sin(angle) * (dist / 111),
+                                lng: homePos.lng + Math.cos(angle) * (dist / (111 * Math.cos(homePos.lat * Math.PI / 180)))
+                            },
+                            targetId: null
+                        };
+                    }
+                    break; // Exit early for NEUTRAL_DEFENDER
+                }
+
+                // PLAYER/BOT FACTIONS: Full territory patrol between owned POIs
                 // DEFEND = Patrol TERRITORY (owned POIs) + attack enemies in territory
 
                 // Find all owned POIs for this faction to define territory
