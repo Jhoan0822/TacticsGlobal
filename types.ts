@@ -105,6 +105,10 @@ export interface GameUnit extends UnitStats {
   realWorldIdentity?: RealWorldData;
   isBoosting?: boolean;
   cooldown?: number; // Fire rate cooldown
+  // Auto-control modes for player units
+  autoMode?: 'NONE' | 'DEFEND' | 'ATTACK' | 'PATROL';
+  autoTarget?: boolean; // Auto-engage enemies in range
+  homePosition?: { lat: number; lng: number }; // For patrol/defend
 }
 
 export interface Projectile {

@@ -5,6 +5,8 @@ interface HotkeyConfig {
     onBuyUnit: (type: UnitClass) => void;
     onSelectAll: () => void;
     onDeselectAll: () => void;
+    onToggleAutoTarget?: () => void;
+    onCycleAutoMode?: () => void;
     enabled: boolean;
 }
 
@@ -12,6 +14,7 @@ interface HotkeyConfig {
 // Q = Infantry, W = Tank, E = Helicopter, R = Jet
 // A = Destroyer, S = Frigate, D = Submarine
 // Z = Missile Launcher, X = SAM
+// G = Toggle Auto-Target, F = Cycle Auto-Mode (NONE -> DEFEND -> ATTACK -> PATROL)
 // 1-9 = Control groups (handled elsewhere)
 // ESC = Deselect
 
@@ -28,7 +31,11 @@ const PRODUCTION_HOTKEYS: Record<string, UnitClass> = {
     't': UnitClass.HEAVY_BOMBER,
 };
 
-export const useHotkeys = ({ onBuyUnit, onSelectAll, onDeselectAll, enabled }: HotkeyConfig) => {
+export const useHotkeys = ({
+    onBuyUnit, onSelectAll, onDeselectAll,
+    onToggleAutoTarget, onCycleAutoMode,
+    enabled
+}: HotkeyConfig) => {
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
         if (!enabled) return;
 
@@ -41,6 +48,20 @@ export const useHotkeys = ({ onBuyUnit, onSelectAll, onDeselectAll, enabled }: H
         if (PRODUCTION_HOTKEYS[key]) {
             e.preventDefault();
             onBuyUnit(PRODUCTION_HOTKEYS[key]);
+            return;
+        }
+
+        // Auto-Target Toggle (G)
+        if (key === 'g' && onToggleAutoTarget) {
+            e.preventDefault();
+            onToggleAutoTarget();
+            return;
+        }
+
+        // Cycle Auto-Mode (F)
+        if (key === 'f' && onCycleAutoMode) {
+            e.preventDefault();
+            onCycleAutoMode();
             return;
         }
 
@@ -57,7 +78,7 @@ export const useHotkeys = ({ onBuyUnit, onSelectAll, onDeselectAll, enabled }: H
             onDeselectAll();
             return;
         }
-    }, [enabled, onBuyUnit, onSelectAll, onDeselectAll]);
+    }, [enabled, onBuyUnit, onSelectAll, onDeselectAll, onToggleAutoTarget, onCycleAutoMode]);
 
     useEffect(() => {
         window.addEventListener('keydown', handleKeyDown);
@@ -89,4 +110,12 @@ export const HOTKEY_LABELS: Record<UnitClass, string> = {
     [UnitClass.BATTLESHIP]: '',
     [UnitClass.PATROL_BOAT]: '',
     [UnitClass.MINELAYER]: '',
+};
+
+// Auto-Mode Labels
+export const AUTO_MODE_LABELS = {
+    NONE: '⚪',
+    DEFEND: '🛡️',
+    ATTACK: '⚔️',
+    PATROL: '🔄'
 };
