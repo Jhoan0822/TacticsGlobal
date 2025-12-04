@@ -6,6 +6,7 @@ import { getNearbyUnits } from '../services/gameLogic';
 import TerritoryLayer from './TerritoryLayer';
 import PlacementOverlay from './PlacementOverlay';
 import GameCanvas from './GameCanvas';
+import TerrainLayer from './TerrainLayer';
 
 interface Props {
     units: GameUnit[];
@@ -295,6 +296,7 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
                 center={[center.lat, center.lng]}
                 zoom={3}
                 minZoom={3}
+                maxZoom={8}
                 style={{ height: '100%', width: '100%', backgroundColor: '#000000' }}
                 zoomControl={false}
                 preferCanvas={true}
@@ -302,7 +304,9 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
             >
                 <MapController center={center} gameMode={gameMode} />
 
-                {/* ALWAYS RENDER CANVAS FOR MAP VISIBILITY */}
+                {/* LAYER 1: STATIC TERRAIN (Z: 200) */}
+                <TerrainLayer />
+                {/* LAYER 3: UNITS & POIS (Z: 600) */}
                 <GameCanvas
                     units={units}
                     factions={factions}
@@ -329,6 +333,7 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
 
                 {gameMode !== 'SELECT_BASE' && (
                     <>
+                        {/* LAYER 2: TERRITORY (Z: 400) - Rendered via SVGOverlay inside TerritoryLayer */}
                         <TerritoryLayer units={units} pois={pois} factions={factions} />
                         <PlacementOverlay gameMode={gameMode} placementType={placementType || null} />
                     </>
