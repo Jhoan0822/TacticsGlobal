@@ -101,20 +101,24 @@ export class AIDirector {
 
         // Spawn a diverse squad
         for (let i = 0; i < squadSize; i++) {
-            // Unit type variety
+            // Unit type variety - check if faction has airbase for air units
+            const hasAirbase = gameState.units.some(u =>
+                u.factionId === faction.id && u.unitClass === UnitClass.AIRBASE
+            );
+
             let unitType: UnitClass;
             const rand = Math.random();
 
-            if (rand < 0.3) {
+            if (rand < 0.35) {
                 unitType = UnitClass.GROUND_TANK; // Main battle force
-            } else if (rand < 0.5) {
+            } else if (rand < 0.55) {
                 unitType = UnitClass.INFANTRY; // Capture capability
-            } else if (rand < 0.7) {
-                unitType = UnitClass.FIGHTER_JET; // Air support
-            } else if (rand < 0.85) {
-                unitType = UnitClass.HELICOPTER; // Versatile
+            } else if (rand < 0.70 && hasAirbase) {
+                unitType = UnitClass.FIGHTER_JET; // Air support (only with airbase)
+            } else if (rand < 0.85 && hasAirbase) {
+                unitType = UnitClass.HELICOPTER; // Versatile (only with airbase)
             } else {
-                unitType = UnitClass.MISSILE_LAUNCHER; // Heavy support
+                unitType = UnitClass.MISSILE_LAUNCHER; // Heavy support (fallback if no airbase)
             }
 
             const offsetLat = (Math.random() - 0.5) * 0.05;
