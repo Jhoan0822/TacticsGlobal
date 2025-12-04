@@ -68,36 +68,105 @@ export const processPlayerAutoControl = (gameState: GameState): GameState => {
         // Handle AUTO-MODES
         switch (unit.autoMode) {
             case 'DEFEND': {
-                // DEFEND = Patrol area + attack enemies in area
-                const enemiesInArea = enemiesWithDist.filter(e => e.distToHome < DEFEND_RADIUS);
-                const distFromHome = getDistanceKm(unit.position.lat, unit.position.lng, homePos.lat, homePos.lng);
+                // DEFEND = Patrol TERRITORY (owned POIs) + attack enemies in territory
 
-                if (enemiesInArea.length > 0) {
-                    // Attack closest enemy in defense area
+                // Find all owned POIs for this faction to define territory
+                const ownedPOIs = gameState.pois.filter(p =>
+                    p.ownerFactionId === unit.factionId &&
+                    (p.type === POIType.CITY || p.type === POIType.OIL_RIG || p.type === POIType.GOLD_MINE)
+                );
+
+                // Calculate territory bounds (convex hull simplified as bounding box + margin)
+                let minLat = homePos.lat, maxLat = homePos.lat;
+                let minLng = homePos.lng, maxLng = homePos.lng;
+
+                ownedPOIs.forEach(poi => {
+                    if (poi.position.lat < minLat) minLat = poi.position.lat;
+                    if (poi.position.lat > maxLat) maxLat = poi.position.lat;
+                    if (poi.position.lng < minLng) minLng = poi.position.lng;
+                    if (poi.position.lng > maxLng) maxLng = poi.position.lng;
+                });
+
+                // Add margin to territory (in degrees, ~50km)
+                const margin = 0.5;
+                minLat -= margin; maxLat += margin;
+                minLng -= margin; maxLng += margin;
+
+                // Check if enemy is inside territory bounds
+                const enemiesInTerritory = enemiesWithDist.filter(e =>
+                    e.enemy.position.lat >= minLat && e.enemy.position.lat <= maxLat &&
+                    e.enemy.position.lng >= minLng && e.enemy.position.lng <= maxLng
+                );
+
+                // Also check if enemy is near any owned POI (radius-based as backup)
+                const enemiesNearPOIs = enemiesWithDist.filter(e =>
+                    ownedPOIs.some(poi =>
+                        getDistanceKm(poi.position.lat, poi.position.lng, e.enemy.position.lat, e.enemy.position.lng) < DEFEND_RADIUS
+                    )
+                );
+
+                // Combine both checks
+                const threateningEnemies = [
+                    ...enemiesInTerritory,
+                    ...enemiesNearPOIs.filter(e => !enemiesInTerritory.find(t => t.enemy.id === e.enemy.id))
+                ];
+
+                // Check if unit is within territory
+                const inTerritory = unit.position.lat >= minLat && unit.position.lat <= maxLat &&
+                    unit.position.lng >= minLng && unit.position.lng <= maxLng;
+
+                if (threateningEnemies.length > 0) {
+                    // Attack closest threatening enemy
+                    const closest = threateningEnemies.sort((a, b) => a.distToUnit - b.distToUnit)[0];
                     updatedUnits[unitIdx] = {
                         ...updatedUnits[unitIdx],
-                        targetId: enemiesInArea[0].enemy.id,
+                        targetId: closest.enemy.id,
                         destination: null
                     };
-                } else if (distFromHome > DEFEND_RADIUS) {
-                    // Too far from home, return
+                } else if (!inTerritory) {
+                    // Return to territory - go to nearest owned POI
+                    let nearestPOI = homePos;
+                    let nearestDist = Infinity;
+                    ownedPOIs.forEach(poi => {
+                        const d = getDistanceKm(unit.position.lat, unit.position.lng, poi.position.lat, poi.position.lng);
+                        if (d < nearestDist) {
+                            nearestDist = d;
+                            nearestPOI = poi.position;
+                        }
+                    });
                     updatedUnits[unitIdx] = {
                         ...updatedUnits[unitIdx],
-                        destination: homePos,
+                        destination: nearestPOI,
                         targetId: null
                     };
                 } else if (!unit.destination) {
-                    // No enemies, patrol the area - move to random point within radius
-                    const angle = Math.random() * Math.PI * 2;
-                    const dist = DEFEND_RADIUS * 0.3 + Math.random() * DEFEND_RADIUS * 0.5;
-                    updatedUnits[unitIdx] = {
-                        ...updatedUnits[unitIdx],
-                        destination: {
-                            lat: homePos.lat + Math.sin(angle) * (dist / 111),
-                            lng: homePos.lng + Math.cos(angle) * (dist / (111 * Math.cos(homePos.lat * Math.PI / 180)))
-                        },
-                        targetId: null
-                    };
+                    // Patrol territory - move to a random owned POI or patrol point
+                    if (ownedPOIs.length > 0) {
+                        // Pick a random owned POI as patrol waypoint
+                        const patrolTarget = ownedPOIs[Math.floor(Math.random() * ownedPOIs.length)];
+                        const offsetLat = (Math.random() - 0.5) * 0.1; // Small offset
+                        const offsetLng = (Math.random() - 0.5) * 0.1;
+                        updatedUnits[unitIdx] = {
+                            ...updatedUnits[unitIdx],
+                            destination: {
+                                lat: patrolTarget.position.lat + offsetLat,
+                                lng: patrolTarget.position.lng + offsetLng
+                            },
+                            targetId: null
+                        };
+                    } else {
+                        // No owned POIs, patrol around home
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = DEFEND_RADIUS * 0.3 + Math.random() * DEFEND_RADIUS * 0.5;
+                        updatedUnits[unitIdx] = {
+                            ...updatedUnits[unitIdx],
+                            destination: {
+                                lat: homePos.lat + Math.sin(angle) * (dist / 111),
+                                lng: homePos.lng + Math.cos(angle) * (dist / (111 * Math.cos(homePos.lat * Math.PI / 180)))
+                            },
+                            targetId: null
+                        };
+                    }
                 }
                 break;
             }

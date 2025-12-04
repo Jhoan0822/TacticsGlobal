@@ -108,14 +108,17 @@ const calculateSteering = (unit: GameUnit, neighbors: GameUnit[], pois: POI[]): 
     let steerLng = 0;
 
     // 1. SEPARATION (Push away from neighbors to avoid stacking)
-    const desiredSeparation = 0.05; // ~5km
+    // REDUCED sensitivity to prevent oscillation
+    const desiredSeparation = 0.02; // ~2km - reduced from 5km
+    const minSeparation = 0.005; // Ignore very close neighbors (jitter zone)
     let count = 0;
 
     // Optimization: Use for loop instead of forEach
     for (let i = 0; i < neighbors.length; i++) {
         const other = neighbors[i];
         const d = Math.sqrt(Math.pow(unit.position.lat - other.position.lat, 2) + Math.pow(unit.position.lng - other.position.lng, 2));
-        if (d > 0 && d < desiredSeparation) {
+        // Only apply separation if outside jitter zone and within desired range
+        if (d > minSeparation && d < desiredSeparation) {
             const diffLat = unit.position.lat - other.position.lat;
             const diffLng = unit.position.lng - other.position.lng;
             // Weight by distance
@@ -142,6 +145,20 @@ const calculateSteering = (unit: GameUnit, neighbors: GameUnit[], pois: POI[]): 
         // Simple heuristic: bounce normal
         steerLat += Math.sin(rads) * 0.5; // Perpendicular force
         steerLng -= Math.cos(rads) * 0.5;
+    }
+
+    // 3. DAMPING - Apply damping factor to prevent oscillation
+    // Reduce steering force when unit has a destination (prioritize reaching it)
+    const dampingFactor = unit.destination ? 0.2 : 0.4;
+    steerLat *= dampingFactor;
+    steerLng *= dampingFactor;
+
+    // 4. CAP MAXIMUM STEERING - Prevent runaway forces
+    const maxSteer = 0.05;
+    const steerMag = Math.sqrt(steerLat * steerLat + steerLng * steerLng);
+    if (steerMag > maxSteer) {
+        steerLat = (steerLat / steerMag) * maxSteer;
+        steerLng = (steerLng / steerMag) * maxSteer;
     }
 
     return { lat: steerLat, lng: steerLng };

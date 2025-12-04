@@ -133,6 +133,14 @@ const App: React.FC = () => {
 
     const handleUnitClick = (id: string, multiSelect: boolean) => {
         if (gameState.gameMode === 'PLAYING') {
+            const unit = gameState.units.find(u => u.id === id);
+
+            // Don't select non-actionable structures (they serve only as spawn points)
+            const nonSelectableTypes = [UnitClass.AIRBASE];
+            if (unit && nonSelectableTypes.includes(unit.unitClass)) {
+                return; // Silently ignore clicks on these
+            }
+
             if (multiSelect) {
                 setSelectedUnitIds(prev => prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]);
             } else {
@@ -165,8 +173,14 @@ const App: React.FC = () => {
     };
 
     const handleMultiSelect = (ids: string[]) => {
-        setSelectedUnitIds(ids);
-        if (ids.length > 0) AudioService.playUiClick();
+        // Filter out non-actionable structures from multi-select
+        const nonSelectableTypes = [UnitClass.AIRBASE];
+        const filteredIds = ids.filter(id => {
+            const unit = gameState.units.find(u => u.id === id);
+            return !unit || !nonSelectableTypes.includes(unit.unitClass);
+        });
+        setSelectedUnitIds(filteredIds);
+        if (filteredIds.length > 0) AudioService.playUiClick();
     };
 
     // Keyboard Shortcuts
