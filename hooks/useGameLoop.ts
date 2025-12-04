@@ -155,7 +155,8 @@ export const useGameLoop = () => {
             }
         };
 
-        // HOST LOGIC: Assign Cities & Spawn HQs
+        // HOST LOGIC: Initialize game but DO NOT assign cities yet
+        // Cities remain ownerFactionId: undefined until players/bots select
         if (!isClient) {
             const initialUnits: GameUnit[] = [];
 
@@ -166,98 +167,24 @@ export const useGameLoop = () => {
                     city.position.lat >= minLat && city.position.lat <= maxLat &&
                     city.position.lng >= minLng && city.position.lng <= maxLng
                 );
-                initialState.pois = allCities; // Update filtered POIs
             }
 
-            const botFactions = factions.filter(f => f.type === 'BOT');
-
-            // Assign Random City to Bots
-            const unassignedCities = [...allCities.filter(p => p.type === POIType.CITY)]; // Only cities
-
-            botFactions.forEach(bot => {
-                if (unassignedCities.length > 0) {
-                    const randomIndex = Math.floor(Math.random() * unassignedCities.length);
-                    const city = unassignedCities.splice(randomIndex, 1)[0];
-
-                    city.ownerFactionId = bot.id;
-                    city.tier = 1;
-
-                    // Spawn HQ
-                    const hq = spawnUnit(UnitClass.COMMAND_CENTER, city.position.lat, city.position.lng, bot.id);
-                    initialUnits.push(hq);
-
-                    // Spawn Guard
-                    const guard = spawnUnit(UnitClass.INFANTRY, city.position.lat + 0.01, city.position.lng + 0.01, bot.id);
-                    initialUnits.push(guard);
-
-                    console.log('[START GAME] Assigned', city.name, 'to bot', bot.name);
+            // IMPORTANT: Clear any pre-assigned owners (from mockDataService)
+            // ALL cities start UNCLAIMED so players can select
+            allCities.forEach(city => {
+                if (city.type === POIType.CITY) {
+                    city.ownerFactionId = undefined as any; // Unclaimed - available for selection
                 }
             });
 
-            // CONVERT UNCLAIMED CITIES TO NEUTRAL (after players/bots have selected)
-            // Then spawn tier-based defenders for neutral cities
-            const allTheCities = allCities.filter(c => c.type === POIType.CITY);
+            // Store bot factions for later assignment (after player selects)
+            initialState.pendingBotFactions = factions.filter(f => f.type === 'BOT').map(f => f.id);
 
-            // Convert undefined/unclaimed to NEUTRAL
-            allTheCities.forEach(city => {
-                if (!city.ownerFactionId || city.ownerFactionId === 'undefined') {
-                    city.ownerFactionId = 'NEUTRAL';
-                }
-            });
-
-            const ownershipCounts: Record<string, number> = {};
-            allTheCities.forEach(c => {
-                ownershipCounts[c.ownerFactionId || 'undefined'] = (ownershipCounts[c.ownerFactionId || 'undefined'] || 0) + 1;
-            });
-            console.log('[START GAME] City ownership breakdown:', ownershipCounts);
-
-            const neutralCities = allTheCities.filter(c => c.ownerFactionId === 'NEUTRAL');
-            console.log('[START GAME] Spawning defenders for', neutralCities.length, 'neutral cities');
-
-            // Spawn defenders based on city tier (importance)
-            // Tier 1 (capitals): 4 defenders (2 tanks, 2 infantry)
-            // Tier 2 (major cities): 2 defenders (1 tank, 1 infantry)
-            // Tier 3 (small cities): 1 defender (infantry)
-            neutralCities.forEach(city => {
-                const tier = city.tier || 3;
-                let defenders: UnitClass[] = [];
-
-                if (tier === 1) {
-                    // Capital cities: Strong garrison
-                    defenders = [UnitClass.GROUND_TANK, UnitClass.GROUND_TANK, UnitClass.INFANTRY, UnitClass.INFANTRY];
-                } else if (tier === 2) {
-                    // Major cities: Moderate garrison
-                    defenders = [UnitClass.GROUND_TANK, UnitClass.INFANTRY];
-                } else {
-                    // Small cities: Light garrison
-                    defenders = [UnitClass.INFANTRY];
-                }
-
-                defenders.forEach((unitClass, i) => {
-                    const offsetLat = (Math.random() - 0.5) * 0.02;
-                    const offsetLng = (Math.random() - 0.5) * 0.02;
-                    const defender = spawnUnit(
-                        unitClass,
-                        city.position.lat + offsetLat,
-                        city.position.lng + offsetLng,
-                        'NEUTRAL_DEFENDER'
-                    );
-                    defender.autoMode = 'DEFEND';
-                    defender.autoTarget = true;
-                    defender.homePosition = { lat: city.position.lat, lng: city.position.lng };
-                    initialUnits.push(defender);
-                });
-            });
-
-            // Update POIs and Units in initial state
+            // Update POIs in initial state (all unclaimed)
             initialState.pois = allCities;
             initialState.units = initialUnits;
 
-            console.log('[START GAME] FINAL COUNTS:', {
-                totalPOIs: allCities.length,
-                totalUnits: initialUnits.length,
-                neutralDefenders: initialUnits.filter(u => u.factionId === 'NEUTRAL_DEFENDER').length
-            });
+            console.log('[START GAME] Cities ready for selection:', allCities.filter(c => c.type === POIType.CITY).length);
 
             // BROADCAST START GAME (Host only) - SEND ALL POIs INCLUDING RESOURCES
             if (NetworkService.isHost || (!isClient && NetworkService.myPeerId)) {
@@ -447,7 +374,9 @@ export const useGameLoop = () => {
     const handlePoiClick = (poiId: string) => {
         if (gameState.gameMode === 'SELECT_BASE') {
             const poi = gameState.pois.find(p => p.id === poiId);
-            if (poi && poi.type === POIType.CITY) {
+
+            // CRITICAL: Only allow selecting UNCLAIMED cities (ownerFactionId is undefined/null)
+            if (poi && poi.type === POIType.CITY && !poi.ownerFactionId) {
                 console.log('[HANDLE POI CLICK] Selecting base:', poi.name);
 
                 const payload: SelectBasePayload = {
@@ -460,11 +389,93 @@ export const useGameLoop = () => {
 
                 setCenter({ lat: poi.position.lat, lng: poi.position.lng });
 
+                // AFTER player selects: Assign bots to random cities and convert remaining to NEUTRAL
                 setTimeout(() => {
-                    setGameState(prev => ({ ...prev, gameMode: 'PLAYING' }));
+                    setGameState(prev => {
+                        let nextPois = [...prev.pois];
+                        let nextUnits = [...prev.units];
+                        const botFactions = prev.pendingBotFactions || [];
+
+                        // Get unassigned cities (exclude player's selected city)
+                        const unassignedCities = nextPois.filter(p =>
+                            p.type === POIType.CITY &&
+                            !p.ownerFactionId &&
+                            p.id !== poiId
+                        );
+
+                        console.log('[POST-SELECT] Assigning', botFactions.length, 'bots to cities from', unassignedCities.length, 'available');
+
+                        // Assign cities to bots
+                        const shuffledCities = [...unassignedCities].sort(() => Math.random() - 0.5);
+
+                        botFactions.forEach((botId, idx) => {
+                            if (idx < shuffledCities.length) {
+                                const city = shuffledCities[idx];
+                                city.ownerFactionId = botId;
+                                city.tier = 1;
+
+                                // Spawn HQ for bot
+                                const hq = spawnUnit(UnitClass.COMMAND_CENTER, city.position.lat, city.position.lng, botId);
+                                nextUnits.push(hq);
+
+                                // Spawn Guard for bot
+                                const guard = spawnUnit(UnitClass.INFANTRY, city.position.lat + 0.01, city.position.lng + 0.01, botId);
+                                nextUnits.push(guard);
+
+                                console.log('[POST-SELECT] Assigned', city.name, 'to bot', botId);
+                            }
+                        });
+
+                        // Convert remaining unclaimed cities to NEUTRAL and spawn defenders
+                        nextPois.forEach(city => {
+                            if (city.type === POIType.CITY && !city.ownerFactionId) {
+                                city.ownerFactionId = 'NEUTRAL';
+
+                                // Spawn tier-based defenders
+                                const tier = city.tier || 3;
+                                let defenders: UnitClass[] = [];
+
+                                if (tier === 1) {
+                                    defenders = [UnitClass.GROUND_TANK, UnitClass.GROUND_TANK, UnitClass.INFANTRY, UnitClass.INFANTRY];
+                                } else if (tier === 2) {
+                                    defenders = [UnitClass.GROUND_TANK, UnitClass.INFANTRY];
+                                } else {
+                                    defenders = [UnitClass.INFANTRY];
+                                }
+
+                                defenders.forEach(unitClass => {
+                                    const offsetLat = (Math.random() - 0.5) * 0.02;
+                                    const offsetLng = (Math.random() - 0.5) * 0.02;
+                                    const defender = spawnUnit(
+                                        unitClass,
+                                        city.position.lat + offsetLat,
+                                        city.position.lng + offsetLng,
+                                        'NEUTRAL_DEFENDER'
+                                    );
+                                    defender.autoMode = 'DEFEND';
+                                    defender.autoTarget = true;
+                                    defender.homePosition = { lat: city.position.lat, lng: city.position.lng };
+                                    nextUnits.push(defender);
+                                });
+                            }
+                        });
+
+                        console.log('[POST-SELECT] Final unit count:', nextUnits.length);
+
+                        return {
+                            ...prev,
+                            gameMode: 'PLAYING',
+                            pois: nextPois,
+                            units: nextUnits,
+                            pendingBotFactions: undefined // Clear pending
+                        };
+                    });
                 }, 100);
 
                 AudioService.playSuccess();
+            } else if (poi && poi.ownerFactionId) {
+                console.log('[HANDLE POI CLICK] City already claimed:', poi.name, 'by', poi.ownerFactionId);
+                AudioService.playError();
             }
         }
     };
