@@ -1,5 +1,6 @@
-import { POI, POIType, UnitClass } from "../types";
+import { POI, POIType, UnitClass, GameUnit } from "../types";
 import * as d3 from 'd3';
+import { isPointInFactionTerritory } from './territoryService';
 
 // Cache for the GeoJSON data
 let worldGeoJson: any = null;
@@ -97,21 +98,13 @@ export const TerrainService = {
     isPointLand: (lat: number, lng: number): boolean => {
         if (!terrainCtx) return false;
 
-        // Map Lat/Lng to Pixel Coordinates
-        // Equirectangular projection:
-        // x = (lng + 180) * (width / 360)
-        // y = (90 - lat) * (height / 180)
-
         const x = Math.floor((lng + 180) * (TERRAIN_WIDTH / 360));
         const y = Math.floor((90 - lat) * (TERRAIN_HEIGHT / 180));
 
-        // Clamp
         const safeX = Math.max(0, Math.min(TERRAIN_WIDTH - 1, x));
         const safeY = Math.max(0, Math.min(TERRAIN_HEIGHT - 1, y));
 
         const pixel = terrainCtx.getImageData(safeX, safeY, 1, 1).data;
-        // Land is White (255, 255, 255), Ocean is Black (0, 0, 0)
-        // Check Red channel
         return pixel[0] > 128;
     },
 
@@ -120,7 +113,6 @@ export const TerrainService = {
         if (terrainTypeCache.has(key)) return terrainTypeCache.get(key)!;
 
         if (!worldGeoJson) {
-            // Fallback
             let minDist = Infinity;
             for (const poi of pois) {
                 if (poi.type !== POIType.CITY) continue;
@@ -132,10 +124,6 @@ export const TerrainService = {
 
         const isLand = TerrainService.isPointLand(lat, lng);
 
-        // COAST CHECK:
-        // Check 4 points around the target (~10-20km away).
-        // If we find a mix of Land and Ocean, we are near the coast.
-        // 0.1 degrees is roughly 11km.
         const offset = 0.1;
         const neighbors = [
             TerrainService.isPointLand(lat + offset, lng),
@@ -157,52 +145,30 @@ export const TerrainService = {
     },
 
     isValidPlacement: (unitClass: UnitClass, lat: number, lng: number, pois: POI[],
-        playerUnits?: { unitClass: UnitClass, factionId: string, position: { lat: number, lng: number } }[],
+        playerUnits?: GameUnit[],
         playerId?: string): boolean => {
         const terrain = TerrainService.getTerrainType(lat, lng, pois);
 
         // TERRAIN CHECK
         if (unitClass === UnitClass.PORT) {
-            // Ports can ONLY be placed on COAST or OCEAN (NOT inland)
             if (terrain !== 'COAST' && terrain !== 'OCEAN') {
                 console.log('[PLACEMENT] Port rejected - not coastal/ocean');
                 return false;
             }
         }
         if (unitClass === UnitClass.AIRBASE || unitClass === UnitClass.MILITARY_BASE) {
-            // Land structures need LAND or COAST
             if (terrain !== 'LAND' && terrain !== 'COAST') {
                 console.log('[PLACEMENT] Structure rejected - not land/coast');
                 return false;
             }
         }
 
-        // CONTROL AREA CHECK - Building must be within territory (near any owned POI or HQ)
-        const CONTROL_RADIUS_KM = 600; // Buildings must be within 600km of any owned POI or HQ
-
+        // CONTROL AREA CHECK - Must be inside EXACT Voronoi polygon territory
         if (playerId && playerUnits) {
-            // Check if near any owned city or resource POI
-            const nearOwnedPOI = pois.some(p =>
-                p.ownerFactionId === playerId &&
-                getDistanceKm(lat, lng, p.position.lat, p.position.lng) < CONTROL_RADIUS_KM
-            );
+            const inTerritory = isPointInFactionTerritory(lat, lng, playerId, pois, playerUnits);
 
-            // Check if near any owned command center
-            const nearHQ = playerUnits.some(u =>
-                u.factionId === playerId &&
-                u.unitClass === UnitClass.COMMAND_CENTER &&
-                getDistanceKm(lat, lng, u.position.lat, u.position.lng) < CONTROL_RADIUS_KM
-            );
-
-            // Check if near any Mobile Command Center
-            const nearMobileHQ = playerUnits.some(u =>
-                u.factionId === playerId &&
-                u.unitClass === UnitClass.MOBILE_COMMAND_CENTER &&
-                getDistanceKm(lat, lng, u.position.lat, u.position.lng) < CONTROL_RADIUS_KM
-            );
-
-            if (!nearOwnedPOI && !nearHQ && !nearMobileHQ) {
-                console.log('[PLACEMENT] Structure rejected - not in control area');
+            if (!inTerritory) {
+                console.log('[PLACEMENT] Structure rejected - not in faction Voronoi territory');
                 return false;
             }
         }
