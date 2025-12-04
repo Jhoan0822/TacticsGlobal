@@ -63,9 +63,16 @@ export const FACTION_PRESETS = [
 ];
 
 export const POI_CONFIG = {
-  [POIType.CITY]: { incomeGold: 50, incomeOil: 0, captureRadius: 0.1, defaultHp: 2000, captureThreshold: 0 },
-  [POIType.OIL_RIG]: { incomeGold: 0, incomeOil: 50, captureRadius: 0.1, defaultHp: 500, captureThreshold: 0 },
-  [POIType.GOLD_MINE]: { incomeGold: 100, incomeOil: 0, captureRadius: 0.1, defaultHp: 300, captureThreshold: 0 }
+  [POIType.CITY]: { incomeGold: 50, incomeOil: 10, captureRadius: 0.1, defaultHp: 2000, captureThreshold: 0 },
+  [POIType.OIL_RIG]: { incomeGold: 10, incomeOil: 80, captureRadius: 0.1, defaultHp: 500, captureThreshold: 0 },
+  [POIType.GOLD_MINE]: { incomeGold: 150, incomeOil: 5, captureRadius: 0.1, defaultHp: 300, captureThreshold: 0 }
+};
+
+// Tier multiplier for city resource generation (Tier 1 = Capital, Tier 3 = Small town)
+export const TIER_MULTIPLIER: Record<number, number> = {
+  1: 3.0,  // Capital cities (Washington DC, London, Tokyo, etc.) = 3x resources
+  2: 1.5,  // Major cities (Seattle, Barcelona, etc.) = 1.5x resources
+  3: 1.0   // Small cities/towns = base resources
 };
 
 interface ExtendedUnitStats extends UnitStats {
