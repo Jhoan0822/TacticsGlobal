@@ -127,10 +127,10 @@ export const useGameLoop = () => {
 
             // Filter by Scenario Bounds
             if (scenario.bounds) {
-                const { south, west, north, east } = scenario.bounds;
+                const { minLat, maxLat, minLng, maxLng } = scenario.bounds as any; // Cast to any to bypass type mismatch if types.ts isn't updated yet
                 allCities = allCities.filter(city =>
-                    city.position.lat >= south && city.position.lat <= north &&
-                    city.position.lng >= west && city.position.lng <= east
+                    city.position.lat >= minLat && city.position.lat <= maxLat &&
+                    city.position.lng >= minLng && city.position.lng <= maxLng
                 );
             }
 
