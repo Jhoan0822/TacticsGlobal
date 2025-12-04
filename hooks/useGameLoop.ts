@@ -189,7 +189,10 @@ export const useGameLoop = () => {
 
             // SPAWN NEUTRAL CITY DEFENDERS (Gray troops)
             // Each neutral city gets 1-3 defenders based on tier
-            unassignedCities.filter(c => c.type === POIType.CITY && c.ownerFactionId === 'NEUTRAL').forEach(city => {
+            const neutralCities = allCities.filter(c => c.type === POIType.CITY && c.ownerFactionId === 'NEUTRAL');
+            console.log('[START GAME] Spawning defenders for', neutralCities.length, 'neutral cities');
+
+            neutralCities.forEach(city => {
                 const defenderCount = city.tier === 1 ? 3 : city.tier === 2 ? 2 : 1;
                 for (let i = 0; i < defenderCount; i++) {
                     const offsetLat = (Math.random() - 0.5) * 0.02;
@@ -203,6 +206,7 @@ export const useGameLoop = () => {
                     );
                     // Set autoMode to DEFEND
                     defender.autoMode = 'DEFEND';
+                    defender.autoTarget = true; // Auto-engage enemies
                     defender.homePosition = { lat: city.position.lat, lng: city.position.lng };
                     initialUnits.push(defender);
                 }

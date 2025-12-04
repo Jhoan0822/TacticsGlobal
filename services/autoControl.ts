@@ -1,109 +1,130 @@
-import { GameState, GameUnit, UnitClass, POIType } from '../types';
+import { GameState, GameUnit, UnitClass, POIType, POI } from '../types';
 import { getDistanceKm } from './gameLogic';
 import { UNIT_CONFIG, DIPLOMACY } from '../constants';
 
 // ===========================================
-// PLAYER AUTO-CONTROL SERVICE
+// AUTO-CONTROL SERVICE
 // ===========================================
-// Allows player units to auto-attack, defend, or patrol
-// Manual orders (mouse click) ALWAYS override auto-mode
+// Works for PLAYER units AND NEUTRAL_DEFENDER units
+// DEFEND: Protect controlled area, auto-target, return home when clear
+// ATTACK: Hunt enemies continuously, anywhere on map
+// Manual click always resets to MANUAL mode
+
+const DEFEND_RADIUS = 100; // km - defend radius around home
 
 export const processPlayerAutoControl = (gameState: GameState): GameState => {
-    const localPlayerId = gameState.localPlayerId;
-    if (!localPlayerId) return gameState;
-
-    const playerUnits = gameState.units.filter(u =>
-        u.factionId === localPlayerId &&
-        (u.autoMode || u.autoTarget)
+    // Process units with auto-modes from any faction that has them
+    const autoUnits = gameState.units.filter(u =>
+        (u.autoMode && u.autoMode !== 'NONE') || u.autoTarget
     );
 
-    if (playerUnits.length === 0) return gameState;
+    if (autoUnits.length === 0) return gameState;
 
     const updatedUnits = [...gameState.units];
 
-    playerUnits.forEach(unit => {
-        // Skip units with existing targets or destinations (manual orders)
-        if (unit.targetId || unit.destination) return;
+    autoUnits.forEach(unit => {
+        // Skip if unit has manual orders (destination set by player) - only skip if NOT in auto-mode
+        // For DEFEND/ATTACK modes, we process even if they have a target (to find new targets when current dies)
+        if (unit.autoMode === 'NONE' && (unit.targetId || unit.destination)) return;
 
         const unitIdx = updatedUnits.findIndex(u => u.id === unit.id);
         if (unitIdx === -1) return;
 
-        // Find enemies in range
+        // Check if current target still exists and is alive
+        const currentTarget = unit.targetId
+            ? gameState.units.find(u => u.id === unit.targetId && u.hp > 0)
+            : null;
+
+        // If target still alive, don't reassign (let combat continue)
+        if (currentTarget) return;
+
+        // Find all enemies (anyone not on same faction)
         const enemies = gameState.units.filter(u =>
-            u.factionId !== localPlayerId &&
-            u.factionId !== 'NEUTRAL' &&
+            u.factionId !== unit.factionId &&
+            u.factionId !== 'NEUTRAL' && // Don't attack neutral (non-defender) units
             u.hp > 0
         );
 
         const unitStats = UNIT_CONFIG[unit.unitClass];
         const range = unitStats?.range || 50;
+        const homePos = unit.homePosition || unit.position;
 
-        // Find closest enemy in range
-        const enemiesInRange = enemies
-            .map(e => ({
-                enemy: e,
-                dist: getDistanceKm(unit.position.lat, unit.position.lng, e.position.lat, e.position.lng)
-            }))
-            .filter(e => e.dist < range * 1.5) // 1.5x range = pursuit range
-            .sort((a, b) => a.dist - b.dist);
+        // Calculate distances to all enemies
+        const enemiesWithDist = enemies.map(e => ({
+            enemy: e,
+            distToUnit: getDistanceKm(unit.position.lat, unit.position.lng, e.position.lat, e.position.lng),
+            distToHome: getDistanceKm(homePos.lat, homePos.lng, e.position.lat, e.position.lng)
+        })).sort((a, b) => a.distToUnit - b.distToUnit);
 
-        const closestEnemy = enemiesInRange[0]?.enemy;
+        const closestEnemy = enemiesWithDist[0]?.enemy;
+        const closestDist = enemiesWithDist[0]?.distToUnit || Infinity;
 
         // Handle AUTO-TARGET (always engages enemies in range)
-        if (unit.autoTarget && closestEnemy) {
+        if (unit.autoTarget && closestEnemy && closestDist < range * 1.5) {
             updatedUnits[unitIdx] = {
                 ...updatedUnits[unitIdx],
-                targetId: closestEnemy.id
+                targetId: closestEnemy.id,
+                destination: null
             };
             return;
         }
 
         // Handle AUTO-MODES
         switch (unit.autoMode) {
-            case 'DEFEND':
-                // Stay near home position, engage enemies that come close
-                const homePos = unit.homePosition || unit.position;
+            case 'DEFEND': {
+                // Find enemies within DEFEND_RADIUS of home position
+                const enemiesInArea = enemiesWithDist.filter(e => e.distToHome < DEFEND_RADIUS);
                 const distFromHome = getDistanceKm(unit.position.lat, unit.position.lng, homePos.lat, homePos.lng);
 
-                if (closestEnemy && enemiesInRange[0].dist < range) {
-                    // Engage enemy in defensive range
-                    updatedUnits[unitIdx] = { ...updatedUnits[unitIdx], targetId: closestEnemy.id };
+                if (enemiesInArea.length > 0) {
+                    // Attack closest enemy in defense area
+                    updatedUnits[unitIdx] = {
+                        ...updatedUnits[unitIdx],
+                        targetId: enemiesInArea[0].enemy.id,
+                        destination: null,
+                        autoTarget: true // Enable auto-target in DEFEND mode
+                    };
                 } else if (distFromHome > 30) {
-                    // Return to home if too far
+                    // No enemies in area, return to home
                     updatedUnits[unitIdx] = {
                         ...updatedUnits[unitIdx],
                         destination: homePos,
                         targetId: null
                     };
                 }
+                // If at home and no enemies, do nothing (wait)
                 break;
+            }
 
-            case 'ATTACK':
-                // Seek and destroy nearest enemy
+            case 'ATTACK': {
+                // Hunt mode: always find a target anywhere on map
                 if (closestEnemy) {
-                    updatedUnits[unitIdx] = { ...updatedUnits[unitIdx], targetId: closestEnemy.id };
-                } else {
-                    // No enemies in range, find nearest enemy on map
-                    const allEnemies = enemies.map(e => ({
-                        enemy: e,
-                        dist: getDistanceKm(unit.position.lat, unit.position.lng, e.position.lat, e.position.lng)
-                    })).sort((a, b) => a.dist - b.dist);
-
-                    if (allEnemies[0]) {
-                        updatedUnits[unitIdx] = { ...updatedUnits[unitIdx], targetId: allEnemies[0].enemy.id };
-                    }
+                    updatedUnits[unitIdx] = {
+                        ...updatedUnits[unitIdx],
+                        targetId: closestEnemy.id,
+                        destination: null,
+                        autoTarget: true // Enable auto-target in ATTACK mode
+                    };
                 }
+                // If no enemies exist, do nothing
                 break;
+            }
 
-            case 'PATROL':
-                // Circle around home position, engage hostiles
+            case 'PATROL': {
                 const patrolCenter = unit.homePosition || unit.position;
                 const patrolDist = getDistanceKm(unit.position.lat, unit.position.lng, patrolCenter.lat, patrolCenter.lng);
-                const patrolRadius = 20; // km
+                const patrolRadius = 30; // km
 
-                if (closestEnemy && enemiesInRange[0].dist < range) {
+                // Check for enemies in patrol range
+                const enemiesInPatrol = enemiesWithDist.filter(e => e.distToHome < patrolRadius * 2);
+
+                if (enemiesInPatrol.length > 0 && enemiesInPatrol[0].distToUnit < range * 2) {
                     // Engage enemy
-                    updatedUnits[unitIdx] = { ...updatedUnits[unitIdx], targetId: closestEnemy.id };
+                    updatedUnits[unitIdx] = {
+                        ...updatedUnits[unitIdx],
+                        targetId: enemiesInPatrol[0].enemy.id,
+                        destination: null
+                    };
                 } else if (patrolDist > patrolRadius * 1.5) {
                     // Return to patrol area
                     updatedUnits[unitIdx] = {
@@ -125,6 +146,7 @@ export const processPlayerAutoControl = (gameState: GameState): GameState => {
                     };
                 }
                 break;
+            }
         }
     });
 
@@ -153,6 +175,7 @@ export const setAutoMode = (
             return {
                 ...u,
                 autoMode: mode,
+                autoTarget: mode === 'DEFEND' || mode === 'ATTACK', // Auto-enable for combat modes
                 homePosition: mode !== 'NONE' ? { ...u.position } : undefined,
                 targetId: null,
                 destination: null

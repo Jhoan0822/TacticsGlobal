@@ -370,6 +370,8 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
                     if (unit && unit.factionId === intent.clientId) {
                         unit.destination = { lat: intent.lat, lng: intent.lng };
                         unit.targetId = null; // Clear target when moving manually
+                        unit.autoMode = 'NONE'; // Reset auto-mode on manual command
+                        unit.autoTarget = false;
                     }
                 });
                 break;
@@ -379,6 +381,8 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
                 if (attacker && attacker.factionId === intent.clientId) {
                     attacker.targetId = intent.targetId;
                     attacker.destination = null; // Clear move dest
+                    attacker.autoMode = 'NONE'; // Reset auto-mode on manual command
+                    attacker.autoTarget = false;
                 }
                 break;
             }
@@ -709,7 +713,10 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
             const targetPOI = nextPOIs.find(p => p.id === u1.targetId);
 
             if (targetUnit && targetUnit.hp > 0) {
-                if (canAttack(u1, targetUnit.unitClass)) {
+                // FRIENDLY FIRE PREVENTION: Cannot attack same faction
+                if (targetUnit.factionId === u1.factionId) {
+                    u1.targetId = null; // Clear invalid target
+                } else if (canAttack(u1, targetUnit.unitClass)) {
                     hasFired = tryFire(targetUnit);
                 }
             } else if (targetPOI && targetPOI.ownerFactionId !== u1.factionId) {
