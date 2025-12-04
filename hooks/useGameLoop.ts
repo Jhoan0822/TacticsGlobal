@@ -50,9 +50,20 @@ export const useGameLoop = () => {
             }
             else if (event.type === 'FULL_STATE') {
                 // Full state sync (late join or resync)
-                console.log('[GAME LOOP] Received full state sync');
+                // console.log('[GAME LOOP] Received full state sync');
+
+                // CRITICAL FIX: Derive local player resources from the SYNCED FACTION state
+                // The Host sends ITS playerResources, which we must IGNORE.
+                const myFaction = event.gameState.factions.find((f: any) => f.id === prev.localPlayerId);
+                const syncedResources = myFaction ? {
+                    gold: myFaction.gold,
+                    oil: myFaction.oil || 0,
+                    intel: prev.playerResources.intel // Intel is local only for now
+                } : prev.playerResources;
+
                 setGameState(prev => ({
                     ...event.gameState,
+                    playerResources: syncedResources, // OVERRIDE Host's resources with OURS
                     isClient: prev.isClient,
                     localPlayerId: prev.localPlayerId
                 }));
