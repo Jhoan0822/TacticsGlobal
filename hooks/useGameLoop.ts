@@ -116,7 +116,41 @@ export const useGameLoop = () => {
             localPlayerId,
             isClient,
             placementType: null
-        });
+        };
+
+        // HOST LOGIC: Assign Cities & Spawn HQs
+        if (!isClient) {
+            const allCities = getMockCities();
+            const botFactions = factions.filter(f => f.type === 'BOT');
+            const playerFaction = factions.find(f => f.id === localPlayerId);
+
+            // 1. Assign Random City to Player (if not already set)
+            // Actually, player picks base in SELECT_BASE mode.
+            // But BOTS need auto-assignment.
+
+            const unassignedCities = [...allCities];
+
+            botFactions.forEach(bot => {
+                if (unassignedCities.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * unassignedCities.length);
+                    const city = unassignedCities.splice(randomIndex, 1)[0];
+
+                    city.ownerFactionId = bot.id;
+                    city.tier = 1;
+
+                    // Spawn HQ
+                    // We need to add this unit to the initial state
+                    // But we can't easily call spawnUnit here without gameLogic context?
+                    // We can manually create the unit object.
+                    // WAIT: spawnUnit is exported from gameLogic.
+                }
+            });
+
+            // Update POIs in initial state
+            initialState.pois = allCities;
+        }
+
+        setGameState(initialState);
 
         NetworkService.isHost = !isClient;
 
