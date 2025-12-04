@@ -35,8 +35,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             ...FACTION_PRESETS[selectedFactionIndex],
             id: 'PLAYER',
             type: 'PLAYER' as const,
-            gold: 3000,
-            oil: 500,
+            gold: 10000,
+            oil: 1000,
             relations: {},
             aggression: 0
         };
@@ -49,8 +49,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 ...preset,
                 id: `BOT_${i}`,
                 type: 'BOT' as const,
-                gold: 3000,
-                oil: 500,
+                gold: 10000,
+                oil: 1000,
                 relations: { 'PLAYER': -100 },
                 aggression: 1.0
             }));
@@ -74,8 +74,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 id: p.id, // USE PEER ID AS FACTION ID
                 name: p.name,
                 type: 'PLAYER',
-                gold: 50000,
-                oil: 10000,
+                gold: 10000,
+                oil: 1000,
                 relations: {},
                 aggression: 0
             });
@@ -91,8 +91,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 ...availablePresets[i],
                 id: `BOT_${i}`,
                 type: 'BOT',
-                gold: 50000,
-                oil: 10000,
+                gold: 10000,
+                oil: 1000,
                 relations: {}, // Set relations below
                 aggression: 1.0
             });
@@ -108,11 +108,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
         });
 
         // Start for Host (Host ID is NetworkService.myPeerId)
+        // NOTE: NetworkService.startGame is called inside useGameLoop.startGame() with proper POIs
         onStartGame(scenario, NetworkService.myPeerId, factions, true, true);
-
-        // Signal Clients
-        // We broadcast the factions list. Each client will identify themselves by their own Peer ID.
-        NetworkService.startGame(scenario.id, factions, []);
     };
 
     const handleJoin = () => {
