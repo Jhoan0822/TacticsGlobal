@@ -187,15 +187,34 @@ export const useGameLoop = () => {
                 }
             });
 
+            // SPAWN NEUTRAL CITY DEFENDERS (Gray troops)
+            // Each neutral city gets 1-3 defenders based on tier
+            unassignedCities.filter(c => c.type === POIType.CITY && c.ownerFactionId === 'NEUTRAL').forEach(city => {
+                const defenderCount = city.tier === 1 ? 3 : city.tier === 2 ? 2 : 1;
+                for (let i = 0; i < defenderCount; i++) {
+                    const offsetLat = (Math.random() - 0.5) * 0.02;
+                    const offsetLng = (Math.random() - 0.5) * 0.02;
+                    // Spawn NEUTRAL faction defenders
+                    const defender = spawnUnit(
+                        i === 0 ? UnitClass.GROUND_TANK : UnitClass.INFANTRY,
+                        city.position.lat + offsetLat,
+                        city.position.lng + offsetLng,
+                        'NEUTRAL_DEFENDER'
+                    );
+                    // Set autoMode to DEFEND
+                    defender.autoMode = 'DEFEND';
+                    defender.homePosition = { lat: city.position.lat, lng: city.position.lng };
+                    initialUnits.push(defender);
+                }
+            });
+
             // Update POIs and Units in initial state
             initialState.pois = allCities;
             initialState.units = initialUnits;
 
-            // BROADCAST START GAME (Host only)
-            // We need to send the FINAL POIs (filtered and assigned) to clients
-            if (NetworkService.isHost || (!isClient && NetworkService.myPeerId)) { // Check if we are in multiplayer mode
-                // Actually, we should check if we have connections or if networkMode implies multiplayer.
-                // But NetworkService.startGame sends to all connections.
+            // BROADCAST START GAME (Host only) - SEND ALL POIs INCLUDING RESOURCES
+            if (NetworkService.isHost || (!isClient && NetworkService.myPeerId)) {
+                console.log('[START GAME] Broadcasting', allCities.length, 'POIs to clients');
                 NetworkService.startGame(scenario.id, factions, allCities);
             }
         }

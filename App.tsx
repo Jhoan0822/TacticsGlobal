@@ -247,6 +247,25 @@ const App: React.FC = () => {
                     selectedUnitIds={selectedUnitIds}
                     onUnitAction={originalHandleUnitAction}
                     onSetDifficulty={setDifficulty}
+                    onSetAutoMode={(mode) => {
+                        if (selectedUnitIds.length === 0) return;
+                        setGameState(prev => ({
+                            ...prev,
+                            units: prev.units.map(u => {
+                                if (selectedUnitIds.includes(u.id) && u.factionId === prev.localPlayerId) {
+                                    return {
+                                        ...u,
+                                        autoMode: mode,
+                                        homePosition: mode !== 'NONE' ? { ...u.position } : undefined,
+                                        targetId: null,
+                                        destination: null
+                                    };
+                                }
+                                return u;
+                            })
+                        }));
+                    }}
+                    onToggleAutoTarget={handleToggleAutoTarget}
                 />
                 <div className="flex-1 relative">
                     <GameMap

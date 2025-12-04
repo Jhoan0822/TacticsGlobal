@@ -4,7 +4,7 @@ import { UNIT_CONFIG, POI_CONFIG, DIPLOMACY } from '../constants';
 import { getTacticalAdvice } from '../services/geminiService';
 import { evaluateAllianceRequest } from '../services/gameLogic';
 import { useTooltip } from './Tooltip';
-import { HOTKEY_LABELS } from '../hooks/useHotkeys';
+import { HOTKEY_LABELS, AUTO_MODE_LABELS } from '../hooks/useHotkeys';
 
 interface Props {
     gameState: GameState;
@@ -13,9 +13,11 @@ interface Props {
     selectedUnitIds: string[];
     onUnitAction: (action: string, id: string) => void;
     onSetDifficulty: (diff: Difficulty) => void;
+    onSetAutoMode?: (mode: 'NONE' | 'DEFEND' | 'ATTACK' | 'PATROL') => void;
+    onToggleAutoTarget?: () => void;
 }
 
-const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, selectedUnitIds, onUnitAction, onSetDifficulty }) => {
+const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, selectedUnitIds, onUnitAction, onSetDifficulty, onSetAutoMode, onToggleAutoTarget }) => {
     const [advice, setAdvice] = useState<string | null>(null);
     const [loadingAi, setLoadingAi] = useState(false);
     const [activeTab, setActiveTab] = useState<'UNITS' | 'BUILD' | 'DIPLOMACY'>('BUILD');
@@ -172,6 +174,55 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                     <div className="text-[9px] text-green-400">+{Math.floor(baseIncomeOil + poiOil)}/t</div>
                 </div>
             </div>
+
+            {/* UNIT CONTROL PANEL - Shows when units are selected */}
+            {selectedUnitIds.length > 0 && (
+                <div className="p-3 border-b border-slate-700/50 bg-slate-800/50">
+                    <div className="text-[10px] text-slate-400 mb-2 uppercase tracking-widest">
+                        {selectedUnitIds.length} UNIT{selectedUnitIds.length > 1 ? 'S' : ''} SELECTED
+                    </div>
+                    <div className="flex gap-1 mb-2">
+                        <button
+                            onClick={() => onSetAutoMode?.('NONE')}
+                            className="flex-1 py-1.5 text-[10px] rounded bg-slate-700 hover:bg-slate-600 text-gray-400 border border-slate-600 transition-all"
+                            title="Manual Control [F]"
+                        >
+                            ⚪ MANUAL
+                        </button>
+                        <button
+                            onClick={() => onSetAutoMode?.('DEFEND')}
+                            className="flex-1 py-1.5 text-[10px] rounded bg-green-900/50 hover:bg-green-800/50 text-green-400 border border-green-700 transition-all"
+                            title="Defend Position [F]"
+                        >
+                            🛡️ DEFEND
+                        </button>
+                    </div>
+                    <div className="flex gap-1 mb-2">
+                        <button
+                            onClick={() => onSetAutoMode?.('ATTACK')}
+                            className="flex-1 py-1.5 text-[10px] rounded bg-red-900/50 hover:bg-red-800/50 text-red-400 border border-red-700 transition-all"
+                            title="Seek & Destroy [F]"
+                        >
+                            ⚔️ ATTACK
+                        </button>
+                        <button
+                            onClick={() => onSetAutoMode?.('PATROL')}
+                            className="flex-1 py-1.5 text-[10px] rounded bg-blue-900/50 hover:bg-blue-800/50 text-blue-400 border border-blue-700 transition-all"
+                            title="Patrol Area [F]"
+                        >
+                            🔄 PATROL
+                        </button>
+                    </div>
+                    <button
+                        onClick={() => onToggleAutoTarget?.()}
+                        className="w-full py-1.5 text-[10px] rounded bg-amber-900/50 hover:bg-amber-800/50 text-amber-400 border border-amber-700 transition-all"
+                        title="Toggle Auto-Target [G]"
+                    >
+                        🎯 TOGGLE AUTO-TARGET
+                    </button>
+                    <div className="text-[8px] text-slate-500 mt-1 text-center">Hotkeys: F (cycle mode) | G (auto-target)</div>
+                </div>
+            )}
 
             <div className="flex border-b border-slate-700/50">
                 <button className={`flex-1 py-3 text-center text-[10px] tracking-wide transition-colors ${activeTab === 'BUILD' ? 'bg-slate-800/80 text-blue-400 font-bold border-b-2 border-blue-400' : 'text-slate-500 hover:text-slate-300'}`} onClick={() => setActiveTab('BUILD')}>BUILD</button>
