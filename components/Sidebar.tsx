@@ -74,6 +74,12 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
         }
     });
 
+    // Calculate per second (approximate based on tick rate)
+    // Tick is 30ms, Resource Tick is every 40 ticks (1200ms)
+    // Income/sec = Income / 1.2 = Income * 0.833
+    const goldPerSec = Math.floor((baseIncomeGold + poiGold) * 0.83);
+    const oilPerSec = Math.floor((baseIncomeOil + poiOil) * 0.83);
+
     const handleAiAdvice = async () => {
         setLoadingAi(true);
         const result = await getTacticalAdvice(gameState);

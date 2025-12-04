@@ -313,6 +313,41 @@ export const useGameLoop = () => {
         }
     };
 
+    const handleUnitAction = (actionType: string, unitId: string) => {
+        console.log('[HANDLE UNIT ACTION]', actionType, unitId);
+
+        // Handle Deployment Actions (Troop Transport / Carrier)
+        if (actionType === 'DEPLOY_TANK' || actionType === 'DEPLOY_INFANTRY' || actionType === 'DEPLOY_SPECOPS') {
+            const unit = gameState.units.find(u => u.id === unitId);
+            if (!unit) return;
+
+            let type = UnitClass.INFANTRY;
+            if (actionType === 'DEPLOY_TANK') type = UnitClass.GROUND_TANK;
+            if (actionType === 'DEPLOY_SPECOPS') type = UnitClass.SPECIAL_FORCES;
+
+            const cost = UNIT_CONFIG[type].cost;
+            const faction = gameState.factions.find(f => f.id === gameState.localPlayerId);
+
+            if (faction && faction.gold >= (cost?.gold || 0) && faction.oil >= (cost?.oil || 0)) {
+                // Execute Deployment
+                const payload: SpawnUnitPayload = {
+                    unitClass: type,
+                    lat: unit.position.lat + (Math.random() - 0.5) * 0.02,
+                    lng: unit.position.lng + (Math.random() - 0.5) * 0.02,
+                    unitId: `DEPLOYED-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    factionId: gameState.localPlayerId
+                };
+
+                const action = createAction(gameState.localPlayerId, 'SPAWN_UNIT', payload);
+                executeAndBroadcast(action);
+                AudioService.playUiClick();
+            } else {
+                console.error('[UNIT ACTION] Insufficient funds');
+                AudioService.playError();
+            }
+        }
+    };
+
     const handlePoiClick = (poiId: string) => {
         if (gameState.gameMode === 'SELECT_BASE') {
             const poi = gameState.pois.find(p => p.id === poiId);
@@ -352,9 +387,6 @@ export const useGameLoop = () => {
         }
     };
 
-    const handleUnitAction = (unitId: string, actionType: string) => {
-        // Legacy - can be removed or adapted
-    };
 
     const handleAllianceRequest = (targetFactionId: string) => {
         // TODO: Implement alliance system
