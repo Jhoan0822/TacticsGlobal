@@ -4,6 +4,7 @@ import { UNIT_CONFIG, POI_CONFIG, DIPLOMACY } from '../constants';
 import { getTacticalAdvice } from '../services/geminiService';
 import { evaluateAllianceRequest } from '../services/gameLogic';
 import { useTooltip } from './Tooltip';
+import { HOTKEY_LABELS } from '../hooks/useHotkeys';
 
 interface Props {
     gameState: GameState;
@@ -136,7 +137,13 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                         onMouseLeave={hideTooltip}
                         className={`w-full text-left p-2 mb-2 rounded border flex justify-between items-center transition-all ${disabled ? 'bg-slate-900/50 border-slate-800 opacity-50 cursor-not-allowed' : 'bg-slate-800/80 border-slate-600 hover:bg-slate-700 hover:border-blue-400'}`}
                     >
-                        <div>
+                        <div className="flex items-center gap-2">
+                            {/* Hotkey Badge */}
+                            {HOTKEY_LABELS[type] && (
+                                <span className="w-5 h-5 bg-slate-700 text-xs font-bold text-cyan-400 rounded flex items-center justify-center border border-slate-600">
+                                    {HOTKEY_LABELS[type]}
+                                </span>
+                            )}
                             <div className="font-bold text-slate-200 text-xs">{type.replace(/_/g, ' ')}</div>
                         </div>
                         <div className="text-right"><span className="text-yellow-500 text-xs mr-2">{costGold} G</span><span className="text-cyan-500 text-xs">{costOil} O</span></div>
