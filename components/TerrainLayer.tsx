@@ -17,7 +17,7 @@ const TerrainLayer: React.FC = () => {
     const lastMapStateRef = useRef<{ center: L.LatLng, zoom: number } | null>(null);
 
     useEffect(() => {
-        const canvas = L.DomUtil.create('canvas', 'leaflet-zoom-animated') as HTMLCanvasElement;
+        const canvas = L.DomUtil.create('canvas', '') as HTMLCanvasElement;
         canvas.style.pointerEvents = 'none';
         canvas.style.zIndex = '200'; // BOTTOM LAYER
         canvas.style.position = 'absolute';
