@@ -655,6 +655,11 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
                 } else if (target.hp < 0) {
                     // Unit death
                     target.hp = 0;
+                    // Log Death
+                    if ('unitClass' in target) {
+                        const tFaction = factions.find(f => f.id === target.factionId);
+                        logEvent(messages, `${tFaction?.name || 'Enemy'} ${target.unitClass} destroyed!`, 'info');
+                    }
                 }
 
                 // Create Projectile
@@ -790,7 +795,8 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
 
             nextPlayerResources = {
                 gold: myFaction.gold,
-                oil: nextPlayerResources.oil + oilIncome
+                oil: nextPlayerResources.oil + oilIncome,
+                intel: nextPlayerResources.intel
             };
         }
     }
