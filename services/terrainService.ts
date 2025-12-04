@@ -177,14 +177,13 @@ export const TerrainService = {
             }
         }
 
-        // CONTROL AREA CHECK - Building must be near owned city or HQ
-        const CONTROL_RADIUS_KM = 500; // Buildings must be within 500km of city/HQ
+        // CONTROL AREA CHECK - Building must be within territory (near any owned POI or HQ)
+        const CONTROL_RADIUS_KM = 600; // Buildings must be within 600km of any owned POI or HQ
 
         if (playerId && playerUnits) {
-            // Check if near any owned city
-            const nearCity = pois.some(p =>
+            // Check if near any owned city or resource POI
+            const nearOwnedPOI = pois.some(p =>
                 p.ownerFactionId === playerId &&
-                p.type === POIType.CITY &&
                 getDistanceKm(lat, lng, p.position.lat, p.position.lng) < CONTROL_RADIUS_KM
             );
 
@@ -202,7 +201,7 @@ export const TerrainService = {
                 getDistanceKm(lat, lng, u.position.lat, u.position.lng) < CONTROL_RADIUS_KM
             );
 
-            if (!nearCity && !nearHQ && !nearMobileHQ) {
+            if (!nearOwnedPOI && !nearHQ && !nearMobileHQ) {
                 console.log('[PLACEMENT] Structure rejected - not in control area');
                 return false;
             }

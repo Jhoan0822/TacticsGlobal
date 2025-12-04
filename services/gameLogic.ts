@@ -1,6 +1,6 @@
 
 import { GameState, GameUnit, Faction, Projectile, POIType, UnitClass, POI, LogMessage, WeaponType, Explosion } from '../types';
-import { DIPLOMACY, POI_CONFIG, UNIT_CONFIG, AI_CONFIG, WEAPON_MAPPING } from '../constants';
+import { DIPLOMACY, POI_CONFIG, UNIT_CONFIG, AI_CONFIG, WEAPON_MAPPING, TIER_MULTIPLIER } from '../constants';
 import { updateAI } from './aiService';
 import { TerrainService } from './terrainService';
 import { Intent } from './schemas';
@@ -846,12 +846,13 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
             let goldIncome = 5; // Base income
             let oilIncome = 2;
 
-            // POI Income
+            // POI Income with Tier Multiplier
             const ownedPOIs = nextPOIs.filter(p => p.ownerFactionId === faction.id);
             ownedPOIs.forEach(p => {
                 const config = POI_CONFIG[p.type];
-                goldIncome += config.incomeGold;
-                oilIncome += config.incomeOil;
+                const tierMult = TIER_MULTIPLIER[p.tier || 3] || 1.0;
+                goldIncome += Math.floor(config.incomeGold * tierMult);
+                oilIncome += Math.floor(config.incomeOil * tierMult);
             });
 
             // Unit Upkeep (Optional, maybe later)
