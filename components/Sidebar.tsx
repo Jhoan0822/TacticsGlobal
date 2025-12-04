@@ -3,6 +3,7 @@ import { GameState, UnitClass, Faction, POIType, Difficulty } from '../types';
 import { UNIT_CONFIG, POI_CONFIG, DIPLOMACY } from '../constants';
 import { getTacticalAdvice } from '../services/geminiService';
 import { evaluateAllianceRequest } from '../services/gameLogic';
+import { useTooltip } from './Tooltip';
 
 interface Props {
     gameState: GameState;
@@ -90,6 +91,8 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
         gameState.units.some(u => u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.PORT);
     const hasAirCap = hasCity || gameState.units.some(u => u.factionId === gameState.localPlayerId && (u.unitClass === UnitClass.AIRBASE || u.unitClass === UnitClass.MILITARY_BASE));
 
+    const { showTooltip, hideTooltip } = useTooltip();
+
     const renderBuildList = (list: UnitClass[], title: string, reqMet: boolean, reqText: string) => (
         <div className="mb-4">
             <div className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest">{title}</div>
@@ -101,7 +104,30 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                 const disabled = !canAfford || !reqMet;
 
                 return (
-                    <button key={type} onClick={() => onBuyUnit(type)} disabled={disabled} className={`w-full text-left p-2 mb-2 rounded border flex justify-between items-center transition-all ${disabled ? 'bg-slate-900/50 border-slate-800 opacity-50 cursor-not-allowed' : 'bg-slate-800/80 border-slate-600 hover:bg-slate-700 hover:border-blue-400'}`}>
+                    <button
+                        key={type}
+                        onClick={() => onBuyUnit(type)}
+                        disabled={disabled}
+                        onMouseEnter={(e) => {
+                            showTooltip(
+                                type.replace(/_/g, ' '),
+                                <div className="space-y-1">
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+                                        <span className="text-slate-400">HP:</span> <span className="text-green-400">{stats.maxHp}</span>
+                                        <span className="text-slate-400">ATK:</span> <span className="text-red-400">{stats.attack}</span>
+                                        <span className="text-slate-400">RNG:</span> <span className="text-yellow-400">{stats.range}km</span>
+                                        <span className="text-slate-400">SPD:</span> <span className="text-cyan-400">{stats.speed}</span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 italic border-t border-slate-700 pt-1 mt-1">
+                                        {stats.canCapture ? "Can Capture Cities" : "Support Unit"}
+                                    </div>
+                                </div>,
+                                e
+                            );
+                        }}
+                        onMouseLeave={hideTooltip}
+                        className={`w-full text-left p-2 mb-2 rounded border flex justify-between items-center transition-all ${disabled ? 'bg-slate-900/50 border-slate-800 opacity-50 cursor-not-allowed' : 'bg-slate-800/80 border-slate-600 hover:bg-slate-700 hover:border-blue-400'}`}
+                    >
                         <div>
                             <div className="font-bold text-slate-200 text-xs">{type.replace(/_/g, ' ')}</div>
                         </div>
@@ -187,7 +213,7 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
             </div>
 
             {/* SELECTION PANEL */}
-            {selectedUnit && selectedUnit.factionId === 'PLAYER' && (
+            {selectedUnit && selectedUnit.factionId === gameState.localPlayerId && (
                 <div className="p-4 bg-slate-800/90 border-t border-slate-700/50 backdrop-blur-lg animate-slide-up">
                     <div className="flex justify-between items-start mb-2">
                         <div className="text-yellow-400 font-bold text-xs uppercase">{selectedUnit.unitClass.replace(/_/g, ' ')}</div>

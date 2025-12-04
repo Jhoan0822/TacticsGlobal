@@ -659,6 +659,24 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
                     if ('unitClass' in target) {
                         const tFaction = factions.find(f => f.id === target.factionId);
                         logEvent(messages, `${tFaction?.name || 'Enemy'} ${target.unitClass} destroyed!`, 'info');
+
+                        // VETERANCY LOGIC
+                        u1.kills = (u1.kills || 0) + 1;
+                        const currentLevel = u1.veterancy || 0;
+                        let newLevel = currentLevel;
+
+                        if (u1.kills >= 15) newLevel = 3;
+                        else if (u1.kills >= 8) newLevel = 2;
+                        else if (u1.kills >= 3) newLevel = 1;
+
+                        if (newLevel > currentLevel) {
+                            u1.veterancy = newLevel;
+                            // Level Up Bonus: Heal + Stats
+                            u1.maxHp *= 1.2;
+                            u1.hp = u1.maxHp; // Full Heal
+                            u1.attack *= 1.2;
+                            logEvent(messages, `${u1.unitClass} promoted to Rank ${newLevel}!`, 'success');
+                        }
                     }
                 }
 

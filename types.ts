@@ -98,6 +98,8 @@ export interface GameUnit extends UnitStats {
   destination?: { lat: number; lng: number } | null;
   targetId?: string | null;
   lastAttackerId?: string | null;
+  veterancy?: number; // 0-3
+  kills?: number;
   realWorldIdentity?: RealWorldData;
   isBoosting?: boolean;
   cooldown?: number; // Fire rate cooldown
