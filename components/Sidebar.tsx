@@ -260,25 +260,4 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
     );
 };
 
-export default React.memo(Sidebar, (prev, next) => {
-    // Custom comparison to reduce re-renders
-    if (prev.gameState.gameMode !== next.gameState.gameMode) return false;
-    if (prev.selectedUnitIds !== next.selectedUnitIds) return false;
-    if (prev.gameState.difficulty !== next.gameState.difficulty) return false; // Fix: Check difficulty
-
-    // Check resources (rounded to avoid flicker on decimals)
-    const prevFaction = prev.gameState.factions.find(f => f.id === prev.gameState.localPlayerId);
-    const nextFaction = next.gameState.factions.find(f => f.id === next.gameState.localPlayerId);
-    if (Math.floor(prevFaction?.gold || 0) !== Math.floor(nextFaction?.gold || 0)) return false;
-    if (Math.floor(prevFaction?.oil || 0) !== Math.floor(nextFaction?.oil || 0)) return false;
-
-    // Check unit count
-    if (prev.gameState.units.length !== next.gameState.units.length) return false;
-
-    // Check POI ownership changes (Count owned POIs)
-    const prevOwned = prev.gameState.pois.filter(p => p.ownerFactionId === prev.gameState.localPlayerId).length;
-    const nextOwned = next.gameState.pois.filter(p => p.ownerFactionId === next.gameState.localPlayerId).length;
-    if (prevOwned !== nextOwned) return false;
-
-    return true;
-});
+export default Sidebar;

@@ -198,7 +198,8 @@ export const fetchWorldData = async (centerLat: number, centerLng: number, radiu
     name: 'Global Command (You)',
     color: '#3b82f6',
     type: 'PLAYER',
-    gold: 15000, // HIGH STARTING RESOURCES
+    gold: 50000, // HIGH STARTING RESOURCES
+    oil: 10000,
     relations: {}
   });
 
@@ -208,6 +209,7 @@ export const fetchWorldData = async (centerLat: number, centerLng: number, radiu
     color: '#94a3b8',
     type: 'NEUTRAL',
     gold: 0,
+    oil: 0,
     relations: { 'PLAYER': 0 }
   });
 
@@ -222,7 +224,8 @@ export const fetchWorldData = async (centerLat: number, centerLng: number, radiu
       name: preset.name,
       color: preset.color,
       type: 'AI',
-      gold: 15000, // HIGH STARTING RESOURCES
+      gold: 50000, // HIGH STARTING RESOURCES
+      oil: 10000,
       relations: { 'PLAYER': -50 }, // Dislike player by default
       aggression: 0.8 + Math.random() * 0.2, // VERY AGGRESSIVE (0.8 - 1.0)
       lastAiUpdate: 0,
@@ -305,7 +308,7 @@ export const fetchWorldData = async (centerLat: number, centerLng: number, radiu
 
   // REMOVED RANDOM FILLER CITIES LOOP
 
-  // 3. Generate Oil Rigs
+  // 3. Generate Oil Rigs & Gold Mines
   const oilCount = 50;
   for (let i = 0; i < oilCount; i++) {
     const stats = POI_CONFIG[POIType.OIL_RIG];
@@ -319,6 +322,21 @@ export const fetchWorldData = async (centerLat: number, centerLng: number, radiu
       hp: stats.defaultHp,
       maxHp: stats.defaultHp
     })
+  }
+
+  const goldCount = 60; // Lots of gold mines
+  for (let i = 0; i < goldCount; i++) {
+    const stats = POI_CONFIG[POIType.GOLD_MINE];
+    pois.push({
+      id: `GOLD-${randomId()}`,
+      type: POIType.GOLD_MINE,
+      name: `MINE-${Math.floor(Math.random() * 999)}`,
+      position: { lat: (Math.random() * 120) - 60, lng: (Math.random() * 360) - 180 },
+      ownerFactionId: 'NEUTRAL',
+      tier: 2,
+      hp: stats.defaultHp,
+      maxHp: stats.defaultHp
+    });
   }
 
   // 4. Generate Initial Units

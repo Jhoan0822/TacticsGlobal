@@ -32,7 +32,8 @@ export enum UnitClass {
 
 export enum POIType {
   CITY = 'CITY',
-  OIL_RIG = 'OIL_RIG'
+  OIL_RIG = 'OIL_RIG',
+  GOLD_MINE = 'GOLD_MINE'
 }
 
 export enum WeaponType {
