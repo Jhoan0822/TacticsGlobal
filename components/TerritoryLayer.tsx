@@ -1,7 +1,7 @@
-import React, { useMemo, useState, useRef } from 'react';
-import { SVGOverlay, useMap, useMapEvents } from 'react-leaflet';
-import * as d3 from 'd3';
+import React, { useEffect, useRef, useMemo } from 'react';
+import { useMap } from 'react-leaflet';
 import L from 'leaflet';
+import * as d3 from 'd3';
 import { GameUnit, Faction, POI, UnitClass } from '../types';
 import { TERRITORY_CONFIG } from '../constants';
 
@@ -19,13 +19,10 @@ interface Site {
     radius: number;
 }
 
-interface CachedGeometry {
+interface VoronoiCell {
     id: string;
-    d: string; // Voronoi Path Data
-    gradientId: string;
-    cx: number;
-    cy: number;
-    rUnits: number;
+    polygon: [number, number][]; // Array of [lat, lng]
+    site: Site;
     factionColor: string;
 }
 
@@ -34,18 +31,19 @@ const SVG_SIZE = 4096;
 
 const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
     const map = useMap();
-    // REMOVED: const [zoom, setZoom] = useState(map.getZoom());
-    // REMOVED: useMapEvents({ zoom: ... });
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const animationFrameId = useRef<number | null>(null);
 
-    const bounds = [[-MAX_LAT, -180], [MAX_LAT, 180]] as L.LatLngBoundsExpression;
+    // Refs for data access in loop
+    const cellsRef = useRef<VoronoiCell[]>([]);
 
-    // Extract HQs for Voronoi (Memoized to avoid breaking useMemo below)
+    // Extract HQs for Voronoi
     const hqs = useMemo(() => units.filter(u =>
         (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MOBILE_COMMAND_CENTER) && u.hp > 0
     ), [units]);
 
-    // Throttle the heavy Voronoi calculation (max 5 times per second)
-    const { geometry, defs } = useMemo(() => {
+    // Calculate Voronoi Geometry (LatLng Polygons)
+    const cells = useMemo(() => {
         const sites: Site[] = [];
 
         // GENERATE SITES FROM CITIES ONLY (plus HQ)
@@ -75,8 +73,9 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
             });
         });
 
-        if (sites.length < 1) return { geometry: [], defs: [] };
+        if (sites.length < 1) return [];
 
+        // Projection for calculation (Mercator)
         const projection = d3.geoMercator()
             .scale(SVG_SIZE / (2 * Math.PI))
             .translate([SVG_SIZE / 2, SVG_SIZE / 2]);
@@ -84,21 +83,13 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
         const projectedSites = sites.map(s => {
             const safeLat = Math.max(-MAX_LAT, Math.min(MAX_LAT, s.lat));
             const [x, y] = projection([s.lng, safeLat]) || [0, 0];
-
-            const latRad = safeLat * Math.PI / 180;
-            const distortion = 1 / Math.cos(latRad);
-
-            const unitsPerDegree = SVG_SIZE / 360;
-            const rUnits = s.radius * unitsPerDegree * distortion;
-
-            return { ...s, x, y, rUnits };
+            return { ...s, x, y };
         });
 
         const delaunay = d3.Delaunay.from(projectedSites.map(s => [s.x, s.y]));
         const voronoi = delaunay.voronoi([0, 0, SVG_SIZE, SVG_SIZE]);
 
-        const generatedGeometry: CachedGeometry[] = [];
-        const generatedDefs: React.ReactNode[] = [];
+        const generatedCells: VoronoiCell[] = [];
 
         for (let i = 0; i < projectedSites.length; i++) {
             const site = projectedSites[i];
@@ -106,82 +97,156 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
 
             if (!faction || site.factionId === 'NEUTRAL') continue;
 
-            const gradientId = `grad-${site.id}`;
-            const gradientRadius = 600;
+            const polygonCoords = voronoi.cellPolygon(i);
+            if (!polygonCoords) continue;
 
-            generatedDefs.push(
-                <radialGradient key={gradientId} id={gradientId} cx={site.x} cy={site.y} r={gradientRadius} gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stopColor={faction.color} stopOpacity={0.7} />
-                    <stop offset="15%" stopColor={faction.color} stopOpacity={0.4} />
-                    <stop offset="40%" stopColor={faction.color} stopOpacity={0.2} />
-                    <stop offset="100%" stopColor={faction.color} stopOpacity={0.05} />
-                </radialGradient>
-            );
+            // Convert back to LatLng
+            const latLngPolygon: [number, number][] = polygonCoords.map(([x, y]) => {
+                const coords = projection.invert!([x, y]);
+                return [coords![1], coords![0]]; // [lat, lng]
+            });
 
-            generatedGeometry.push({
+            generatedCells.push({
                 id: site.id,
-                d: voronoi.renderCell(i),
-                gradientId: gradientId,
-                cx: site.x,
-                cy: site.y,
-                rUnits: site.rUnits,
+                polygon: latLngPolygon,
+                site: site,
                 factionColor: faction.color
             });
         }
 
-        return { geometry: generatedGeometry, defs: generatedDefs };
+        return generatedCells;
 
     }, [hqs, pois, factions]);
 
-    if (geometry.length === 0) return null;
+    // Update ref when cells change
+    useEffect(() => {
+        cellsRef.current = cells;
+    }, [cells]);
 
-    return (
-        <SVGOverlay attributes={{ viewBox: `0 0 ${SVG_SIZE} ${SVG_SIZE}`, preserveAspectRatio: "none" }} bounds={bounds}>
-            <defs>
-                {defs}
-            </defs>
-            <g style={{ filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))' }}>
-                {geometry.map(geo => (
-                    <React.Fragment key={geo.id}>
-                        <path
-                            d={geo.d}
-                            fill={`url(#${geo.gradientId})`}
-                            stroke={geo.factionColor}
-                            strokeWidth={2}
-                            vectorEffect="non-scaling-stroke"
-                            strokeOpacity={0.3}
-                        />
-                    </React.Fragment>
-                ))}
-            </g>
-        </SVGOverlay>
-    );
+    // Canvas Setup and Draw Loop
+    useEffect(() => {
+        const canvas = L.DomUtil.create('canvas', 'leaflet-zoom-animated') as HTMLCanvasElement;
+        canvas.style.pointerEvents = 'none';
+        canvas.style.zIndex = '400'; // MIDDLE LAYER
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+
+        const container = map.getContainer();
+        container.appendChild(canvas);
+        canvasRef.current = canvas;
+
+        const draw = () => {
+            if (!canvas || !map) return;
+
+            const size = map.getSize();
+            const pixelRatio = window.devicePixelRatio || 1;
+
+            if (canvas.width !== size.x * pixelRatio || canvas.height !== size.y * pixelRatio) {
+                canvas.width = size.x * pixelRatio;
+                canvas.height = size.y * pixelRatio;
+                canvas.style.width = `${size.x}px`;
+                canvas.style.height = `${size.y}px`;
+            }
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            ctx.resetTransform();
+            ctx.scale(pixelRatio, pixelRatio);
+            ctx.clearRect(0, 0, size.x, size.y);
+
+            const currentCells = cellsRef.current;
+            // const mapBounds = map.getBounds(); // Not used in this version, but useful for culling
+            // const buffer = 0.5; // degrees buffer // Not used in this version, but useful for culling
+
+            currentCells.forEach(cell => {
+                // Simple bounds check optimization could go here
+
+                // Project Polygon to Screen
+                ctx.beginPath();
+                let first = true;
+                cell.polygon.forEach(([lat, lng]) => {
+                    const pos = map.latLngToContainerPoint([lat, lng]);
+                    if (first) {
+                        ctx.moveTo(pos.x, pos.y);
+                        first = false;
+                    } else {
+                        ctx.lineTo(pos.x, pos.y);
+                    }
+                });
+                ctx.closePath();
+
+                // Gradient Fill
+                const centerPos = map.latLngToContainerPoint([cell.site.lat, cell.site.lng]);
+                // Gradient radius in pixels? 
+                // We want it to be "attached" so it should scale.
+                // In SVG it was 600 units in 4096 space.
+                // 600 / 4096 ~= 0.14 of world width.
+                // That's huge.
+                // Let's calculate a pixel radius based on the site radius or a fixed visual size?
+                // The user wants "attached", so it should scale with zoom.
+                // Let's use the site radius (in meters) converted to pixels.
+                // But the gradient was "glowy" and large.
+                // Let's try a fixed large pixel radius that scales?
+                // Or just use the distance to the furthest point?
+                // Let's use a fixed geographic radius (e.g. 500km) converted to pixels.
+
+                // Approximation: 1 degree lat ~= 111km.
+                // 500km ~= 4.5 degrees.
+                const pointAtRadius = map.latLngToContainerPoint([cell.site.lat + 4.5, cell.site.lng]);
+                const dx = pointAtRadius.x - centerPos.x;
+                const dy = pointAtRadius.y - centerPos.y;
+                const gradientRadius = Math.sqrt(dx * dx + dy * dy);
+
+                const grad = ctx.createRadialGradient(centerPos.x, centerPos.y, 0, centerPos.x, centerPos.y, gradientRadius);
+                grad.addColorStop(0, hexToRgba(cell.factionColor, 0.7));
+                grad.addColorStop(0.15, hexToRgba(cell.factionColor, 0.4));
+                grad.addColorStop(0.4, hexToRgba(cell.factionColor, 0.2));
+                grad.addColorStop(1, hexToRgba(cell.factionColor, 0.05));
+
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // Stroke
+                ctx.strokeStyle = cell.factionColor;
+                ctx.lineWidth = 2; // Constant width!
+                ctx.globalAlpha = 0.3;
+                ctx.stroke();
+                ctx.globalAlpha = 1.0;
+            });
+
+            animationFrameId.current = requestAnimationFrame(draw);
+        };
+
+        animationFrameId.current = requestAnimationFrame(draw);
+
+        const onMove = () => {
+            // Handled by rAF
+        };
+
+        map.on('move', onMove);
+        map.on('zoom', onMove);
+        map.on('resize', onMove);
+
+        return () => {
+            map.off('move', onMove);
+            map.off('zoom', onMove);
+            map.off('resize', onMove);
+            if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+            if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+        };
+    }, [map]);
+
+    return null;
 };
 
-export default React.memo(TerritoryLayer, (prev, next) => {
-    // 1. Check Factions (Colors/Relations might change)
-    if (prev.factions !== next.factions) return false;
+// Helper for Hex to RGBA
+function hexToRgba(hex: string, alpha: number) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
-    // 2. Check POIs - ONLY check ownership changes, ignore HP updates
-    if (prev.pois.length !== next.pois.length) return false;
-    for (let i = 0; i < prev.pois.length; i++) {
-        if (prev.pois[i].id !== next.pois[i].id) return false; // Should match if order preserved
-        if (prev.pois[i].ownerFactionId !== next.pois[i].ownerFactionId) return false;
-        // Ignore HP, Tier, etc. for Territory rendering
-    }
-
-    // 3. Check HQs - Only if they move or die
-    const prevHQs = prev.units.filter(u => u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MOBILE_COMMAND_CENTER);
-    const nextHQs = next.units.filter(u => u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MOBILE_COMMAND_CENTER);
-
-    if (prevHQs.length !== nextHQs.length) return false;
-
-    for (let i = 0; i < prevHQs.length; i++) {
-        if (prevHQs[i].id !== nextHQs[i].id) return false;
-        if (prevHQs[i].factionId !== nextHQs[i].factionId) return false;
-        if (Math.abs(prevHQs[i].position.lat - nextHQs[i].position.lat) > 0.001) return false;
-        if (Math.abs(prevHQs[i].position.lng - nextHQs[i].position.lng) > 0.001) return false;
-    }
-
-    return true;
-});
+export default React.memo(TerritoryLayer);
