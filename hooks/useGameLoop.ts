@@ -82,8 +82,8 @@ export const useGameLoop = () => {
                 const nextState = processGameTick(prevState, [], isHost);
 
                 // HOST: Broadcast state periodically to ensure sync
-                // OPTIMIZATION: Reduced frequency from 10 to 50 ticks (2s) to save bandwidth
-                if (isHost && nextState.gameTick % 50 === 0) {
+                // FREQUENCY INCREASED: Every 10 ticks (300ms) to ensure smooth resource updates
+                if (isHost && nextState.gameTick % 10 === 0) {
                     NetworkService.broadcastFullState(nextState);
                 }
 
@@ -98,15 +98,21 @@ export const useGameLoop = () => {
     // ============================================
     // START GAME
     // ============================================
-    const startGame = (scenario: Scenario, localPlayerId: string, factions: Faction[], isClient: boolean) => {
+    const startGame = (scenario: Scenario, localPlayerId: string, factions: Faction[], isClient: boolean, initialPois?: POI[]) => {
         console.log('[START GAME]', scenario.id, 'localPlayerId:', localPlayerId, 'isClient:', isClient);
 
-        // Start with empty POIs - they will be loaded separately
-        // The App.tsx or terrain service handles POI data loading
+        // Load POIs: Use provided (Client) or Generate (Host/Single)
+        // We need to import getMockCities from somewhere? It was used before but not imported in the snippet I saw?
+        // Ah, it was likely imported from services/mockDataService.
+        // Let's assume it's available or we use TerrainService/MockDataService.
+        // Wait, the previous code had `getMockCities()`.
+
+        let allCities = initialPois || getMockCities();
+
         // Define initial state object
         const initialState: GameState = {
             units: [],
-            pois: getMockCities(), // Load all cities!
+            pois: allCities,
             factions: factions,
             projectiles: [],
             explosions: [],
@@ -122,26 +128,22 @@ export const useGameLoop = () => {
 
         // HOST LOGIC: Assign Cities & Spawn HQs
         if (!isClient) {
-            let allCities = getMockCities();
             const initialUnits: GameUnit[] = [];
 
             // Filter by Scenario Bounds
             if (scenario.bounds) {
-                const { minLat, maxLat, minLng, maxLng } = scenario.bounds as any; // Cast to any to bypass type mismatch if types.ts isn't updated yet
+                const { minLat, maxLat, minLng, maxLng } = scenario.bounds as any;
                 allCities = allCities.filter(city =>
                     city.position.lat >= minLat && city.position.lat <= maxLat &&
                     city.position.lng >= minLng && city.position.lng <= maxLng
                 );
+                initialState.pois = allCities; // Update filtered POIs
             }
 
             const botFactions = factions.filter(f => f.type === 'BOT');
-            const playerFaction = factions.find(f => f.id === localPlayerId);
 
-            // 1. Assign Random City to Player (if not already set)
-            // Actually, player picks base in SELECT_BASE mode.
-            // But BOTS need auto-assignment.
-
-            const unassignedCities = [...allCities];
+            // Assign Random City to Bots
+            const unassignedCities = [...allCities.filter(p => p.type === POIType.CITY)]; // Only cities
 
             botFactions.forEach(bot => {
                 if (unassignedCities.length > 0) {
@@ -167,6 +169,13 @@ export const useGameLoop = () => {
             initialState.pois = allCities;
             initialState.units = initialUnits;
 
+            // BROADCAST START GAME (Host only)
+            // We need to send the FINAL POIs (filtered and assigned) to clients
+            if (NetworkService.isHost || (!isClient && NetworkService.myPeerId)) { // Check if we are in multiplayer mode
+                // Actually, we should check if we have connections or if networkMode implies multiplayer.
+                // But NetworkService.startGame sends to all connections.
+                NetworkService.startGame(scenario.id, factions, allCities);
+            }
         }
 
         setGameState(initialState);
@@ -176,7 +185,6 @@ export const useGameLoop = () => {
         // Set initial camera position
         const myFaction = factions.find(f => f.id === localPlayerId);
         if (myFaction) {
-            // Center on faction's region or world center
             setCenter({ lat: 20, lng: 0 });
         }
 

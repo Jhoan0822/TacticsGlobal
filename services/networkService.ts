@@ -14,7 +14,7 @@ export type NetworkEvent =
     | { type: 'ACTION', action: GameAction }
     | { type: 'FULL_STATE', gameState: GameState, timestamp: number }
     | { type: 'LOBBY_UPDATE', state: LobbyState }
-    | { type: 'START_GAME', scenarioId: string, factions: any[] };
+    | { type: 'START_GAME', scenarioId: string, factions: any[], pois: any[] };
 
 type EventHandler = (event: NetworkEvent) => void;
 
@@ -176,8 +176,8 @@ class NetworkServiceImpl {
     /**
      * Start game signal (legacy support)
      */
-    startGame(scenarioId: string, factions: any[]) {
-        const msg = { type: 'START_GAME' as const, payload: { scenarioId, factions } };
+    startGame(scenarioId: string, factions: any[], pois: any[]) {
+        const msg = { type: 'START_GAME' as const, payload: { scenarioId, factions, pois } };
         this.conns.forEach(conn => {
             if (conn.open) conn.send(msg);
         });

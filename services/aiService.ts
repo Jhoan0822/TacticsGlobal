@@ -147,10 +147,12 @@ const executeProduction = (faction: Faction, gameState: GameState, targets: Scor
 
   if (canBuildNavy && rand < 0.2) {
     unitType = Math.random() > 0.5 ? UnitClass.DESTROYER : UnitClass.FRIGATE;
-  } else if (rand < 0.5) {
+  } else if (rand < 0.4) {
     unitType = UnitClass.GROUND_TANK; // Main battle unit
-  } else if (rand < 0.7) {
+  } else if (rand < 0.6) {
     unitType = UnitClass.FIGHTER_JET; // Air cover
+  } else if (rand < 0.75) {
+    unitType = UnitClass.MISSILE_LAUNCHER; // Long range support
   } else {
     unitType = UnitClass.INFANTRY; // Capturers
   }
