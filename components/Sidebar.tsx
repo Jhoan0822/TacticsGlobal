@@ -100,7 +100,9 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                 const stats = UNIT_CONFIG[type];
                 const costGold = stats.cost?.gold || 0;
                 const costOil = stats.cost?.oil || 0;
-                const canAfford = gameState.playerResources.gold >= costGold && gameState.playerResources.oil >= costOil;
+                const currentGold = playerFaction?.gold || 0;
+                const currentOil = playerFaction?.oil || 0;
+                const canAfford = currentGold >= costGold && currentOil >= costOil;
                 const disabled = !canAfford || !reqMet;
 
                 return (
@@ -148,12 +150,12 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
             <div className="grid grid-cols-2 gap-2 p-4 border-b border-slate-700/50">
                 <div className="bg-slate-800/50 p-2 rounded border border-slate-600/50">
                     <div className="text-[10px] text-yellow-500 mb-1">GOLD</div>
-                    <div className="text-lg font-bold text-white">{Math.floor(gameState.playerResources.gold).toLocaleString()}</div>
+                    <div className="text-lg font-bold text-white">{Math.floor(playerFaction?.gold || 0).toLocaleString()}</div>
                     <div className="text-[9px] text-green-400">+{Math.floor(baseIncomeGold + poiGold)}/t</div>
                 </div>
                 <div className="bg-slate-800/50 p-2 rounded border border-slate-600/50">
                     <div className="text-[10px] text-cyan-500 mb-1">OIL</div>
-                    <div className="text-lg font-bold text-white">{Math.floor(gameState.playerResources.oil).toLocaleString()}</div>
+                    <div className="text-lg font-bold text-white">{Math.floor(playerFaction?.oil || 0).toLocaleString()}</div>
                     <div className="text-[9px] text-green-400">+{Math.floor(baseIncomeOil + poiOil)}/t</div>
                 </div>
             </div>
@@ -265,8 +267,10 @@ export default React.memo(Sidebar, (prev, next) => {
     if (prev.gameState.difficulty !== next.gameState.difficulty) return false; // Fix: Check difficulty
 
     // Check resources (rounded to avoid flicker on decimals)
-    if (Math.floor(prev.gameState.playerResources.gold) !== Math.floor(next.gameState.playerResources.gold)) return false;
-    if (Math.floor(prev.gameState.playerResources.oil) !== Math.floor(next.gameState.playerResources.oil)) return false;
+    const prevFaction = prev.gameState.factions.find(f => f.id === prev.gameState.localPlayerId);
+    const nextFaction = next.gameState.factions.find(f => f.id === next.gameState.localPlayerId);
+    if (Math.floor(prevFaction?.gold || 0) !== Math.floor(nextFaction?.gold || 0)) return false;
+    if (Math.floor(prevFaction?.oil || 0) !== Math.floor(nextFaction?.oil || 0)) return false;
 
     // Check unit count
     if (prev.gameState.units.length !== next.gameState.units.length) return false;

@@ -791,9 +791,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
             return {
                 ...faction,
                 gold: faction.gold + goldIncome,
-                // Faction interface might need 'oil' if we want to track it globally, 
-                // but currently Faction only has 'gold'. 
-                // We'll stick to gold for Faction state for now, or add oil to Faction interface.
+                oil: (faction.oil || 0) + oilIncome
             };
         }
         return faction;
