@@ -24,18 +24,33 @@ const UNIT_COLORS: Record<string, string> = {
     'NEUTRAL': '#9ca3af',
 };
 
-// Helper to draw SVG-like paths on Canvas
-const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: string) => {
+// --- SPRITE CACHE ---
+const spriteCache: Record<string, HTMLCanvasElement> = {};
+
+const getUnitSprite = (type: UnitClass, color: string): HTMLCanvasElement => {
+    const key = `${type}-${color}`;
+    if (spriteCache[key]) return spriteCache[key];
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return canvas;
+
+    // Center is 16, 16
+    ctx.translate(16, 16);
+
+    // Draw the shape
     ctx.fillStyle = color;
     ctx.strokeStyle = 'white';
     ctx.lineWidth = 1;
     ctx.lineJoin = 'round';
 
-    ctx.beginPath();
     switch (type) {
         case UnitClass.FIGHTER_JET:
         case UnitClass.RECON_DRONE:
             // Triangle with tail
+            ctx.beginPath();
             ctx.moveTo(0, -10);
             ctx.lineTo(-6, 6);
             ctx.lineTo(0, 3);
@@ -53,6 +68,7 @@ const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: st
             break;
         case UnitClass.HEAVY_BOMBER:
             // Large Triangle
+            ctx.beginPath();
             ctx.moveTo(0, -10);
             ctx.lineTo(-10, 4);
             ctx.lineTo(0, 2);
@@ -63,6 +79,7 @@ const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: st
             break;
         case UnitClass.HELICOPTER:
             // Circle with rotor
+            ctx.beginPath();
             ctx.arc(0, 0, 5, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
@@ -93,6 +110,7 @@ const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: st
         case UnitClass.INFANTRY:
         case UnitClass.SPECIAL_FORCES:
             // Circle with dot
+            ctx.beginPath();
             ctx.arc(0, 0, 4, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
@@ -148,6 +166,7 @@ const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: st
             break;
         case UnitClass.PORT:
             // Anchor shape or Circle with dock
+            ctx.beginPath();
             ctx.arc(0, 0, 8, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
@@ -212,17 +231,23 @@ const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: st
             ctx.fillRect(0, -4, 3, 8);
             break;
         default:
+            ctx.beginPath();
             ctx.arc(0, 0, 6, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
     }
+
+    spriteCache[key] = canvas;
+    return canvas;
 };
 
 const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, projectiles, explosions, pois }) => {
     const map = useMap();
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const animationFrameId = useRef<number | null>(null);
     const cachedFeaturesRef = useRef<CachedFeature[] | null>(null);
+    const lastMapStateRef = useRef<{ center: L.LatLng, zoom: number } | null>(null);
 
     // Refs for data access in loop
     const unitsRef = useRef(units);
@@ -254,6 +279,9 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
         container.appendChild(canvas);
         canvasRef.current = canvas;
 
+        // Create Offscreen Canvas for Map
+        offscreenCanvasRef.current = document.createElement('canvas');
+
         // Pre-process GeoJSON for Culling
         const prepareData = () => {
             const geoJson = TerrainService.getWorldData();
@@ -268,27 +296,25 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
             }
         };
 
-        const draw = (time: number) => {
-            if (!canvas || !map) return;
+        const renderMapToOffscreen = () => {
+            const offCanvas = offscreenCanvasRef.current;
+            if (!offCanvas || !map) return;
 
             const size = map.getSize();
             const pixelRatio = window.devicePixelRatio || 1;
 
-            if (canvas.width !== size.x * pixelRatio || canvas.height !== size.y * pixelRatio) {
-                canvas.width = size.x * pixelRatio;
-                canvas.height = size.y * pixelRatio;
-                canvas.style.width = `${size.x}px`;
-                canvas.style.height = `${size.y}px`;
+            if (offCanvas.width !== size.x * pixelRatio || offCanvas.height !== size.y * pixelRatio) {
+                offCanvas.width = size.x * pixelRatio;
+                offCanvas.height = size.y * pixelRatio;
             }
 
-            const ctx = canvas.getContext('2d');
+            const ctx = offCanvas.getContext('2d');
             if (!ctx) return;
 
             ctx.resetTransform();
             ctx.scale(pixelRatio, pixelRatio);
             ctx.clearRect(0, 0, size.x, size.y);
 
-            // --- 1. DRAW MAP (LAND) ---
             prepareData();
 
             const mapBounds = map.getBounds();
@@ -326,6 +352,59 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
                     ctx.fill();
                     ctx.stroke();
                 }
+            }
+        };
+
+        const draw = (time: number) => {
+            if (!canvas || !map) return;
+
+            const size = map.getSize();
+            const pixelRatio = window.devicePixelRatio || 1;
+
+            if (canvas.width !== size.x * pixelRatio || canvas.height !== size.y * pixelRatio) {
+                canvas.width = size.x * pixelRatio;
+                canvas.height = size.y * pixelRatio;
+                canvas.style.width = `${size.x}px`;
+                canvas.style.height = `${size.y}px`;
+                // Force redraw of map if size changes
+                renderMapToOffscreen();
+            }
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            ctx.resetTransform();
+            ctx.scale(pixelRatio, pixelRatio);
+            ctx.clearRect(0, 0, size.x, size.y);
+
+            // --- 1. DRAW MAP (FROM OFFSCREEN CANVAS) ---
+            // Check if map moved significantly
+            const currentCenter = map.getCenter();
+            const currentZoom = map.getZoom();
+            
+            // Simple check: if center or zoom changed, re-render offscreen
+            // OPTIMIZATION: In a real scenario, we might tolerate small pans without re-rendering, 
+            // but for now, we re-render on any move to ensure accuracy, BUT we do it efficiently.
+            // Actually, d3 projection depends on map state, so we MUST re-render the map path if the map moves.
+            // However, we can throttle it or only do it if the map IS moving.
+            // But wait, if we re-render the offscreen canvas every frame the map moves, we gain nothing over direct rendering.
+            // The gain comes if the map is STATIC.
+            
+            // Let's check if the map state has changed since last frame
+            const mapStateChanged = !lastMapStateRef.current || 
+                lastMapStateRef.current.center.lat !== currentCenter.lat ||
+                lastMapStateRef.current.center.lng !== currentCenter.lng ||
+                lastMapStateRef.current.zoom !== currentZoom;
+
+            if (mapStateChanged) {
+                renderMapToOffscreen();
+                lastMapStateRef.current = { center: currentCenter, zoom: currentZoom };
+            }
+
+            if (offscreenCanvasRef.current) {
+                // Draw the offscreen canvas onto the main canvas
+                // We need to draw it at 0,0 with size / pixelRatio because we scaled the context
+                ctx.drawImage(offscreenCanvasRef.current, 0, 0, size.x, size.y);
             }
 
             // --- 1.5 DRAW POIS (CITIES) ---
@@ -490,7 +569,11 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
 
                 ctx.save();
                 ctx.rotate((unit.heading * Math.PI) / 180);
-                drawUnitShape(ctx, unit.unitClass, color);
+                
+                // USE SPRITE CACHE
+                const sprite = getUnitSprite(unit.unitClass, color);
+                ctx.drawImage(sprite, -16, -16);
+                
                 ctx.restore();
 
                 if (isDamaged) {
