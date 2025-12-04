@@ -1,8 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
-import * as d3 from 'd3';
-import { TerrainService } from '../services/terrainService';
 import { GameUnit, Faction, UnitClass, Projectile, Explosion, WeaponType, POI, POIType } from '../types';
 
 interface Props {
@@ -14,28 +12,38 @@ interface Props {
     pois: POI[];
 }
 
-interface CachedFeature {
-    feature: any;
-    bbox: [number, number, number, number]; // minLng, minLat, maxLng, maxLat
-}
-
 const UNIT_COLORS: Record<string, string> = {
     'PLAYER': '#3b82f6',
     'NEUTRAL': '#9ca3af',
 };
 
-// Helper to draw SVG-like paths on Canvas
-const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: string) => {
+// --- SPRITE CACHE ---
+const spriteCache: Record<string, HTMLCanvasElement> = {};
+
+const getUnitSprite = (type: UnitClass, color: string): HTMLCanvasElement => {
+    const key = `${type}-${color}`;
+    if (spriteCache[key]) return spriteCache[key];
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return canvas;
+
+    // Center is 16, 16
+    ctx.translate(16, 16);
+
+    // Draw the shape
     ctx.fillStyle = color;
     ctx.strokeStyle = 'white';
     ctx.lineWidth = 1;
     ctx.lineJoin = 'round';
 
-    ctx.beginPath();
     switch (type) {
         case UnitClass.FIGHTER_JET:
         case UnitClass.RECON_DRONE:
             // Triangle with tail
+            ctx.beginPath();
             ctx.moveTo(0, -10);
             ctx.lineTo(-6, 6);
             ctx.lineTo(0, 3);
@@ -53,6 +61,7 @@ const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: st
             break;
         case UnitClass.HEAVY_BOMBER:
             // Large Triangle
+            ctx.beginPath();
             ctx.moveTo(0, -10);
             ctx.lineTo(-10, 4);
             ctx.lineTo(0, 2);
@@ -63,6 +72,7 @@ const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: st
             break;
         case UnitClass.HELICOPTER:
             // Circle with rotor
+            ctx.beginPath();
             ctx.arc(0, 0, 5, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
@@ -93,6 +103,7 @@ const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: st
         case UnitClass.INFANTRY:
         case UnitClass.SPECIAL_FORCES:
             // Circle with dot
+            ctx.beginPath();
             ctx.arc(0, 0, 4, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
@@ -148,6 +159,7 @@ const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: st
             break;
         case UnitClass.PORT:
             // Anchor shape or Circle with dock
+            ctx.beginPath();
             ctx.arc(0, 0, 8, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
@@ -212,17 +224,20 @@ const drawUnitShape = (ctx: CanvasRenderingContext2D, type: UnitClass, color: st
             ctx.fillRect(0, -4, 3, 8);
             break;
         default:
+            ctx.beginPath();
             ctx.arc(0, 0, 6, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
     }
+
+    spriteCache[key] = canvas;
+    return canvas;
 };
 
 const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, projectiles, explosions, pois }) => {
     const map = useMap();
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const animationFrameId = useRef<number | null>(null);
-    const cachedFeaturesRef = useRef<CachedFeature[] | null>(null);
 
     // Refs for data access in loop
     const unitsRef = useRef(units);
@@ -244,29 +259,15 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
     useEffect(() => {
         const canvas = L.DomUtil.create('canvas', 'leaflet-zoom-animated') as HTMLCanvasElement;
         canvas.style.pointerEvents = 'none';
-        canvas.style.zIndex = '100'; // Behind UI but above tiles (if any)
+        canvas.style.zIndex = '600'; // TOP LAYER (Above Territory)
         canvas.style.position = 'absolute';
         canvas.style.top = '0';
         canvas.style.left = '0';
-        canvas.style.backgroundColor = '#0f172a'; // Dark Ocean Background
+        // Transparent background for Unit Layer
 
         const container = map.getContainer();
         container.appendChild(canvas);
         canvasRef.current = canvas;
-
-        // Pre-process GeoJSON for Culling
-        const prepareData = () => {
-            const geoJson = TerrainService.getWorldData();
-            if (geoJson && geoJson.features && !cachedFeaturesRef.current) {
-                cachedFeaturesRef.current = geoJson.features.map((f: any) => {
-                    const bounds = d3.geoBounds(f); // [[w, s], [e, n]]
-                    return {
-                        feature: f,
-                        bbox: [bounds[0][0], bounds[0][1], bounds[1][0], bounds[1][1]]
-                    };
-                });
-            }
-        };
 
         const draw = (time: number) => {
             if (!canvas || !map) return;
@@ -288,47 +289,7 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
             ctx.scale(pixelRatio, pixelRatio);
             ctx.clearRect(0, 0, size.x, size.y);
 
-            // --- 1. DRAW MAP (LAND) ---
-            prepareData();
-
-            const mapBounds = map.getBounds();
-            const n = mapBounds.getNorth();
-            const s = mapBounds.getSouth();
-            const e = mapBounds.getEast();
-            const w = mapBounds.getWest();
-
-            if (cachedFeaturesRef.current) {
-                const visibleFeatures = cachedFeaturesRef.current.filter(cf => {
-                    return (
-                        cf.bbox[0] <= e &&
-                        cf.bbox[2] >= w &&
-                        cf.bbox[1] <= n &&
-                        cf.bbox[3] >= s
-                    );
-                });
-
-                if (visibleFeatures.length > 0) {
-                    ctx.fillStyle = '#1e293b'; // Slate-800
-                    ctx.strokeStyle = '#334155'; // Slate-700
-                    ctx.lineWidth = 1;
-
-                    const transform = d3.geoTransform({
-                        point: function (x, y) {
-                            const point = map.latLngToContainerPoint([y, x]);
-                            this.stream.point(point.x, point.y);
-                        }
-                    });
-
-                    const path = d3.geoPath().projection(transform).context(ctx);
-
-                    ctx.beginPath();
-                    visibleFeatures.forEach(cf => path(cf.feature));
-                    ctx.fill();
-                    ctx.stroke();
-                }
-            }
-
-            // --- 1.5 DRAW POIS (CITIES) ---
+            // --- 1. DRAW POIS (CITIES) ---
             const currentPois = poisRef.current;
             const currentFactions = factionsRef.current;
             const mapSize = map.getSize();
@@ -490,7 +451,11 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
 
                 ctx.save();
                 ctx.rotate((unit.heading * Math.PI) / 180);
-                drawUnitShape(ctx, unit.unitClass, color);
+
+                // USE SPRITE CACHE
+                const sprite = getUnitSprite(unit.unitClass, color);
+                ctx.drawImage(sprite, -16, -16);
+
                 ctx.restore();
 
                 if (isDamaged) {
@@ -552,19 +517,10 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
         map.on('zoom', onMove);
         map.on('resize', onMove);
 
-        // Poll for GeoJSON
-        const checkInterval = setInterval(() => {
-            if (TerrainService.isReady()) {
-                // Trigger redraw implicitly by loop
-                clearInterval(checkInterval);
-            }
-        }, 500);
-
         return () => {
             map.off('move', onMove);
             map.off('zoom', onMove);
             map.off('resize', onMove);
-            clearInterval(checkInterval);
             if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
             if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
         };

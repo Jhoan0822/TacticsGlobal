@@ -109,7 +109,10 @@ const calculateSteering = (unit: GameUnit, neighbors: GameUnit[], pois: POI[]): 
     // 1. SEPARATION (Push away from neighbors to avoid stacking)
     const desiredSeparation = 0.05; // ~5km
     let count = 0;
-    neighbors.forEach(other => {
+
+    // Optimization: Use for loop instead of forEach
+    for (let i = 0; i < neighbors.length; i++) {
+        const other = neighbors[i];
         const d = Math.sqrt(Math.pow(unit.position.lat - other.position.lat, 2) + Math.pow(unit.position.lng - other.position.lng, 2));
         if (d > 0 && d < desiredSeparation) {
             const diffLat = unit.position.lat - other.position.lat;
@@ -119,7 +122,7 @@ const calculateSteering = (unit: GameUnit, neighbors: GameUnit[], pois: POI[]): 
             steerLng += (diffLng / d);
             count++;
         }
-    });
+    }
 
     if (count > 0) {
         steerLat /= count;
@@ -149,7 +152,8 @@ export const GRID_CELL_SIZE = 0.1; // ~11km
 // OPTIMIZATION: Persistent Grid to avoid allocation every frame
 class SpatialGrid {
     private grid: Map<string, GameUnit[]> = new Map();
-    private keys: string[] = []; // Reuse array for keys
+    // Shared buffer for getNearby to avoid allocation
+    private _nearbyBuffer: GameUnit[] = [];
 
     clear() {
         // OPTIMIZATION: Reuse arrays to avoid reallocation
@@ -171,19 +175,23 @@ class SpatialGrid {
     getNearby(lat: number, lng: number): GameUnit[] {
         const latIdx = Math.floor(lat / GRID_CELL_SIZE);
         const lngIdx = Math.floor(lng / GRID_CELL_SIZE);
-        const nearby: GameUnit[] = [];
+
+        // Clear buffer
+        this._nearbyBuffer.length = 0;
 
         for (let x = -1; x <= 1; x++) {
             for (let y = -1; y <= 1; y++) {
                 const key = `${latIdx + x},${lngIdx + y}`;
                 const cell = this.grid.get(key);
                 if (cell) {
-                    // Manual push is faster than spread for large arrays, but spread is fine here
-                    for (let i = 0; i < cell.length; i++) nearby.push(cell[i]);
+                    // Manual push is faster than spread
+                    for (let i = 0; i < cell.length; i++) {
+                        this._nearbyBuffer.push(cell[i]);
+                    }
                 }
             }
         }
-        return nearby;
+        return this._nearbyBuffer;
     }
 }
 
@@ -266,6 +274,8 @@ export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: 
 export const processGameTick = (currentState: GameState, intents: Intent[] = [], isHost: boolean = true): GameState => {
     if (currentState.gameMode === 'SELECT_BASE') return currentState;
 
+    // Shallow copies are still needed for React state immutability at the top level
+    // But we can optimize the internal operations
     let nextUnits = [...currentState.units];
     let nextPOIs = [...currentState.pois];
     let messages = [...currentState.messages];
@@ -417,10 +427,6 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
                     timestamp: Date.now(),
                     size: 'SMALL'
                 });
-                // Release immediately after one frame of "hit" state? 
-                // Actually, if we set progress=1, we should keep it for this frame so renderer sees it, then release next frame.
-                // But here we are processing for the *next* state.
-                // If it was already 1, release it.
                 projectilePool.release(p);
             } else {
                 projectilePool.release(p);
@@ -446,26 +452,23 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         }
     }
 
-    // const newExplosions: Explosion[] = currentState.explosions.filter(e => Date.now() - e.timestamp < 1000); // Already declared above
-
-    // Projectile logic moved to loop above for efficiency
-
-
-    // factions variable moved to top
-    // Update factions based on intents (e.g. resource deduction) if we did it above?
-    // Actually, let's just handle resource updates in the resource tick or specific intent logic if needed.
-
     // BUILD SPATIAL GRID
     // OPTIMIZATION: Use the persistent grid
     spatialGrid.clear();
     for (let i = 0; i < nextUnits.length; i++) {
         spatialGrid.add(nextUnits[i]);
     }
-    // const unitGrid = buildSpatialGrid(currentState.units); // Removed allocation
 
     // 1. UNIT LOGIC
-    nextUnits = nextUnits.map(unit => {
-        if (unit.hp <= 0) return unit;
+    // OPTIMIZATION: Avoid .map() and use a loop with a pre-allocated array (or just push)
+    const updatedUnits: GameUnit[] = [];
+
+    for (let i = 0; i < nextUnits.length; i++) {
+        const unit = nextUnits[i];
+        if (unit.hp <= 0) {
+            // Unit dead, do not add to updatedUnits
+            continue;
+        }
 
         // Cooldown management
         if (unit.cooldown && unit.cooldown > 0) unit.cooldown -= 1;
@@ -474,19 +477,20 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         let newLng = unit.position.lng;
         let newHeading = unit.heading;
         let currentDestination = unit.destination;
+        let targetId = unit.targetId;
 
         // RETALIATION LOGIC
-        if (!unit.targetId && !unit.destination && unit.lastAttackerId) {
+        if (!targetId && !currentDestination && unit.lastAttackerId) {
             const attacker = nextUnits.find(u => u.id === unit.lastAttackerId);
             if (attacker && attacker.hp > 0 && isHostile(factions.find(f => f.id === unit.factionId)!, attacker.factionId)) {
-                unit.targetId = unit.lastAttackerId;
+                targetId = unit.lastAttackerId;
             }
         }
 
         // A. COMBAT TARGET CHASE
-        if (unit.targetId) {
-            const targetUnit = nextUnits.find(u => u.id === unit.targetId);
-            const targetPOI = nextPOIs.find(p => p.id === unit.targetId);
+        if (targetId) {
+            const targetUnit = nextUnits.find(u => u.id === targetId);
+            const targetPOI = nextPOIs.find(p => p.id === targetId);
 
             let targetPos = targetUnit?.position || targetPOI?.position;
 
@@ -495,7 +499,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
                 (targetUnit && targetUnit.hp <= 0) ||
                 (targetPOI && targetPOI.ownerFactionId === unit.factionId)
             ) {
-                unit.targetId = null;
+                targetId = null;
                 currentDestination = null;
             } else if (targetPos) {
                 const dist = getDistanceKm(unit.position.lat, unit.position.lng, targetPos.lat, targetPos.lng);
@@ -523,15 +527,19 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
                 let bearing = getBearing(unit.position.lat, unit.position.lng, currentDestination.lat, currentDestination.lng);
 
                 // --- APPLY STEERING BEHAVIORS ---
-                // OPTIMIZATION: Use Spatial Grid for neighbors
+                // OPTIMIZATION: Use Spatial Grid for neighbors with shared buffer
                 const nearbyUnits = spatialGrid.getNearby(unit.position.lat, unit.position.lng);
-                // Filter in place or use a loop to avoid allocation?
-                // For now, filter is okay as the set is small
-                const neighbors = nearbyUnits.filter(u =>
-                    u.id !== unit.id &&
-                    Math.abs(u.position.lat - unit.position.lat) < 0.05 &&
-                    Math.abs(u.position.lng - unit.position.lng) < 0.05
-                );
+
+                // Filter in place using a loop to avoid allocation
+                const neighbors: GameUnit[] = [];
+                for (let j = 0; j < nearbyUnits.length; j++) {
+                    const u = nearbyUnits[j];
+                    if (u.id !== unit.id &&
+                        Math.abs(u.position.lat - unit.position.lat) < 0.05 &&
+                        Math.abs(u.position.lng - unit.position.lng) < 0.05) {
+                        neighbors.push(u);
+                    }
+                }
 
                 const steering = calculateSteering(unit, neighbors, nextPOIs);
 
@@ -575,14 +583,19 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
             if (unit.isBoosting) unit.isBoosting = false;
         }
 
-        return { ...unit, position: { lat: newLat, lng: newLng }, heading: newHeading, destination: currentDestination };
-    });
+        // Create new unit object only if changed?
+        // For now, we always create a new one to be safe with React, but we avoided the .map overhead
+        updatedUnits.push({
+            ...unit,
+            position: { lat: newLat, lng: newLng },
+            heading: newHeading,
+            destination: currentDestination,
+            targetId: targetId
+        });
+    }
 
-    // Re-build grid with next positions for combat check? 
-    // Or just use the old one for approximation? 
-    // Let's use the old one to avoid re-building, but update positions in our local 'nextUnits' array.
-    // Actually, for combat, we need to know who is near the *new* position.
-    // But since units move slowly, the old grid is "good enough" for finding candidates.
+    // Replace nextUnits with the updated list
+    nextUnits = updatedUnits;
 
     // 2. COMBAT RESOLUTION & CITY CAPTURE VIA ATTACK
     for (let i = 0; i < nextUnits.length; i++) {
