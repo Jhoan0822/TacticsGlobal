@@ -171,7 +171,7 @@ const randomId = () => Math.random().toString(36).substr(2, 9);
 
 // Export function to get cities for games
 export const getMockCities = (): POI[] => {
-  return GLOBAL_CITIES.map((city, idx) => {
+  const cities: POI[] = GLOBAL_CITIES.map((city, idx) => {
     const defaultStats = POI_CONFIG[POIType.CITY];
     return {
       id: `CITY-${city.name.replace(/ /g, '').toUpperCase()}`,
@@ -185,6 +185,73 @@ export const getMockCities = (): POI[] => {
       maxHp: defaultStats.defaultHp
     };
   });
+
+  // Add OIL_RIG resources (in ocean areas)
+  const oilRigLocations = [
+    { name: "North Sea Platform", lat: 57.5, lng: 2.0 },
+    { name: "Gulf of Mexico Alpha", lat: 26.0, lng: -93.0 },
+    { name: "Gulf of Mexico Bravo", lat: 27.5, lng: -88.5 },
+    { name: "Persian Gulf Rig", lat: 26.5, lng: 52.0 },
+    { name: "Caspian Reserve", lat: 40.0, lng: 51.0 },
+    { name: "South China Sea Rig", lat: 14.0, lng: 115.0 },
+    { name: "North Atlantic", lat: 62.0, lng: -3.0 },
+    { name: "Argentina Basin", lat: -45.0, lng: -60.0 },
+    { name: "West Africa Offshore", lat: -5.0, lng: 10.0 },
+    { name: "Alaska North Slope", lat: 70.0, lng: -150.0 },
+    { name: "Barents Sea", lat: 72.0, lng: 35.0 },
+    { name: "Timor Sea", lat: -11.0, lng: 125.0 },
+    { name: "Bay of Bengal", lat: 15.0, lng: 88.0 },
+    { name: "Mediterranean East", lat: 34.0, lng: 31.0 },
+    { name: "Adriatic Platform", lat: 43.0, lng: 15.0 },
+  ];
+
+  const oilStats = POI_CONFIG[POIType.OIL_RIG];
+  oilRigLocations.forEach((rig, idx) => {
+    cities.push({
+      id: `OIL-${idx}`,
+      type: POIType.OIL_RIG,
+      name: rig.name,
+      position: { lat: rig.lat, lng: rig.lng },
+      ownerFactionId: undefined,
+      tier: 3,
+      isCoastal: true,
+      hp: oilStats.defaultHp,
+      maxHp: oilStats.defaultHp
+    });
+  });
+
+  // Add GOLD_MINE resources (on land, strategic locations)
+  const goldMineLocations = [
+    { name: "South African Mines", lat: -26.2, lng: 28.0 },
+    { name: "Siberian Gold", lat: 62.0, lng: 130.0 },
+    { name: "Nevada Reserves", lat: 40.0, lng: -117.0 },
+    { name: "Australian Goldfields", lat: -31.0, lng: 121.0 },
+    { name: "Andes Mines", lat: -21.0, lng: -68.0 },
+    { name: "Canadian Shield", lat: 54.0, lng: -100.0 },
+    { name: "Ghana Deposits", lat: 6.0, lng: -2.0 },
+    { name: "Uzbekistan Sites", lat: 42.0, lng: 65.0 },
+    { name: "Papua New Guinea", lat: -5.5, lng: 145.0 },
+    { name: "Amazon Basin", lat: -3.0, lng: -52.0 },
+    { name: "Mexican Sierra", lat: 24.0, lng: -106.0 },
+    { name: "Ural Mountains", lat: 57.0, lng: 59.0 },
+  ];
+
+  const goldStats = POI_CONFIG[POIType.GOLD_MINE];
+  goldMineLocations.forEach((mine, idx) => {
+    cities.push({
+      id: `GOLD-${idx}`,
+      type: POIType.GOLD_MINE,
+      name: mine.name,
+      position: { lat: mine.lat, lng: mine.lng },
+      ownerFactionId: undefined,
+      tier: 3,
+      isCoastal: false,
+      hp: goldStats.defaultHp,
+      maxHp: goldStats.defaultHp
+    });
+  });
+
+  return cities;
 };
 
 export const fetchWorldData = async (centerLat: number, centerLng: number, radiusKm: number): Promise<{ units: GameUnit[], pois: POI[], factions: Faction[] }> => {
