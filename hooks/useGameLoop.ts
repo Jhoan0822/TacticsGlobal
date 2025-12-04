@@ -196,7 +196,14 @@ export const useGameLoop = () => {
 
             // SPAWN NEUTRAL CITY DEFENDERS (Gray troops)
             // Each neutral city gets 1-3 defenders based on tier
-            const neutralCities = allCities.filter(c => c.type === POIType.CITY && c.ownerFactionId === 'NEUTRAL');
+            const allTheCities = allCities.filter(c => c.type === POIType.CITY);
+            const ownershipCounts: Record<string, number> = {};
+            allTheCities.forEach(c => {
+                ownershipCounts[c.ownerFactionId || 'undefined'] = (ownershipCounts[c.ownerFactionId || 'undefined'] || 0) + 1;
+            });
+            console.log('[START GAME] City ownership breakdown:', ownershipCounts);
+
+            const neutralCities = allTheCities.filter(c => c.ownerFactionId === 'NEUTRAL');
             console.log('[START GAME] Spawning defenders for', neutralCities.length, 'neutral cities');
 
             neutralCities.forEach(city => {
