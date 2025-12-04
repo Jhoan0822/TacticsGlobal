@@ -16,6 +16,7 @@ interface Props {
 const UNIT_COLORS: Record<string, string> = {
     'PLAYER': '#3b82f6',
     'NEUTRAL': '#9ca3af',
+    'NEUTRAL_DEFENDER': '#6b7280', // Gray for neutral city defenders
 };
 
 // --- SPRITE CACHE ---
