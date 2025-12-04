@@ -161,6 +161,15 @@ export interface GameState {
   scenario: Scenario;
   localPlayerId: string;
   isClient?: boolean;
+  // Victory/Defeat State
+  gameResult?: 'VICTORY' | 'DEFEAT' | null;
+  gameStats?: {
+    unitsKilled: number;
+    unitsLost: number;
+    citiesCaptured: number;
+    goldEarned: number;
+    startTime: number;
+  };
 }
 
 export interface LobbyPlayer {

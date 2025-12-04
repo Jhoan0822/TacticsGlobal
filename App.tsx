@@ -3,6 +3,7 @@ import GameMap from './components/GameMap';
 import Sidebar from './components/Sidebar';
 import EventLog from './components/EventLog';
 import MainMenu from './components/MainMenu';
+import VictoryScreen from './components/VictoryScreen';
 import { useGameLoop } from './hooks/useGameLoop';
 import { TerrainService } from './services/terrainService';
 import { AudioService } from './services/audioService';
@@ -204,6 +205,26 @@ const App: React.FC = () => {
                     <EventLog messages={gameState.messages} />
                     <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>
                 </div>
+
+                {/* Victory/Defeat Screen */}
+                {gameState.gameResult && (
+                    <VictoryScreen
+                        isVictory={gameState.gameResult === 'VICTORY'}
+                        stats={{
+                            unitsKilled: gameState.gameStats?.unitsKilled || 0,
+                            unitsLost: gameState.gameStats?.unitsLost || 0,
+                            citiesCaptured: gameState.gameStats?.citiesCaptured || 0,
+                            goldEarned: gameState.gameStats?.goldEarned || 0,
+                            timePlayed: Math.floor((Date.now() - (gameState.gameStats?.startTime || Date.now())) / 1000)
+                        }}
+                        onPlayAgain={() => {
+                            setIsInMenu(true);
+                        }}
+                        onMainMenu={() => {
+                            setIsInMenu(true);
+                        }}
+                    />
+                )}
             </div>
         </TooltipProvider>
     );

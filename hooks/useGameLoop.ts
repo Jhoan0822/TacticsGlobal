@@ -138,6 +138,14 @@ export const useGameLoop = () => {
             localPlayerId,
             isClient,
             placementType: null,
+            gameResult: null,
+            gameStats: {
+                unitsKilled: 0,
+                unitsLost: 0,
+                citiesCaptured: 0,
+                goldEarned: 0,
+                startTime: Date.now()
+            }
         };
 
         // HOST LOGIC: Assign Cities & Spawn HQs
