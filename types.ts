@@ -45,8 +45,9 @@ export interface Faction {
   id: string;
   name: string;
   color: string;
-  type: 'PLAYER' | 'AI' | 'NEUTRAL';
+  type: 'PLAYER' | 'AI' | 'NEUTRAL' | 'BOT';
   gold: number;
+  oil: number;
   relations: Record<string, number>;
   aggression?: number;
   lastAiUpdate?: number;
