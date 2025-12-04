@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { GameUnit, Faction, UnitClass, Projectile, Explosion, WeaponType, POI, POIType } from '../types';
+import { globalParticleSystem, ParticleType } from '../services/ParticleSystem';
 
 interface Props {
     units: GameUnit[];

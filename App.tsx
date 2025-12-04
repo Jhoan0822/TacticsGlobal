@@ -10,6 +10,7 @@ import { NetworkService } from './services/networkService';
 import { spawnUnit } from './services/gameLogic'; // Import spawnUnit
 import { Scenario, Faction, LobbyState, Difficulty, UnitClass, POIType } from './types';
 import { SCENARIOS, UNIT_CONFIG } from './constants';
+import { TooltipProvider } from './components/Tooltip';
 
 
 const App: React.FC = () => {
