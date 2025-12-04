@@ -74,6 +74,31 @@ export class AIDirector {
 
         const newUnits = [...gameState.units];
 
+        // Find targets: Player AND neutral cities (for expansion)
+        const playerFaction = gameState.factions.find(f => f.type === 'PLAYER');
+        const playerCity = playerFaction
+            ? gameState.pois.find(p => p.ownerFactionId === playerFaction.id && p.type === POIType.CITY)
+            : null;
+        const playerHQ = playerFaction
+            ? gameState.units.find(u => u.factionId === playerFaction.id && u.unitClass === UnitClass.COMMAND_CENTER)
+            : null;
+
+        // EXPANSION: Find nearest neutral city
+        const neutralCities = gameState.pois.filter(p => p.ownerFactionId === 'NEUTRAL' && p.type === POIType.CITY);
+        let nearestNeutral: typeof neutralCities[0] | null = null;
+        let nearestDist = Infinity;
+
+        neutralCities.forEach(nc => {
+            const dist = Math.sqrt(
+                Math.pow(nc.position.lat - spawnCity.position.lat, 2) +
+                Math.pow(nc.position.lng - spawnCity.position.lng, 2)
+            );
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestNeutral = nc;
+            }
+        });
+
         // Spawn a diverse squad
         for (let i = 0; i < squadSize; i++) {
             // Unit type variety
@@ -97,17 +122,20 @@ export class AIDirector {
 
             const unit = spawnUnit(unitType, spawnCity.position.lat + offsetLat, spawnCity.position.lng + offsetLng, faction.id);
 
-            // Give them a target: Player's cities or units
-            const playerFaction = gameState.factions.find(f => f.type === 'PLAYER');
-            if (playerFaction) {
-                const playerCity = gameState.pois.find(p => p.ownerFactionId === playerFaction.id && p.type === POIType.CITY);
-                const playerHQ = gameState.units.find(u => u.factionId === playerFaction.id && u.unitClass === UnitClass.COMMAND_CENTER);
-
-                if (playerHQ) {
-                    unit.targetId = playerHQ.id;
-                } else if (playerCity) {
-                    unit.targetId = playerCity.id;
-                }
+            // MIXED TARGETING: Some attack player, others capture neutrals
+            // Infantry ALWAYS targets neutral cities for capture (priority)
+            if (unitType === UnitClass.INFANTRY && nearestNeutral) {
+                unit.targetId = nearestNeutral.id;
+            } else if (i % 2 === 0 && nearestNeutral) {
+                // Half of non-infantry go capture neutrals
+                unit.targetId = nearestNeutral.id;
+            } else if (playerHQ) {
+                unit.targetId = playerHQ.id;
+            } else if (playerCity) {
+                unit.targetId = playerCity.id;
+            } else if (nearestNeutral) {
+                // Fallback to neutral if no player
+                unit.targetId = nearestNeutral.id;
             }
 
             newUnits.push(unit);

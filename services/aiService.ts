@@ -337,8 +337,12 @@ const executeStrategicMovement = (faction: Faction, gameState: GameState, target
 
   if (mobileUnits.length === 0) return gameState;
 
-  // Split into defense and attack groups
-  const defenseCount = Math.max(1, Math.floor(mobileUnits.length * AI_LIMITS.DEFENSE_RATIO));
+  // AGGRESSIVE EXPANSION: Reduce defenders when neutral cities are available
+  const hasNeutralTargets = targets.some(t => t.type === 'CITY' && t.score > 500);
+  const defenseCount = hasNeutralTargets
+    ? Math.max(1, Math.floor(mobileUnits.length * 0.1)) // Only 10% defend when expanding
+    : Math.max(1, Math.floor(mobileUnits.length * AI_LIMITS.DEFENSE_RATIO));
+
   const defenders = mobileUnits.slice(0, defenseCount);
   const attackers = mobileUnits.slice(defenseCount);
 
