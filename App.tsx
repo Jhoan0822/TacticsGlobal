@@ -175,6 +175,7 @@ const App: React.FC = () => {
                         onMultiSelect={handleMultiSelect}
                         gameMode={gameState.gameMode}
                         placementType={gameState.placementType}
+                        bounds={gameState.bounds}
                     />
                     <EventLog messages={gameState.messages} />
                     <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>

@@ -116,12 +116,23 @@ export const useGameLoop = () => {
             aiUpdateCounter: 0,
             localPlayerId,
             isClient,
-            placementType: null
+            placementType: null,
+            bounds: scenario.bounds
         };
 
         // HOST LOGIC: Assign Cities & Spawn HQs
         if (!isClient) {
-            const allCities = getMockCities();
+            let allCities = getMockCities();
+
+            // Filter by Scenario Bounds
+            if (scenario.bounds) {
+                const { south, west, north, east } = scenario.bounds;
+                allCities = allCities.filter(city =>
+                    city.position.lat >= south && city.position.lat <= north &&
+                    city.position.lng >= west && city.position.lng <= east
+                );
+            }
+
             const botFactions = factions.filter(f => f.type === 'BOT');
             const playerFaction = factions.find(f => f.id === localPlayerId);
 
