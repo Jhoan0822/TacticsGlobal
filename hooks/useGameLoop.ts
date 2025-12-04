@@ -103,7 +103,8 @@ export const useGameLoop = () => {
 
         // Start with empty POIs - they will be loaded separately
         // The App.tsx or terrain service handles POI data loading
-        setGameState({
+        // Define initial state object
+        const initialState: GameState = {
             units: [],
             pois: getMockCities(), // Load all cities!
             factions: factions,
