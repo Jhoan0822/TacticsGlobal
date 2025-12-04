@@ -178,7 +178,7 @@ export const getMockCities = (): POI[] => {
       type: POIType.CITY,
       name: city.name,
       position: { lat: city.lat, lng: city.lng },
-      ownerFactionId: 'NEUTRAL', // NEUTRAL by default - defenders will spawn for these
+      ownerFactionId: undefined, // Start unclaimed - players/bots select, then remaining become NEUTRAL
       tier: city.tier || 3,
       isCoastal: city.isCoastal,
       hp: defaultStats.defaultHp,
