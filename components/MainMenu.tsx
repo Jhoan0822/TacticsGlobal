@@ -35,8 +35,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             ...FACTION_PRESETS[selectedFactionIndex],
             id: 'PLAYER',
             type: 'PLAYER' as const,
-            gold: 50000,
-            oil: 10000,
+            gold: 3000,
+            oil: 500,
             relations: {},
             aggression: 0
         };
@@ -47,10 +47,10 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             .slice(0, lobbyState.botCount)
             .map((preset, i) => ({
                 ...preset,
-                id: `ENEMY_${i}`,
+                id: `BOT_${i}`,
                 type: 'BOT' as const,
-                gold: 50000,
-                oil: 10000,
+                gold: 3000,
+                oil: 500,
                 relations: { 'PLAYER': -100 },
                 aggression: 1.0
             }));
@@ -112,7 +112,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
 
         // Signal Clients
         // We broadcast the factions list. Each client will identify themselves by their own Peer ID.
-        NetworkService.startGame(scenario.id, factions);
+        NetworkService.startGame(scenario.id, factions, []);
     };
 
     const handleJoin = () => {
