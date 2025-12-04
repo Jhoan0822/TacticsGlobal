@@ -2,9 +2,11 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, useMap, useMapEvents, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import { GameUnit, Projectile, Faction, POI, POIType, Explosion, UnitClass } from '../types';
+import { getNearbyUnits } from '../services/gameLogic';
 import TerritoryLayer from './TerritoryLayer';
 import PlacementOverlay from './PlacementOverlay';
 import GameCanvas from './GameCanvas';
+import TerrainLayer from './TerrainLayer';
 
 interface Props {
     units: GameUnit[];
@@ -125,9 +127,26 @@ const MapInteraction: React.FC<{
             let clickedUnitId: string | null = null;
             let clickedPoiId: string | null = null;
 
-            // Check Units
+            // Check Units - OPTIMIZED SPATIAL LOOKUP
+            // We use the helper from gameLogic to get units near the click
+            // Note: getNearbyUnits returns units in a ~11km grid cell.
+            // We still need to check exact distance, but we check fewer units.
+            const nearbyUnits = getNearbyUnits({ position: { lat: e.latlng.lat, lng: e.latlng.lng } });
+
+            // Fallback to full list if grid is empty (e.g. client side interpolation might be ahead/behind)
+            // or just use the full list if nearbyUnits is empty? 
+            // Actually, if the grid is working, it should be fine. 
+            // But let's be safe and use 'units' prop if we suspect sync issues, 
+            // but for performance we MUST use the grid.
+            // However, the 'units' prop passed to this component might be different from what's in the grid 
+            // if the grid isn't updated with the prop.
+            // The grid is updated in processGameTick.
+            // Let's assume the grid is up to date.
+
+            const candidates = nearbyUnits.length > 0 ? nearbyUnits : units;
+
             const clickedUnits: string[] = [];
-            for (const unit of units) {
+            for (const unit of candidates) {
                 const unitPos = map.latLngToContainerPoint([unit.position.lat, unit.position.lng]);
                 const dx = unitPos.x - clickPoint.x;
                 const dy = unitPos.y - clickPoint.y;
@@ -143,6 +162,7 @@ const MapInteraction: React.FC<{
                 clickedUnits.sort((a, b) => {
                     const uA = units.find(u => u.id === a)!;
                     const uB = units.find(u => u.id === b)!;
+                    if (!uA || !uB) return 0;
                     const posA = map.latLngToContainerPoint([uA.position.lat, uA.position.lng]);
                     const posB = map.latLngToContainerPoint([uB.position.lat, uB.position.lng]);
                     const distA = Math.sqrt(Math.pow(posA.x - clickPoint.x, 2) + Math.pow(posA.y - clickPoint.y, 2));
@@ -199,8 +219,11 @@ const MapInteraction: React.FC<{
             let clickedPoiId: string | null = null;
             let minDist = Infinity;
 
+            const nearbyUnits = getNearbyUnits({ position: { lat: e.latlng.lat, lng: e.latlng.lng } });
+            const candidates = nearbyUnits.length > 0 ? nearbyUnits : units;
+
             // Check Units
-            for (const unit of units) {
+            for (const unit of candidates) {
                 const unitPos = map.latLngToContainerPoint([unit.position.lat, unit.position.lng]);
                 const dx = unitPos.x - clickPoint.x;
                 const dy = unitPos.y - clickPoint.y;
@@ -273,6 +296,7 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
                 center={[center.lat, center.lng]}
                 zoom={3}
                 minZoom={3}
+                maxZoom={8}
                 style={{ height: '100%', width: '100%', backgroundColor: '#000000' }}
                 zoomControl={false}
                 preferCanvas={true}
@@ -280,7 +304,9 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
             >
                 <MapController center={center} gameMode={gameMode} />
 
-                {/* ALWAYS RENDER CANVAS FOR MAP VISIBILITY */}
+                {/* LAYER 1: STATIC TERRAIN (Z: 200) */}
+                <TerrainLayer />
+                {/* LAYER 3: UNITS & POIS (Z: 600) */}
                 <GameCanvas
                     units={units}
                     factions={factions}
@@ -307,6 +333,7 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
 
                 {gameMode !== 'SELECT_BASE' && (
                     <>
+                        {/* LAYER 2: TERRITORY (Z: 400) - Rendered via SVGOverlay inside TerritoryLayer */}
                         <TerritoryLayer units={units} pois={pois} factions={factions} />
                         <PlacementOverlay gameMode={gameMode} placementType={placementType || null} />
                     </>

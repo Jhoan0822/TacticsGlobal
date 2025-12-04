@@ -82,7 +82,8 @@ export const useGameLoop = () => {
                 const nextState = processGameTick(prevState, [], isHost);
 
                 // HOST: Broadcast state periodically to ensure sync
-                if (isHost && nextState.gameTick % 10 === 0) {
+                // OPTIMIZATION: Reduced frequency from 10 to 50 ticks (2s) to save bandwidth
+                if (isHost && nextState.gameTick % 50 === 0) {
                     NetworkService.broadcastFullState(nextState);
                 }
 
