@@ -4,12 +4,12 @@ import { AI_CONFIG, UNIT_CONFIG, POI_CONFIG, DIFFICULTY_CONFIG } from '../consta
 import { spawnUnit } from './gameLogic';
 
 // AI DIRECTOR: Manages pacing, waves, and overall difficulty
+// This is the "Left 4 Dead" style director that keeps tension high
 export class AIDirector {
     private static instance: AIDirector;
     private intensity: number = 0;
     private lastWaveTime: number = 0;
-    private waveInterval: number = 60000; // 1 minute default
-    private difficultyMultiplier: number = 1.0;
+    private waveNumber: number = 0;
 
     private constructor() { }
 
@@ -24,25 +24,28 @@ export class AIDirector {
         const now = Date.now();
         const config = DIFFICULTY_CONFIG[gameState.difficulty || Difficulty.MEDIUM];
 
-        // 1. Manage Intensity
-        // Intensity increases with combat, decreases with time
-        if (gameState.projectiles.length > 0) {
+        // 1. Track Intensity (based on combat activity)
+        const combatActive = gameState.projectiles.length > 0 || gameState.explosions.length > 0;
+        if (combatActive) {
             this.intensity = Math.min(100, this.intensity + config.INTENSITY_GAIN);
         } else {
-            this.intensity = Math.max(0, this.intensity - 0.05);
+            this.intensity = Math.max(0, this.intensity - 0.1);
         }
 
-        // 2. Wave Spawning (Frenetic Pacing)
-        if (now - this.lastWaveTime > (this.waveInterval || config.WAVE_INTERVAL_MS)) {
-            // Trigger Wave?
-            // If intensity is LOW, trigger a wave to spice things up.
-            // If intensity is HIGH, maybe wait a bit to give player a breather (L4D style), OR punish them if "Frenetic" is maxed.
+        // 2. Wave Spawning (Aggressive)
+        const timeSinceLastWave = now - this.lastWaveTime;
+        const waveInterval = config.WAVE_INTERVAL_MS;
 
-            if (this.intensity < 50) {
+        // Spawn wave if:
+        // - Enough time has passed
+        // - OR intensity is low (game is too calm, need to spice it up!)
+        if (timeSinceLastWave > waveInterval || (this.intensity < 30 && timeSinceLastWave > waveInterval * 0.5)) {
+            // Only spawn waves if there are BOT factions
+            const botFactions = gameState.factions.filter(f => f.type === 'BOT');
+            if (botFactions.length > 0) {
                 gameState = this.spawnWave(gameState, config);
                 this.lastWaveTime = now;
-                // Decrease interval for next wave to ramp up pressure
-                this.waveInterval = Math.max(config.WAVE_INTERVAL_MS * 0.5, (this.waveInterval || config.WAVE_INTERVAL_MS) * 0.9);
+                this.waveNumber++;
             }
         }
 
@@ -50,42 +53,70 @@ export class AIDirector {
     }
 
     private spawnWave(gameState: GameState, config: any): GameState {
-        // Find a hostile faction to spawn units for
-        const hostileFactions = gameState.factions.filter(f => f.type === 'BOT' && f.id !== 'NEUTRAL');
-        if (hostileFactions.length === 0) return gameState;
+        // Find a BOT faction to spawn units for
+        const botFactions = gameState.factions.filter(f => f.type === 'BOT' && f.id !== 'NEUTRAL');
+        if (botFactions.length === 0) return gameState;
 
-        const faction = hostileFactions[Math.floor(Math.random() * hostileFactions.length)];
+        // Pick a random bot faction
+        const faction = botFactions[Math.floor(Math.random() * botFactions.length)];
 
-        // Find a spawn point (City or Edge of map)
-        const myCities = gameState.pois.filter(p => p.ownerFactionId === faction.id);
+        // Find spawn points (faction's cities)
+        const myCities = gameState.pois.filter(p => p.ownerFactionId === faction.id && p.type === POIType.CITY);
         if (myCities.length === 0) return gameState;
 
         const spawnCity = myCities[Math.floor(Math.random() * myCities.length)];
 
-        // Spawn a "Strike Team"
-        // Scale squad size by difficulty
-        const baseSquadSize = gameState.difficulty === Difficulty.EASY ? 3 : gameState.difficulty === Difficulty.HARD ? 8 : 5;
-        const squadSize = baseSquadSize + Math.floor(gameState.gameTick / 1000); // Ramp up over time
+        // Calculate wave size based on difficulty and time
+        const baseSize = gameState.difficulty === Difficulty.EASY ? 2 :
+            gameState.difficulty === Difficulty.HARD ? 6 : 4;
+        const waveBonus = Math.floor(this.waveNumber / 2); // Grows over time
+        const squadSize = Math.min(10, baseSize + waveBonus);
+
         const newUnits = [...gameState.units];
 
+        // Spawn a diverse squad
         for (let i = 0; i < squadSize; i++) {
-            const type = Math.random() > 0.5 ? UnitClass.GROUND_TANK : UnitClass.HELICOPTER;
+            // Unit type variety
+            let unitType: UnitClass;
+            const rand = Math.random();
+
+            if (rand < 0.3) {
+                unitType = UnitClass.GROUND_TANK; // Main battle force
+            } else if (rand < 0.5) {
+                unitType = UnitClass.INFANTRY; // Capture capability
+            } else if (rand < 0.7) {
+                unitType = UnitClass.FIGHTER_JET; // Air support
+            } else if (rand < 0.85) {
+                unitType = UnitClass.HELICOPTER; // Versatile
+            } else {
+                unitType = UnitClass.MISSILE_LAUNCHER; // Heavy support
+            }
+
             const offsetLat = (Math.random() - 0.5) * 0.05;
             const offsetLng = (Math.random() - 0.5) * 0.05;
 
-            const unit = spawnUnit(type, spawnCity.position.lat + offsetLat, spawnCity.position.lng + offsetLng, faction.id);
-            // Give them an immediate target: The Player's HQ or nearest city
-            const playerHq = gameState.units.find(u => u.factionId === 'PLAYER' && u.unitClass === UnitClass.COMMAND_CENTER);
-            if (playerHq) {
-                unit.targetId = playerHq.id;
+            const unit = spawnUnit(unitType, spawnCity.position.lat + offsetLat, spawnCity.position.lng + offsetLng, faction.id);
+
+            // Give them a target: Player's cities or units
+            const playerFaction = gameState.factions.find(f => f.type === 'PLAYER');
+            if (playerFaction) {
+                const playerCity = gameState.pois.find(p => p.ownerFactionId === playerFaction.id && p.type === POIType.CITY);
+                const playerHQ = gameState.units.find(u => u.factionId === playerFaction.id && u.unitClass === UnitClass.COMMAND_CENTER);
+
+                if (playerHQ) {
+                    unit.targetId = playerHQ.id;
+                } else if (playerCity) {
+                    unit.targetId = playerCity.id;
+                }
             }
+
             newUnits.push(unit);
         }
 
-        // Notify Player
+        // Alert message
         const newMessages = [...gameState.messages, {
             id: Math.random().toString(),
-            text: `WARNING: ${faction.name} is launching a major offensive!`,
+            text: `[INTEL] ${faction.name} is launching an assault! (Wave ${this.waveNumber + 1})`,
             type: 'alert',
             timestamp: Date.now()
         } as any];
@@ -94,14 +125,7 @@ export class AIDirector {
     }
 }
 
-// --- UTILITY AI FOR INDIVIDUAL FACTIONS ---
+// Legacy export for compatibility
 export const updateAI = (gameState: GameState): GameState => {
-    // Run Director first
-    let newState = AIDirector.getInstance().update(gameState);
-
-    // Then standard faction AI (Economy, Expansion)
-    // ... (Keep existing logic or enhance)
-    // For now, we'll keep the existing simple AI but boost its aggression based on Director
-
-    return newState;
+    return AIDirector.getInstance().update(gameState);
 };

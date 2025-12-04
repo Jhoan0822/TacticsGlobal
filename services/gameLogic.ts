@@ -798,17 +798,15 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
     });
 
     // Sync Local Player Resources from Faction State
+    // CRITICAL: Sync EVERY tick so UI always shows current values
     let nextPlayerResources = { ...currentState.playerResources };
-    if (isResourceTick) {
-        const myFaction = factions.find(f => f.id === currentState.localPlayerId);
-        if (myFaction) {
-            // Fix: Use Faction Oil directly now that it is tracked
-            nextPlayerResources = {
-                gold: myFaction.gold,
-                oil: myFaction.oil || 0,
-                intel: nextPlayerResources.intel
-            };
-        }
+    const myFaction = factions.find(f => f.id === currentState.localPlayerId);
+    if (myFaction) {
+        nextPlayerResources = {
+            gold: myFaction.gold,
+            oil: myFaction.oil || 0,
+            intel: nextPlayerResources.intel
+        };
     }
 
     // SURVIVAL MODE LOGIC

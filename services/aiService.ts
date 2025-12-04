@@ -3,63 +3,44 @@ import { UNIT_CONFIG, POI_CONFIG, DIPLOMACY, AI_CONFIG, GAME_TICK_MS, DIFFICULTY
 import { spawnUnit, getNearbyUnits, getDistanceKm } from './gameLogic';
 import { AIDirector } from './aiDirector';
 
-// Local getDistanceKm removed in favor of optimized version from gameLogic
-
 // --- CORE AI LOOP ---
 export const updateAI = (gameState: GameState, unitGrid?: Map<string, GameUnit[]>): GameState => {
-  // 1. Run Director
+  // 1. Run Director (Wave spawns)
   let newState = AIDirector.getInstance().update(gameState);
 
-  // 2. Run Faction Logic
+  // 2. Run Faction Logic for EVERY BOT
   const now = Date.now();
-  newState.factions.forEach(faction => {
-    if (faction.type !== 'BOT') return; // BOT factions only (was 'AI' which never matched!)
 
-    if (faction.lastAiUpdate && (now - faction.lastAiUpdate < AI_CONFIG.UPDATE_INTERVAL_MS)) {
-      return;
-    }
+  newState.factions.forEach(faction => {
+    // ONLY process BOT factions
+    if (faction.type !== 'BOT') return;
+
+    // Throttle AI updates (but faster than before)
+    const timeSinceLastUpdate = now - (faction.lastAiUpdate || 0);
+    if (timeSinceLastUpdate < 200) return; // 200ms minimum between AI ticks
+
     faction.lastAiUpdate = now;
 
+    // AGGRESSIVE AI: Evaluate targets and take action
     const targets = evaluateTargets(faction, newState, unitGrid);
-    newState = executeProduction(faction, newState, targets);
-    newState = executeMovement(faction, newState, targets);
+
+    // FORCE PRODUCTION: AI always tries to build if it has money
+    newState = executeProductionAggressive(faction, newState, targets);
+
+    // FORCE MOVEMENT: AI always assigns targets to idle units
+    newState = executeMovementAggressive(faction, newState, targets);
   });
 
   return newState;
 };
 
-// --- UTILITY SYSTEM (Existing Logic Preserved) ---
+// --- TARGET EVALUATION ---
 interface ScoredTarget {
   id: string;
-  type: 'CITY' | 'UNIT';
+  type: 'CITY' | 'UNIT' | 'RESOURCE';
   position: { lat: number; lng: number };
   score: number;
 }
-
-
-// ... (keep getDistanceKm)
-
-// ... (keep AIDirector class if it was here, but it's in a separate file now, so just update imports and functions)
-// Wait, aiService.ts had AIDirector class inside it in the previous read? 
-// Ah, I see two files: aiService.ts and aiDirector.ts.
-// The previous read of aiService.ts showed AIDirector inside it?
-// Let me check the file content again.
-// Yes, aiService.ts lines 15-98 define AIDirector.
-// BUT aiDirector.ts ALSO defines AIDirector.
-// This is a duplicate definition!
-// I should probably remove AIDirector from aiService.ts and use the one from aiDirector.ts, OR just update aiService.ts if that's the one being used.
-// The user has `aiDirector.ts` open.
-// Let's assume `aiDirector.ts` is the source of truth for the Director, and `aiService.ts` is for the Faction AI.
-// However, `aiService.ts` exports `updateAI` which calls `AIDirector.getInstance().update(gameState)`.
-// If `AIDirector` is defined in `aiService.ts`, it uses that one.
-// I should remove the duplicate `AIDirector` from `aiService.ts` and import it from `aiDirector.ts`.
-
-// Let's proceed with updating `aiService.ts` to use `DIFFICULTY_CONFIG` and remove the internal `AIDirector` class if I can confirm it's imported.
-// Actually, I'll just update the `evaluateTargets` and `executeProduction` functions in `aiService.ts` for now, and leave the cleanup for a separate step if needed, to avoid breaking things if `aiDirector.ts` isn't fully wired up.
-// Wait, `aiService.ts` imports `spawnUnit` from `./gameLogic`.
-// I will update the functions.
-
-// ...
 
 const evaluateTargets = (faction: Faction, gameState: GameState, unitGrid?: Map<string, GameUnit[]>): ScoredTarget[] => {
   const targets: ScoredTarget[] = [];
@@ -71,154 +52,211 @@ const evaluateTargets = (faction: Faction, gameState: GameState, unitGrid?: Map<
 
   const config = DIFFICULTY_CONFIG[gameState.difficulty || Difficulty.MEDIUM];
 
-  // A. Evaluate Cities & Resources
+  // A. Evaluate POIs (Cities, Gold Mines, Oil Rigs)
   gameState.pois.forEach(poi => {
-    // Allow targeting Cities, Gold Mines, and Oil Rigs
-    if (poi.type !== POIType.CITY && poi.type !== POIType.GOLD_MINE && poi.type !== POIType.OIL_RIG) return;
-
     const isMine = poi.ownerFactionId === faction.id;
+    if (isMine) return; // Don't target own POIs
+
     const isNeutral = poi.ownerFactionId === 'NEUTRAL';
     const relation = faction.relations[poi.ownerFactionId] || 0;
-    const isEnemy = !isMine && !isNeutral && relation <= DIPLOMACY.WAR_THRESHOLD;
-    const isNemesis = relation <= -90; // RIVALRY
+    const isEnemy = !isNeutral && relation <= DIPLOMACY.WAR_THRESHOLD;
 
-    if (isMine || (!isNeutral && !isEnemy)) return; // Don't target allies or self
+    // Target neutral and enemy POIs
+    if (!isNeutral && !isEnemy) return;
 
     const dist = getDistanceKm(avgLat, avgLng, poi.position.lat, poi.position.lng);
     let score = 0;
 
-    const importance = (poi.tier === 1 ? 50 : poi.tier === 2 ? 30 : 10);
-    // DISTANCE IS KEY: Penalize distance heavily to force local expansion
-    // BUT if it's a NEMESIS, we hate them so much we might travel further
-    const distancePenalty = dist * (isNemesis ? 0.2 : 0.5);
-
-    if (isMine) {
-      if (poi.hp < poi.maxHp) score = 200; // Defend!
-    } else {
-      // OFFENSIVE SCORE 
-      // HUGE BOOST: INCENTIVIZE CAPTURE
-      const baseDesire = isNeutral ? 250 : 200; // High priority for ANY city
-      score = baseDesire + importance - distancePenalty;
-
-      // RIVALRY BONUS: We hate our nemesis
-      if (isNemesis) {
-        score += 500; // KILL THEM ON SIGHT
-      }
-
-      // OPPORTUNISM: Attack weak targets
-      if (poi.hp < poi.maxHp * 0.5) {
-        score += 100;
-      }
-
-      // Bonus for very close targets (Local conflict)
-      if (dist < 500) score += 100;
-
-      if (faction.aggression) {
-        score *= (0.5 + faction.aggression * config.AGGRESSION_MODIFIER);
-      }
+    // Base score by POI type
+    if (poi.type === POIType.CITY) {
+      score = isNeutral ? 300 : 250; // Cities are HIGH priority
+    } else if (poi.type === POIType.GOLD_MINE) {
+      score = isNeutral ? 200 : 150; // Gold is good
+    } else if (poi.type === POIType.OIL_RIG) {
+      score = isNeutral ? 180 : 130; // Oil is important too
     }
 
-    if (score > 0) {
-      targets.push({ id: poi.id, type: 'CITY', position: poi.position, score });
+    // Tier bonus for cities
+    if (poi.type === POIType.CITY) {
+      score += (4 - poi.tier) * 50; // Tier 1 = +150, Tier 2 = +100, Tier 3 = +50
     }
+
+    // Distance penalty (closer is better)
+    score -= dist * 0.3;
+
+    // Damaged targets are easier to capture
+    if (poi.hp < poi.maxHp) {
+      score += (1 - poi.hp / poi.maxHp) * 100;
+    }
+
+    targets.push({
+      id: poi.id,
+      type: poi.type === POIType.CITY ? 'CITY' : 'RESOURCE',
+      position: poi.position,
+      score
+    });
   });
 
-  // Sort by score descending
-  return targets.sort((a, b) => b.score - a.score);
+  // B. Evaluate Enemy Units (High Priority Threats)
+  gameState.units.forEach(unit => {
+    if (unit.factionId === faction.id) return;
+    if (unit.factionId === 'NEUTRAL') return;
+
+    const relation = faction.relations[unit.factionId] || 0;
+    if (relation > DIPLOMACY.WAR_THRESHOLD) return; // Not at war
+
+    const dist = getDistanceKm(avgLat, avgLng, unit.position.lat, unit.position.lng);
+
+    // Score based on threat level
+    let score = 100;
+
+    // Closer threats are higher priority
+    if (dist < 50) score += 100;
+    else if (dist < 100) score += 50;
+
+    // Command centers are VERY high priority
+    if (unit.unitClass === UnitClass.COMMAND_CENTER) {
+      score += 200;
+    }
+
+    targets.push({
+      id: unit.id,
+      type: 'UNIT',
+      position: unit.position,
+      score
+    });
+  });
+
+  // Sort by score (highest first)
+  targets.sort((a, b) => b.score - a.score);
+
+  return targets;
 };
 
-const executeProduction = (faction: Faction, gameState: GameState, targets: ScoredTarget[]): GameState => {
-  if (faction.gold < AI_CONFIG.MIN_GOLD_RESERVE) return gameState;
+// --- AGGRESSIVE PRODUCTION ---
+const executeProductionAggressive = (faction: Faction, gameState: GameState, targets: ScoredTarget[]): GameState => {
+  // Minimum gold to keep (safety buffer)
+  const minGold = 50;
 
+  // Get spawn points
   const myCities = gameState.pois.filter(p => p.ownerFactionId === faction.id && p.type === POIType.CITY);
   if (myCities.length === 0) return gameState;
-
-  const config = DIFFICULTY_CONFIG[gameState.difficulty || Difficulty.MEDIUM];
-
-  // REMOVED RANDOM CHECK: AI ALWAYS PRODUCES IF IT HAS MONEY
-  // FORCE PRODUCTION IF RICH: If gold > 5000, ignore aggression check (panic buy)
-  if (faction.gold < 5000 && Math.random() > (faction.aggression || 0.5) * config.AGGRESSION_MODIFIER) return gameState;
-
-  // Decide Unit Type based on "Task Force" needs
-  let unitType = UnitClass.INFANTRY;
-  const rand = Math.random();
 
   const coastalCities = myCities.filter(c => c.isCoastal);
   const canBuildNavy = coastalCities.length > 0;
 
-  if (canBuildNavy && rand < 0.2) {
-    unitType = Math.random() > 0.5 ? UnitClass.DESTROYER : UnitClass.FRIGATE;
-  } else if (rand < 0.4) {
-    unitType = UnitClass.GROUND_TANK; // Main battle unit
-  } else if (rand < 0.6) {
-    unitType = UnitClass.FIGHTER_JET; // Air cover
-  } else if (rand < 0.75) {
-    unitType = UnitClass.MISSILE_LAUNCHER; // Long range support
-  } else {
-    unitType = UnitClass.INFANTRY; // Capturers
+  let newState = gameState;
+  let currentGold = faction.gold;
+  let currentOil = faction.oil || 0;
+
+  // AGGRESSIVE: Build multiple units per tick if we have money
+  const maxUnitsPerTick = 3;
+  let unitsBuilt = 0;
+
+  while (unitsBuilt < maxUnitsPerTick && currentGold > minGold) {
+    // Decide unit type based on army composition
+    const myUnits = newState.units.filter(u => u.factionId === faction.id);
+    const tankCount = myUnits.filter(u => u.unitClass === UnitClass.GROUND_TANK).length;
+    const infantryCount = myUnits.filter(u => u.unitClass === UnitClass.INFANTRY).length;
+    const airCount = myUnits.filter(u => u.unitClass === UnitClass.FIGHTER_JET || u.unitClass === UnitClass.HELICOPTER).length;
+
+    let unitType: UnitClass;
+
+    // Strategic production priorities
+    if (infantryCount < 3) {
+      // Need capturers
+      unitType = UnitClass.INFANTRY;
+    } else if (tankCount < 5) {
+      // Need main battle force
+      unitType = UnitClass.GROUND_TANK;
+    } else if (airCount < 3) {
+      // Need air support
+      unitType = Math.random() > 0.5 ? UnitClass.FIGHTER_JET : UnitClass.HELICOPTER;
+    } else if (canBuildNavy && Math.random() > 0.7) {
+      // Build navy occasionally
+      unitType = Math.random() > 0.5 ? UnitClass.DESTROYER : UnitClass.FRIGATE;
+    } else {
+      // Random mix for variety
+      const options = [UnitClass.GROUND_TANK, UnitClass.INFANTRY, UnitClass.MISSILE_LAUNCHER, UnitClass.FIGHTER_JET];
+      unitType = options[Math.floor(Math.random() * options.length)];
+    }
+
+    const cost = UNIT_CONFIG[unitType].cost;
+    if (!cost || currentGold < cost.gold || currentOil < (cost.oil || 0)) {
+      // Can't afford this unit, try something cheaper
+      if (currentGold >= (UNIT_CONFIG[UnitClass.INFANTRY].cost?.gold || 50)) {
+        unitType = UnitClass.INFANTRY;
+      } else {
+        break; // Can't afford anything
+      }
+    }
+
+    const unitCost = UNIT_CONFIG[unitType].cost;
+    if (!unitCost || currentGold < unitCost.gold) break;
+
+    // Pick spawn city
+    const spawnCity = myCities[Math.floor(Math.random() * myCities.length)];
+
+    // Spawn the unit
+    const offsetLat = (Math.random() - 0.5) * 0.03;
+    const offsetLng = (Math.random() - 0.5) * 0.03;
+    const newUnit = spawnUnit(unitType, spawnCity.position.lat + offsetLat, spawnCity.position.lng + offsetLng, faction.id);
+
+    newState = {
+      ...newState,
+      units: [...newState.units, newUnit],
+      factions: newState.factions.map(f =>
+        f.id === faction.id
+          ? { ...f, gold: f.gold - unitCost.gold, oil: (f.oil || 0) - (unitCost.oil || 0) }
+          : f
+      )
+    };
+
+    currentGold -= unitCost.gold;
+    currentOil -= (unitCost.oil || 0);
+    unitsBuilt++;
   }
 
-  const cost = UNIT_CONFIG[unitType].cost;
-  if (!cost || faction.gold < cost.gold) return gameState;
-
-  const spawnCity = canBuildNavy && UNIT_CONFIG[unitType].validTargets.includes(UnitClass.SUBMARINE)
-    ? coastalCities[Math.floor(Math.random() * coastalCities.length)]
-    : myCities[Math.floor(Math.random() * myCities.length)];
-
-  if (!spawnCity) return gameState;
-
-  const offsetLat = (Math.random() - 0.5) * 0.02;
-  const offsetLng = (Math.random() - 0.5) * 0.02;
-  const newUnit = spawnUnit(unitType, spawnCity.position.lat + offsetLat, spawnCity.position.lng + offsetLng, faction.id);
-
-  const newUnits = [...gameState.units, newUnit];
-  const newFactions = gameState.factions.map(f => {
-    if (f.id === faction.id) {
-      // AI Cheats on Hard: Costs are reduced (or income increased, effectively same)
-      const costMultiplier = gameState.difficulty === Difficulty.HARD ? 0.7 : 1.0;
-      return { ...f, gold: f.gold - (cost.gold * costMultiplier) };
-    }
-    return f;
-  });
-
-  return { ...gameState, units: newUnits, factions: newFactions };
+  return newState;
 };
 
-const executeMovement = (faction: Faction, gameState: GameState, targets: ScoredTarget[]): GameState => {
+// --- AGGRESSIVE MOVEMENT ---
+const executeMovementAggressive = (faction: Faction, gameState: GameState, targets: ScoredTarget[]): GameState => {
   if (targets.length === 0) return gameState;
 
   const myUnits = gameState.units.filter(u => u.factionId === faction.id);
-  const idleUnits = myUnits.filter(u => !u.targetId && !u.destination && u.unitClass !== UnitClass.COMMAND_CENTER && u.unitClass !== UnitClass.MILITARY_BASE);
 
-  // Group logic: Assign squads of 3-5 units to the same target
-  const SQUAD_SIZE = 5;
+  // Find all idle units (no target and no destination)
+  const idleUnits = myUnits.filter(u =>
+    !u.targetId &&
+    !u.destination &&
+    u.unitClass !== UnitClass.COMMAND_CENTER &&
+    u.unitClass !== UnitClass.MILITARY_BASE &&
+    u.unitClass !== UnitClass.AIRBASE &&
+    u.unitClass !== UnitClass.PORT
+  );
+
+  if (idleUnits.length === 0) return gameState;
+
   const assignedUnits = [...gameState.units];
 
-  // Process idle units in chunks
-  for (let i = 0; i < idleUnits.length; i += SQUAD_SIZE) {
-    const squad = idleUnits.slice(i, i + SQUAD_SIZE);
-    if (squad.length === 0) break;
+  // Assign each idle unit to a target
+  idleUnits.forEach((unit, idx) => {
+    // Spread units across multiple targets
+    const targetIndex = idx % Math.min(targets.length, 3);
+    const target = targets[targetIndex];
 
-    // Pick top target
-    const target = targets[0];
-
-    // Randomly fallback to 2nd or 3rd target to spread out
-    const spreadTarget = targets[Math.floor(Math.random() * Math.min(targets.length, 3))];
-    const finalTarget = Math.random() > 0.7 ? spreadTarget : target;
-
-    if (finalTarget) {
-      squad.forEach(u => {
-        const index = assignedUnits.findIndex(au => au.id === u.id);
-        if (index !== -1) {
-          assignedUnits[index] = {
-            ...assignedUnits[index],
-            targetId: finalTarget.id, // Assign Target ID, gameLogic handles the rest
-            destination: null
-          };
-        }
-      });
+    if (target) {
+      const unitIndex = assignedUnits.findIndex(u => u.id === unit.id);
+      if (unitIndex !== -1) {
+        assignedUnits[unitIndex] = {
+          ...assignedUnits[unitIndex],
+          targetId: target.id,
+          destination: null
+        };
+      }
     }
-  }
+  });
 
   return { ...gameState, units: assignedUnits };
 };
