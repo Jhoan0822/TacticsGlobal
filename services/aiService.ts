@@ -136,7 +136,8 @@ const executeProduction = (faction: Faction, gameState: GameState, targets: Scor
   const config = DIFFICULTY_CONFIG[gameState.difficulty || Difficulty.MEDIUM];
 
   // REMOVED RANDOM CHECK: AI ALWAYS PRODUCES IF IT HAS MONEY
-  // if (Math.random() > (faction.aggression || 0.5) * config.AGGRESSION_MODIFIER) return gameState;
+  // FORCE PRODUCTION IF RICH: If gold > 5000, ignore aggression check (panic buy)
+  if (faction.gold < 5000 && Math.random() > (faction.aggression || 0.5) * config.AGGRESSION_MODIFIER) return gameState;
 
   // Decide Unit Type based on "Task Force" needs
   let unitType = UnitClass.INFANTRY;
