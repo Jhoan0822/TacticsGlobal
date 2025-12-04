@@ -734,32 +734,65 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         return poi;
     });
 
-    // 4. RESOURCE GEN
+    // 4. RESOURCE GEN & DEFEAT CHECK
     const isResourceTick = currentState.gameTick % 40 === 0;
-    if (isResourceTick) {
-        factions = factions.map(faction => {
-            let income = 5;
-            const ownedCities = nextPOIs.filter(p => p.ownerFactionId === faction.id);
-            ownedCities.forEach(c => {
-                income += POI_CONFIG[c.type].incomeGold;
-            });
-            return { ...faction, gold: faction.gold + income };
-        });
-    }
 
-    let incomeGold = 0;
-    let incomeOil = 0;
+    // Update Factions (Income + Defeat)
+    factions = factions.map(faction => {
+        // Skip already defeated
+        if (faction.id === 'NEUTRAL') return faction;
+
+        // Check Defeat: No Units + No Cities
+        const hasUnits = nextUnits.some(u => u.factionId === faction.id);
+        const hasCities = nextPOIs.some(p => p.ownerFactionId === faction.id && p.type === POIType.CITY);
+
+        if (!hasUnits && !hasCities) {
+            // Mark as defeated (could add a 'status' field, but for now we rely on UI to show 0/0)
+            // Maybe set gold to 0?
+        }
+
+        if (isResourceTick) {
+            let goldIncome = 5; // Base income
+            let oilIncome = 2;
+
+            // POI Income
+            const ownedPOIs = nextPOIs.filter(p => p.ownerFactionId === faction.id);
+            ownedPOIs.forEach(p => {
+                const config = POI_CONFIG[p.type];
+                goldIncome += config.incomeGold;
+                oilIncome += config.incomeOil;
+            });
+
+            // Unit Upkeep (Optional, maybe later)
+
+            return {
+                ...faction,
+                gold: faction.gold + goldIncome,
+                // Faction interface might need 'oil' if we want to track it globally, 
+                // but currently Faction only has 'gold'. 
+                // We'll stick to gold for Faction state for now, or add oil to Faction interface.
+            };
+        }
+        return faction;
+    });
+
+    // Sync Local Player Resources from Faction State
+    let nextPlayerResources = { ...currentState.playerResources };
     if (isResourceTick) {
-        const playerUnits = nextUnits.filter(u => u.factionId === 'PLAYER').length;
-        incomeGold += 5 + (playerUnits * 0.5);
-        incomeOil += 2;
-        nextPOIs.forEach(poi => {
-            if (poi.ownerFactionId === 'PLAYER') {
-                const config = POI_CONFIG[poi.type];
-                incomeGold += config.incomeGold;
-                incomeOil += config.incomeOil;
-            }
-        });
+        const myFaction = factions.find(f => f.id === currentState.localPlayerId);
+        if (myFaction) {
+            // Calculate Oil again for local player since Faction might not store it (check types.ts)
+            // If Faction doesn't have oil, we calculate it locally.
+            let oilIncome = 2;
+            nextPOIs.filter(p => p.ownerFactionId === currentState.localPlayerId).forEach(p => {
+                oilIncome += POI_CONFIG[p.type].incomeOil;
+            });
+
+            nextPlayerResources = {
+                gold: myFaction.gold,
+                oil: nextPlayerResources.oil + oilIncome
+            };
+        }
     }
 
     let nextState: GameState = {
@@ -769,11 +802,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         pois: nextPOIs,
         projectiles: nextProjectiles,
         explosions: newExplosions,
-        playerResources: {
-            ...currentState.playerResources,
-            gold: isResourceTick ? currentState.playerResources.gold + incomeGold : currentState.playerResources.gold,
-            oil: isResourceTick ? currentState.playerResources.oil + incomeOil : currentState.playerResources.oil
-        },
+        playerResources: nextPlayerResources,
         gameTick: currentState.gameTick + 1,
         messages: messages
     };

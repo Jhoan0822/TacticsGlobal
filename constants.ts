@@ -1,7 +1,7 @@
 
 import { UnitClass, UnitStats, POIType, WeaponType, Difficulty } from './types';
 
-export const GAME_TICK_MS = 40; // Faster tick for "Frenetic" feel
+export const GAME_TICK_MS = 30; // Faster tick for "Frenetic" feel
 export const COMBAT_RADIUS_KM = 30;
 export const MAX_UNITS_ON_MAP = 200;
 
@@ -63,8 +63,8 @@ export const FACTION_PRESETS = [
 ];
 
 export const POI_CONFIG = {
-  [POIType.CITY]: { incomeGold: 20, incomeOil: 0, captureRadius: 0.1, defaultHp: 2000, captureThreshold: 0 },
-  [POIType.OIL_RIG]: { incomeGold: 0, incomeOil: 20, captureRadius: 0.1, defaultHp: 500, captureThreshold: 0 }
+  [POIType.CITY]: { incomeGold: 50, incomeOil: 0, captureRadius: 0.1, defaultHp: 2000, captureThreshold: 0 },
+  [POIType.OIL_RIG]: { incomeGold: 0, incomeOil: 50, captureRadius: 0.1, defaultHp: 500, captureThreshold: 0 }
 };
 
 interface ExtendedUnitStats extends UnitStats {
@@ -117,7 +117,7 @@ export const UNIT_CONFIG: Record<UnitClass, ExtendedUnitStats> = {
 
   // --- INFANTRY ---
   [UnitClass.INFANTRY]: {
-    hp: 100, maxHp: 100, attack: 45, range: 5, speed: 0.5, vision: 30,
+    hp: 100, maxHp: 100, attack: 45, range: 5, speed: 1.5, vision: 30,
     cost: { gold: 50, oil: 0 }, canCapture: true,
     validTargets: CAT_ALL
   },
@@ -129,7 +129,7 @@ export const UNIT_CONFIG: Record<UnitClass, ExtendedUnitStats> = {
 
   // --- GROUND VEHICLES ---
   [UnitClass.GROUND_TANK]: {
-    hp: 1200, maxHp: 1200, attack: 270, range: 15, speed: 1.0, vision: 40,
+    hp: 1200, maxHp: 1200, attack: 270, range: 15, speed: 3.0, vision: 40,
     cost: { gold: 400, oil: 100 }, canCapture: true,
     validTargets: CAT_ALL
   },
@@ -146,7 +146,7 @@ export const UNIT_CONFIG: Record<UnitClass, ExtendedUnitStats> = {
 
   // --- AIR ---
   [UnitClass.FIGHTER_JET]: {
-    hp: 400, maxHp: 400, attack: 240, range: 100, speed: 15.0, vision: 150,
+    hp: 400, maxHp: 400, attack: 240, range: 100, speed: 40.0, vision: 150,
     cost: { gold: 300, oil: 100 },
     validTargets: CAT_ALL
   },
@@ -178,7 +178,7 @@ export const UNIT_CONFIG: Record<UnitClass, ExtendedUnitStats> = {
     validTargets: CAT_ALL
   },
   [UnitClass.DESTROYER]: {
-    hp: 2500, maxHp: 2500, attack: 360, range: 150, speed: 4.0, vision: 120,
+    hp: 2500, maxHp: 2500, attack: 360, range: 150, speed: 10.0, vision: 120,
     cost: { gold: 800, oil: 500 },
     validTargets: CAT_ALL
   },
