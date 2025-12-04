@@ -852,34 +852,6 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         };
     }
 
-    // SURVIVAL MODE LOGIC
-    if (isHost && currentState.gameMode === 'SURVIVAL' && currentState.gameTick % 1000 === 0) { // Every ~30s
-        const waveSize = 5 + Math.floor(currentState.gameTick / 1000);
-        const playerStart = currentState.pois.find(p => p.ownerFactionId === currentState.localPlayerId && p.type === POIType.CITY);
-
-        if (playerStart) {
-            for (let i = 0; i < waveSize; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 20 + Math.random() * 10;
-                const lat = playerStart.position.lat + Math.sin(angle) * dist;
-                const lng = playerStart.position.lng + Math.cos(angle) * dist;
-
-                const unit = spawnUnit(
-                    Math.random() > 0.7 ? UnitClass.GROUND_TANK : UnitClass.INFANTRY,
-                    lat, lng,
-                    'BOT_WAVE'
-                );
-                // Make them aggressive
-                nextUnits.push(unit);
-            }
-            messages.push({
-                id: `WAVE-${Date.now()}`,
-                text: `WARNING: Enemy Wave Detected! Size: ${waveSize}`,
-                type: 'alert',
-                timestamp: Date.now()
-            });
-        }
-    }
 
     let nextState: GameState = {
         ...currentState,
@@ -890,8 +862,53 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         explosions: newExplosions,
         playerResources: nextPlayerResources,
         gameTick: currentState.gameTick + 1,
-        messages: messages
+        messages: messages,
+        gameStats: currentState.gameStats
     };
+
+    // VICTORY/DEFEAT CHECK (Every 60 ticks = ~2 seconds)
+    if (isHost && currentState.gameTick % 60 === 0 && !currentState.gameResult) {
+        const localId = currentState.localPlayerId;
+
+        // Check Player Status
+        const playerHasUnits = nextState.units.some(u => u.factionId === localId);
+        const playerHasCities = nextState.pois.some(p => p.ownerFactionId === localId && p.type === POIType.CITY);
+
+        // Check Enemy Status
+        const enemyFactions = nextState.factions.filter(f => f.type === 'BOT' && f.id !== localId);
+        const enemiesRemaining = enemyFactions.filter(f => {
+            const hasUnits = nextState.units.some(u => u.factionId === f.id);
+            const hasCities = nextState.pois.some(p => p.ownerFactionId === f.id && p.type === POIType.CITY);
+            return hasUnits || hasCities;
+        });
+
+        // DEFEAT: Player has no units AND no cities
+        if (!playerHasUnits && !playerHasCities) {
+            nextState = {
+                ...nextState,
+                gameResult: 'DEFEAT',
+                messages: [...nextState.messages, {
+                    id: Math.random().toString(36),
+                    text: '💀 DEFEAT - All your forces have been eliminated!',
+                    type: 'alert',
+                    timestamp: Date.now()
+                } as any]
+            };
+        }
+        // VICTORY: All enemies eliminated
+        else if (enemiesRemaining.length === 0 && enemyFactions.length > 0) {
+            nextState = {
+                ...nextState,
+                gameResult: 'VICTORY',
+                messages: [...nextState.messages, {
+                    id: Math.random().toString(36),
+                    text: '🏆 VICTORY - You have achieved global domination!',
+                    type: 'alert',
+                    timestamp: Date.now()
+                } as any]
+            };
+        }
+    }
 
     // Throttle AI Update (every 5 ticks) - HOST ONLY
     if (isHost && currentState.gameTick % 5 === 0) {
