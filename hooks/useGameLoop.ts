@@ -128,7 +128,7 @@ export const useGameLoop = () => {
             projectiles: [],
             explosions: [],
             messages: [],
-            playerResources: { gold: 3000, oil: 500, intel: 100 },
+            playerResources: { gold: 10000, oil: 1000, intel: 100 },
             gameMode: 'SELECT_BASE',
             gameTick: 0,
             controlGroups: {},
