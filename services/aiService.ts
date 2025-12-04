@@ -149,17 +149,18 @@ const evaluateTargets = (faction: Faction, gameState: GameState, situation: Stra
   const centerLat = situation.myCities.reduce((sum, c) => sum + c.position.lat, 0) / situation.myCities.length;
   const centerLng = situation.myCities.reduce((sum, c) => sum + c.position.lng, 0) / situation.myCities.length;
 
-  // A. Neutral Cities (HIGH PRIORITY for expansion)
+  // A. Neutral Cities (HIGHEST PRIORITY - always capture before attacking enemies)
   situation.neutralCities.forEach(city => {
     const dist = getDistanceKm(centerLat, centerLng, city.position.lat, city.position.lng);
-    let score = 500; // High base score for neutral
+    let score = 1000; // VERY HIGH base score for neutral - always prioritize over enemy
 
     // HUGE bonus for nearby targets
-    if (dist < 100) score += 300;
-    else if (dist < 200) score += 150;
+    if (dist < 100) score += 500;
+    else if (dist < 200) score += 250;
+    else if (dist < 500) score += 100;
 
-    // Distance penalty
-    score -= dist * AI_LIMITS.TARGET_DISTANCE_PENALTY;
+    // Distance penalty (but still high priority)
+    score -= dist * AI_LIMITS.TARGET_DISTANCE_PENALTY * 0.5; // Half penalty for neutrals
 
     // Tier bonus
     score += (4 - (city.tier || 3)) * 50;

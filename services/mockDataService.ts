@@ -281,13 +281,13 @@ export const fetchWorldData = async (centerLat: number, centerLng: number, radiu
     }
   });
 
-  // B. Assign remaining cities to factions (80% Occupied)
+  // B. Assign remaining cities to factions (30% Occupied, 70% NEUTRAL for defenders)
   shuffledCities.forEach(city => {
     if (assignedCities.has(city.name)) return;
 
     let ownerId = 'NEUTRAL';
-    // 80% chance to be owned by a random AI
-    if (Math.random() < 0.8) {
+    // 30% chance to be owned by a random AI (leaves 70% for neutral city defenders)
+    if (Math.random() < 0.3) {
       const randomAI = aiFactions[Math.floor(Math.random() * aiFactions.length)];
       ownerId = randomAI.id;
     }
