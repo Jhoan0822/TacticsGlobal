@@ -51,7 +51,7 @@ export class AIDirector {
 
     private spawnWave(gameState: GameState, config: any): GameState {
         // Find a hostile faction to spawn units for
-        const hostileFactions = gameState.factions.filter(f => f.type === 'AI' && f.id !== 'NEUTRAL');
+        const hostileFactions = gameState.factions.filter(f => f.type === 'BOT' && f.id !== 'NEUTRAL');
         if (hostileFactions.length === 0) return gameState;
 
         const faction = hostileFactions[Math.floor(Math.random() * hostileFactions.length)];

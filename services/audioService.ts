@@ -62,5 +62,8 @@ export const AudioService = {
     playAlert: () => {
         playTone(200, 'sawtooth', 0.2, 0.1);
         setTimeout(() => playTone(150, 'sawtooth', 0.2, 0.1), 150);
+    },
+    playError: () => {
+        playTone(100, 'square', 0.3, 0.1);
     }
 };
