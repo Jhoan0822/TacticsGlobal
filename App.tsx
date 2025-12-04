@@ -1,10 +1,11 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import GameMap from './components/GameMap';
 import Sidebar from './components/Sidebar';
 import EventLog from './components/EventLog';
 import MainMenu from './components/MainMenu';
 import VictoryScreen from './components/VictoryScreen';
 import { useGameLoop } from './hooks/useGameLoop';
+import { useHotkeys } from './hooks/useHotkeys';
 import { TerrainService } from './services/terrainService';
 import { AudioService } from './services/audioService';
 import { NetworkService } from './services/networkService';
@@ -167,6 +168,23 @@ const App: React.FC = () => {
         setSelectedUnitIds(ids);
         if (ids.length > 0) AudioService.playUiClick();
     };
+
+    // Keyboard Shortcuts
+    const handleSelectAll = useCallback(() => {
+        const myUnits = gameState.units.filter(u => u.factionId === gameState.localPlayerId);
+        setSelectedUnitIds(myUnits.map(u => u.id));
+    }, [gameState.units, gameState.localPlayerId]);
+
+    const handleDeselectAll = useCallback(() => {
+        setSelectedUnitIds([]);
+    }, []);
+
+    useHotkeys({
+        onBuyUnit: originalHandleBuyUnit,
+        onSelectAll: handleSelectAll,
+        onDeselectAll: handleDeselectAll,
+        enabled: !isInMenu && gameState.gameMode === 'PLAYING'
+    });
 
     if (isInMenu) {
         return (
