@@ -71,9 +71,10 @@ const evaluateTargets = (faction: Faction, gameState: GameState, unitGrid?: Map<
 
   const config = DIFFICULTY_CONFIG[gameState.difficulty || Difficulty.MEDIUM];
 
-  // A. Evaluate Cities
+  // A. Evaluate Cities & Resources
   gameState.pois.forEach(poi => {
-    if (poi.type !== POIType.CITY) return;
+    // Allow targeting Cities, Gold Mines, and Oil Rigs
+    if (poi.type !== POIType.CITY && poi.type !== POIType.GOLD_MINE && poi.type !== POIType.OIL_RIG) return;
 
     const isMine = poi.ownerFactionId === faction.id;
     const isNeutral = poi.ownerFactionId === 'NEUTRAL';

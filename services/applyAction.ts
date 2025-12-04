@@ -20,7 +20,8 @@ export function applyAction(state: GameState, action: GameAction): GameState {
             if (f.id === action.playerId) {
                 return {
                     ...f,
-                    gold: Math.max(0, f.gold - (cost.gold || 0))
+                    gold: Math.max(0, f.gold - (cost.gold || 0)),
+                    oil: Math.max(0, (f.oil || 0) - (cost.oil || 0))
                 };
             }
             return f;

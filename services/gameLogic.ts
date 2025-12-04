@@ -802,18 +802,41 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
     if (isResourceTick) {
         const myFaction = factions.find(f => f.id === currentState.localPlayerId);
         if (myFaction) {
-            // Calculate Oil again for local player since Faction might not store it (check types.ts)
-            // If Faction doesn't have oil, we calculate it locally.
-            let oilIncome = 2;
-            nextPOIs.filter(p => p.ownerFactionId === currentState.localPlayerId).forEach(p => {
-                oilIncome += POI_CONFIG[p.type].incomeOil;
-            });
-
+            // Fix: Use Faction Oil directly now that it is tracked
             nextPlayerResources = {
                 gold: myFaction.gold,
-                oil: nextPlayerResources.oil + oilIncome,
+                oil: myFaction.oil || 0,
                 intel: nextPlayerResources.intel
             };
+        }
+    }
+
+    // SURVIVAL MODE LOGIC
+    if (isHost && currentState.gameMode === 'SURVIVAL' && currentState.gameTick % 1000 === 0) { // Every ~30s
+        const waveSize = 5 + Math.floor(currentState.gameTick / 1000);
+        const playerStart = currentState.pois.find(p => p.ownerFactionId === currentState.localPlayerId && p.type === POIType.CITY);
+
+        if (playerStart) {
+            for (let i = 0; i < waveSize; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 20 + Math.random() * 10;
+                const lat = playerStart.position.lat + Math.sin(angle) * dist;
+                const lng = playerStart.position.lng + Math.cos(angle) * dist;
+
+                const unit = spawnUnit(
+                    Math.random() > 0.7 ? UnitClass.GROUND_TANK : UnitClass.INFANTRY,
+                    lat, lng,
+                    'BOT_WAVE'
+                );
+                // Make them aggressive
+                nextUnits.push(unit);
+            }
+            messages.push({
+                id: `WAVE-${Date.now()}`,
+                text: `WARNING: Enemy Wave Detected! Size: ${waveSize}`,
+                type: 'alert',
+                timestamp: Date.now()
+            });
         }
     }
 
