@@ -34,13 +34,8 @@ const SVG_SIZE = 4096;
 
 const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
     const map = useMap();
-    const [zoom, setZoom] = useState(map.getZoom());
-    const lastCalcTime = useRef<number>(0);
-    const cachedResult = useRef<{ geometry: CachedGeometry[], defs: React.ReactNode[] }>({ geometry: [], defs: [] });
-
-    useMapEvents({
-        zoom: () => setZoom(map.getZoom())
-    });
+    // REMOVED: const [zoom, setZoom] = useState(map.getZoom());
+    // REMOVED: useMapEvents({ zoom: ... });
 
     const bounds = [[-MAX_LAT, -180], [MAX_LAT, 180]] as L.LatLngBoundsExpression;
 
@@ -51,13 +46,6 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
 
     // Throttle the heavy Voronoi calculation (max 5 times per second)
     const { geometry, defs } = useMemo(() => {
-        const now = Date.now();
-        // REMOVED TIME CHECK: We rely on React.memo and smart dependencies now
-        // if (now - lastCalcTime.current < 200 && cachedResult.current.geometry.length > 0) {
-        //     return cachedResult.current;
-        // }
-        lastCalcTime.current = now;
-
         const sites: Site[] = [];
 
         // GENERATE SITES FROM CITIES ONLY (plus HQ)
@@ -119,11 +107,6 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
             if (!faction || site.factionId === 'NEUTRAL') continue;
 
             const gradientId = `grad-${site.id}`;
-
-            // Gradient Logic:
-            // We want a visible "glow" near the city (center) that fades out.
-            // But we also need to cover the whole polygon (which can be large).
-            // Solution: Large radius (600) but with stops that drop opacity quickly.
             const gradientRadius = 600;
 
             generatedDefs.push(
@@ -146,14 +129,9 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
             });
         }
 
-        const result = { geometry: generatedGeometry, defs: generatedDefs };
-        cachedResult.current = result;
-        return result;
+        return { geometry: generatedGeometry, defs: generatedDefs };
 
-    }, [hqs, pois, factions]); // Depend on HQs, not all units
-
-    const unitsPerPixel = SVG_SIZE / (256 * Math.pow(2, zoom));
-    const strokeWidth = 1.0 * unitsPerPixel;
+    }, [hqs, pois, factions]);
 
     if (geometry.length === 0) return null;
 
@@ -169,7 +147,8 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
                             d={geo.d}
                             fill={`url(#${geo.gradientId})`}
                             stroke={geo.factionColor}
-                            strokeWidth={strokeWidth}
+                            strokeWidth={2}
+                            vectorEffect="non-scaling-stroke"
                             strokeOpacity={0.3}
                         />
                     </React.Fragment>

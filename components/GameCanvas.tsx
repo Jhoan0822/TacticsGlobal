@@ -1,8 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
-import * as d3 from 'd3';
-import { TerrainService } from '../services/terrainService';
 import { GameUnit, Faction, UnitClass, Projectile, Explosion, WeaponType, POI, POIType } from '../types';
 
 interface Props {
@@ -12,11 +10,6 @@ interface Props {
     projectiles: Projectile[];
     explosions: Explosion[];
     pois: POI[];
-}
-
-interface CachedFeature {
-    feature: any;
-    bbox: [number, number, number, number]; // minLng, minLat, maxLng, maxLat
 }
 
 const UNIT_COLORS: Record<string, string> = {
@@ -244,10 +237,7 @@ const getUnitSprite = (type: UnitClass, color: string): HTMLCanvasElement => {
 const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, projectiles, explosions, pois }) => {
     const map = useMap();
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const animationFrameId = useRef<number | null>(null);
-    const cachedFeaturesRef = useRef<CachedFeature[] | null>(null);
-    const lastMapStateRef = useRef<{ center: L.LatLng, zoom: number } | null>(null);
 
     // Refs for data access in loop
     const unitsRef = useRef(units);
@@ -269,91 +259,15 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
     useEffect(() => {
         const canvas = L.DomUtil.create('canvas', 'leaflet-zoom-animated') as HTMLCanvasElement;
         canvas.style.pointerEvents = 'none';
-        canvas.style.zIndex = '100'; // Behind UI but above tiles (if any)
+        canvas.style.zIndex = '600'; // TOP LAYER (Above Territory)
         canvas.style.position = 'absolute';
         canvas.style.top = '0';
         canvas.style.left = '0';
-        canvas.style.backgroundColor = '#0f172a'; // Dark Ocean Background
+        // Transparent background for Unit Layer
 
         const container = map.getContainer();
         container.appendChild(canvas);
         canvasRef.current = canvas;
-
-        // Create Offscreen Canvas for Map
-        offscreenCanvasRef.current = document.createElement('canvas');
-
-        // Pre-process GeoJSON for Culling
-        const prepareData = () => {
-            const geoJson = TerrainService.getWorldData();
-            if (geoJson && geoJson.features && !cachedFeaturesRef.current) {
-                cachedFeaturesRef.current = geoJson.features.map((f: any) => {
-                    const bounds = d3.geoBounds(f); // [[w, s], [e, n]]
-                    return {
-                        feature: f,
-                        bbox: [bounds[0][0], bounds[0][1], bounds[1][0], bounds[1][1]]
-                    };
-                });
-            }
-        };
-
-        const renderMapToOffscreen = () => {
-            const offCanvas = offscreenCanvasRef.current;
-            if (!offCanvas || !map) return;
-
-            const size = map.getSize();
-            const pixelRatio = window.devicePixelRatio || 1;
-
-            if (offCanvas.width !== size.x * pixelRatio || offCanvas.height !== size.y * pixelRatio) {
-                offCanvas.width = size.x * pixelRatio;
-                offCanvas.height = size.y * pixelRatio;
-            }
-
-            const ctx = offCanvas.getContext('2d');
-            if (!ctx) return;
-
-            ctx.resetTransform();
-            ctx.scale(pixelRatio, pixelRatio);
-            ctx.clearRect(0, 0, size.x, size.y);
-
-            prepareData();
-
-            const mapBounds = map.getBounds();
-            const n = mapBounds.getNorth();
-            const s = mapBounds.getSouth();
-            const e = mapBounds.getEast();
-            const w = mapBounds.getWest();
-
-            if (cachedFeaturesRef.current) {
-                const visibleFeatures = cachedFeaturesRef.current.filter(cf => {
-                    return (
-                        cf.bbox[0] <= e &&
-                        cf.bbox[2] >= w &&
-                        cf.bbox[1] <= n &&
-                        cf.bbox[3] >= s
-                    );
-                });
-
-                if (visibleFeatures.length > 0) {
-                    ctx.fillStyle = '#1e293b'; // Slate-800
-                    ctx.strokeStyle = '#334155'; // Slate-700
-                    ctx.lineWidth = 1;
-
-                    const transform = d3.geoTransform({
-                        point: function (x, y) {
-                            const point = map.latLngToContainerPoint([y, x]);
-                            this.stream.point(point.x, point.y);
-                        }
-                    });
-
-                    const path = d3.geoPath().projection(transform).context(ctx);
-
-                    ctx.beginPath();
-                    visibleFeatures.forEach(cf => path(cf.feature));
-                    ctx.fill();
-                    ctx.stroke();
-                }
-            }
-        };
 
         const draw = (time: number) => {
             if (!canvas || !map) return;
@@ -366,8 +280,6 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
                 canvas.height = size.y * pixelRatio;
                 canvas.style.width = `${size.x}px`;
                 canvas.style.height = `${size.y}px`;
-                // Force redraw of map if size changes
-                renderMapToOffscreen();
             }
 
             const ctx = canvas.getContext('2d');
@@ -377,37 +289,7 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
             ctx.scale(pixelRatio, pixelRatio);
             ctx.clearRect(0, 0, size.x, size.y);
 
-            // --- 1. DRAW MAP (FROM OFFSCREEN CANVAS) ---
-            // Check if map moved significantly
-            const currentCenter = map.getCenter();
-            const currentZoom = map.getZoom();
-            
-            // Simple check: if center or zoom changed, re-render offscreen
-            // OPTIMIZATION: In a real scenario, we might tolerate small pans without re-rendering, 
-            // but for now, we re-render on any move to ensure accuracy, BUT we do it efficiently.
-            // Actually, d3 projection depends on map state, so we MUST re-render the map path if the map moves.
-            // However, we can throttle it or only do it if the map IS moving.
-            // But wait, if we re-render the offscreen canvas every frame the map moves, we gain nothing over direct rendering.
-            // The gain comes if the map is STATIC.
-            
-            // Let's check if the map state has changed since last frame
-            const mapStateChanged = !lastMapStateRef.current || 
-                lastMapStateRef.current.center.lat !== currentCenter.lat ||
-                lastMapStateRef.current.center.lng !== currentCenter.lng ||
-                lastMapStateRef.current.zoom !== currentZoom;
-
-            if (mapStateChanged) {
-                renderMapToOffscreen();
-                lastMapStateRef.current = { center: currentCenter, zoom: currentZoom };
-            }
-
-            if (offscreenCanvasRef.current) {
-                // Draw the offscreen canvas onto the main canvas
-                // We need to draw it at 0,0 with size / pixelRatio because we scaled the context
-                ctx.drawImage(offscreenCanvasRef.current, 0, 0, size.x, size.y);
-            }
-
-            // --- 1.5 DRAW POIS (CITIES) ---
+            // --- 1. DRAW POIS (CITIES) ---
             const currentPois = poisRef.current;
             const currentFactions = factionsRef.current;
             const mapSize = map.getSize();
@@ -569,11 +451,11 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
 
                 ctx.save();
                 ctx.rotate((unit.heading * Math.PI) / 180);
-                
+
                 // USE SPRITE CACHE
                 const sprite = getUnitSprite(unit.unitClass, color);
                 ctx.drawImage(sprite, -16, -16);
-                
+
                 ctx.restore();
 
                 if (isDamaged) {
@@ -635,19 +517,10 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
         map.on('zoom', onMove);
         map.on('resize', onMove);
 
-        // Poll for GeoJSON
-        const checkInterval = setInterval(() => {
-            if (TerrainService.isReady()) {
-                // Trigger redraw implicitly by loop
-                clearInterval(checkInterval);
-            }
-        }, 500);
-
         return () => {
             map.off('move', onMove);
             map.off('zoom', onMove);
             map.off('resize', onMove);
-            clearInterval(checkInterval);
             if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
             if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
         };
