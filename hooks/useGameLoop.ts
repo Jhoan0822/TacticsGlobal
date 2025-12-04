@@ -194,9 +194,17 @@ export const useGameLoop = () => {
                 }
             });
 
-            // SPAWN NEUTRAL CITY DEFENDERS (Gray troops)
-            // Each neutral city gets 1-3 defenders based on tier
+            // CONVERT UNCLAIMED CITIES TO NEUTRAL (after players/bots have selected)
+            // Then spawn tier-based defenders for neutral cities
             const allTheCities = allCities.filter(c => c.type === POIType.CITY);
+
+            // Convert undefined/unclaimed to NEUTRAL
+            allTheCities.forEach(city => {
+                if (!city.ownerFactionId || city.ownerFactionId === 'undefined') {
+                    city.ownerFactionId = 'NEUTRAL';
+                }
+            });
+
             const ownershipCounts: Record<string, number> = {};
             allTheCities.forEach(c => {
                 ownershipCounts[c.ownerFactionId || 'undefined'] = (ownershipCounts[c.ownerFactionId || 'undefined'] || 0) + 1;
@@ -206,24 +214,39 @@ export const useGameLoop = () => {
             const neutralCities = allTheCities.filter(c => c.ownerFactionId === 'NEUTRAL');
             console.log('[START GAME] Spawning defenders for', neutralCities.length, 'neutral cities');
 
+            // Spawn defenders based on city tier (importance)
+            // Tier 1 (capitals): 4 defenders (2 tanks, 2 infantry)
+            // Tier 2 (major cities): 2 defenders (1 tank, 1 infantry)
+            // Tier 3 (small cities): 1 defender (infantry)
             neutralCities.forEach(city => {
-                const defenderCount = city.tier === 1 ? 3 : city.tier === 2 ? 2 : 1;
-                for (let i = 0; i < defenderCount; i++) {
+                const tier = city.tier || 3;
+                let defenders: UnitClass[] = [];
+
+                if (tier === 1) {
+                    // Capital cities: Strong garrison
+                    defenders = [UnitClass.GROUND_TANK, UnitClass.GROUND_TANK, UnitClass.INFANTRY, UnitClass.INFANTRY];
+                } else if (tier === 2) {
+                    // Major cities: Moderate garrison
+                    defenders = [UnitClass.GROUND_TANK, UnitClass.INFANTRY];
+                } else {
+                    // Small cities: Light garrison
+                    defenders = [UnitClass.INFANTRY];
+                }
+
+                defenders.forEach((unitClass, i) => {
                     const offsetLat = (Math.random() - 0.5) * 0.02;
                     const offsetLng = (Math.random() - 0.5) * 0.02;
-                    // Spawn NEUTRAL faction defenders
                     const defender = spawnUnit(
-                        i === 0 ? UnitClass.GROUND_TANK : UnitClass.INFANTRY,
+                        unitClass,
                         city.position.lat + offsetLat,
                         city.position.lng + offsetLng,
                         'NEUTRAL_DEFENDER'
                     );
-                    // Set autoMode to DEFEND
                     defender.autoMode = 'DEFEND';
-                    defender.autoTarget = true; // Auto-engage enemies
+                    defender.autoTarget = true;
                     defender.homePosition = { lat: city.position.lat, lng: city.position.lng };
                     initialUnits.push(defender);
-                }
+                });
             });
 
             // Update POIs and Units in initial state
