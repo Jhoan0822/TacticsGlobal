@@ -122,92 +122,91 @@ const App: React.FC = () => {
         } else {
             startGame(scenario, localPlayerId, factions, isMultiplayer && !isHost);
         }
+        setIsInMenu(false);
     };
-    setIsInMenu(false);
-};
 
-const lastRightClick = useRef<number>(0);
+    const lastRightClick = useRef<number>(0);
 
-// --- UI HANDLERS (WRAPPERS) ---
+    // --- UI HANDLERS (WRAPPERS) ---
 
-const handleUnitClick = (id: string, multiSelect: boolean) => {
-    if (gameState.gameMode === 'PLAYING') {
-        if (multiSelect) {
-            setSelectedUnitIds(prev => prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]);
-        } else {
-            setSelectedUnitIds([id]);
+    const handleUnitClick = (id: string, multiSelect: boolean) => {
+        if (gameState.gameMode === 'PLAYING') {
+            if (multiSelect) {
+                setSelectedUnitIds(prev => prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]);
+            } else {
+                setSelectedUnitIds([id]);
+            }
+            AudioService.playUiClick();
         }
-        AudioService.playUiClick();
-    }
-};
+    };
 
-const handleUnitRightClick = (id: string) => {
-    if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
-        handleTargetCommand(id, false);
-    }
-};
+    const handleUnitRightClick = (id: string) => {
+        if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
+            handleTargetCommand(id, false);
+        }
+    };
 
-const handlePoiRightClick = (id: string) => {
-    if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
-        handleTargetCommand(id, true);
-    }
-};
+    const handlePoiRightClick = (id: string) => {
+        if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
+            handleTargetCommand(id, true);
+        }
+    };
 
-const handleMapRightClick = (lat: number, lng: number) => {
-    if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
-        // Move Command
-        handleMapClick(lat, lng);
-    } else if (gameState.gameMode === 'PLACING_STRUCTURE') {
-        // Cancel placement? Or just ignore right click
-        setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
-    }
-};
+    const handleMapRightClick = (lat: number, lng: number) => {
+        if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
+            // Move Command
+            handleMapClick(lat, lng);
+        } else if (gameState.gameMode === 'PLACING_STRUCTURE') {
+            // Cancel placement? Or just ignore right click
+            setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
+        }
+    };
 
-const handleMultiSelect = (ids: string[]) => {
-    setSelectedUnitIds(ids);
-    if (ids.length > 0) AudioService.playUiClick();
-};
+    const handleMultiSelect = (ids: string[]) => {
+        setSelectedUnitIds(ids);
+        if (ids.length > 0) AudioService.playUiClick();
+    };
 
-if (isInMenu) {
-    return (
-        <MainMenu
-            onStartGame={handleStartGame}
-            lobbyState={lobbyState}
-            setLobbyState={setLobbyState}
-            networkMode={networkMode}
-            setNetworkMode={setNetworkMode}
-        />
-    );
-}
-
-return (
-    <TooltipProvider>
-        <div className="w-full h-screen relative bg-slate-900 overflow-hidden flex">
-            <Sidebar
-                gameState={gameState}
-                onBuyUnit={originalHandleBuyUnit}
-                onAllianceRequest={handleAllianceRequest}
-                selectedUnitIds={selectedUnitIds}
-                onUnitAction={originalHandleUnitAction}
-                onSetDifficulty={setDifficulty}
+    if (isInMenu) {
+        return (
+            <MainMenu
+                onStartGame={handleStartGame}
+                lobbyState={lobbyState}
+                setLobbyState={setLobbyState}
+                networkMode={networkMode}
+                setNetworkMode={setNetworkMode}
             />
-            <div className="flex-1 relative">
-                <GameMap
-                    units={gameState.units} factions={gameState.factions} pois={gameState.pois} projectiles={gameState.projectiles} explosions={gameState.explosions}
-                    center={center} selectedUnitIds={selectedUnitIds}
-                    onUnitClick={handleUnitClick} onUnitRightClick={handleUnitRightClick} onUnitAction={originalHandleUnitAction}
-                    onMapClick={handleMapClick} onMapRightClick={handleMapRightClick} onPoiClick={handlePoiClick} onPoiRightClick={handlePoiRightClick}
-                    onMultiSelect={handleMultiSelect}
-                    gameMode={gameState.gameMode}
-                    placementType={gameState.placementType}
-                    bounds={gameState.bounds}
+        );
+    }
+
+    return (
+        <TooltipProvider>
+            <div className="w-full h-screen relative bg-slate-900 overflow-hidden flex">
+                <Sidebar
+                    gameState={gameState}
+                    onBuyUnit={originalHandleBuyUnit}
+                    onAllianceRequest={handleAllianceRequest}
+                    selectedUnitIds={selectedUnitIds}
+                    onUnitAction={originalHandleUnitAction}
+                    onSetDifficulty={setDifficulty}
                 />
-                <EventLog messages={gameState.messages} />
-                <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>
+                <div className="flex-1 relative">
+                    <GameMap
+                        units={gameState.units} factions={gameState.factions} pois={gameState.pois} projectiles={gameState.projectiles} explosions={gameState.explosions}
+                        center={center} selectedUnitIds={selectedUnitIds}
+                        onUnitClick={handleUnitClick} onUnitRightClick={handleUnitRightClick} onUnitAction={originalHandleUnitAction}
+                        onMapClick={handleMapClick} onMapRightClick={handleMapRightClick} onPoiClick={handlePoiClick} onPoiRightClick={handlePoiRightClick}
+                        onMultiSelect={handleMultiSelect}
+                        gameMode={gameState.gameMode}
+                        placementType={gameState.placementType}
+                        bounds={gameState.bounds}
+                    />
+                    <EventLog messages={gameState.messages} />
+                    <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>
+                </div>
             </div>
-        </div>
-    </TooltipProvider>
-);
+        </TooltipProvider>
+    );
 };
 
 export default App;
