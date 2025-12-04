@@ -70,12 +70,14 @@ export function applyAction(state: GameState, action: GameAction): GameState {
                         ...u,
                         destination: { lat: payload.targetLat, lng: payload.targetLng },
                         targetId: null,
-                        isBoosting: payload.isBoosting ?? false
+                        isBoosting: payload.isBoosting ?? false,
+                        autoMode: 'NONE', // Reset to manual on player command
+                        autoTarget: false
                     };
                 }
                 return u;
             });
-            console.log('[APPLY ACTION] Units moved:', payload.unitIds.length);
+            console.log('[APPLY ACTION] Units moved:', payload.unitIds.length, '(mode reset to MANUAL)');
             break;
         }
 
@@ -86,12 +88,14 @@ export function applyAction(state: GameState, action: GameAction): GameState {
                     return {
                         ...u,
                         targetId: payload.targetId,
-                        destination: null
+                        destination: null,
+                        autoMode: 'NONE', // Reset to manual on player command
+                        autoTarget: false
                     };
                 }
                 return u;
             });
-            console.log('[APPLY ACTION] Attack command:', payload.attackerIds.length, 'units');
+            console.log('[APPLY ACTION] Attack command:', payload.attackerIds.length, 'units (mode reset to MANUAL)');
             break;
         }
 
