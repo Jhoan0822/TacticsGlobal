@@ -13,7 +13,7 @@ export const updateAI = (gameState: GameState, unitGrid?: Map<string, GameUnit[]
   // 2. Run Faction Logic
   const now = Date.now();
   newState.factions.forEach(faction => {
-    if (faction.type !== 'AI') return;
+    if (faction.type !== 'BOT') return; // BOT factions only (was 'AI' which never matched!)
 
     if (faction.lastAiUpdate && (now - faction.lastAiUpdate < AI_CONFIG.UPDATE_INTERVAL_MS)) {
       return;

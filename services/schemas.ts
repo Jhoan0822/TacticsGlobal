@@ -30,6 +30,7 @@ export interface SpawnUnitPayload {
     lat: number;
     lng: number;
     unitId: string;  // Pre-generated ID for consistency
+    factionId?: string; // Optional: defaults to action.playerId
 }
 
 export interface MoveUnitsPayload {
