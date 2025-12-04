@@ -750,10 +750,53 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         }
     }
 
-    // 3. CAPTURE LOGIC (Passive Regen only, capture is now handled in combat)
+    // 3. CAPTURE LOGIC - Infantry near enemy POIs can capture them
+    const CAPTURE_RANGE_KM = 5; // Infantry must be this close to capture
+    const CAPTURE_RATE = 50; // Damage per tick to POI HP when capturing
+
     nextPOIs = nextPOIs.map(poi => {
-        // Regen City HP slightly if not under attack and not captured recently
-        if (poi.hp < poi.maxHp && poi.hp > 0) poi.hp += 0.5;
+        // Find infantry near this POI from OTHER factions
+        const nearbyInfantry = nextUnits.filter(u =>
+            u.factionId !== poi.ownerFactionId &&
+            u.factionId !== 'NEUTRAL' &&
+            (u.unitClass === UnitClass.INFANTRY || u.unitClass === UnitClass.SPECIAL_FORCES) &&
+            getDistanceKm(u.position.lat, u.position.lng, poi.position.lat, poi.position.lng) < CAPTURE_RANGE_KM
+        );
+
+        if (nearbyInfantry.length > 0) {
+            // Reduce POI HP (capturing)
+            const captureDamage = nearbyInfantry.length * CAPTURE_RATE;
+            const newHp = poi.hp - captureDamage;
+
+            if (newHp <= 0) {
+                // POI captured! Transfer ownership to the faction with most infantry nearby
+                const counts: Record<string, number> = {};
+                nearbyInfantry.forEach(u => {
+                    counts[u.factionId] = (counts[u.factionId] || 0) + 1;
+                });
+                const newOwner = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || poi.ownerFactionId;
+
+                // Add capture message
+                messages.push({
+                    id: Math.random().toString(36),
+                    text: `[CAPTURE] ${poi.name} captured by ${newOwner}!`,
+                    type: 'alert',
+                    timestamp: Date.now()
+                } as any);
+
+                return {
+                    ...poi,
+                    ownerFactionId: newOwner,
+                    hp: poi.maxHp, // Reset HP after capture
+                };
+            }
+            return { ...poi, hp: newHp };
+        }
+
+        // Regen POI HP slightly if not under attack
+        if (poi.hp < poi.maxHp && poi.hp > 0) {
+            return { ...poi, hp: Math.min(poi.maxHp, poi.hp + 1) };
+        }
         return poi;
     });
 

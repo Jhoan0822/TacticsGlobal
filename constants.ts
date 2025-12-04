@@ -64,7 +64,8 @@ export const FACTION_PRESETS = [
 
 export const POI_CONFIG = {
   [POIType.CITY]: { incomeGold: 50, incomeOil: 0, captureRadius: 0.1, defaultHp: 2000, captureThreshold: 0 },
-  [POIType.OIL_RIG]: { incomeGold: 0, incomeOil: 50, captureRadius: 0.1, defaultHp: 500, captureThreshold: 0 }
+  [POIType.OIL_RIG]: { incomeGold: 0, incomeOil: 50, captureRadius: 0.1, defaultHp: 500, captureThreshold: 0 },
+  [POIType.GOLD_MINE]: { incomeGold: 100, incomeOil: 0, captureRadius: 0.1, defaultHp: 300, captureThreshold: 0 }
 };
 
 interface ExtendedUnitStats extends UnitStats {
