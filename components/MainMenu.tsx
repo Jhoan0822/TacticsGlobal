@@ -244,6 +244,23 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                             </div>
                         </div>
 
+                        {/* GAME MODE */}
+                        <div>
+                            <label className="block text-sm text-gray-400 mb-2">Game Mode</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {['DOMINATION', 'SURVIVAL'].map((mode) => (
+                                    <button
+                                        key={mode}
+                                        disabled={!canEdit}
+                                        onClick={() => isSingle ? setLobbyState(p => ({ ...p, gameMode: mode as any })) : updateLobbySetting('gameMode', mode)}
+                                        className={`p-2 rounded text-sm font-bold border ${lobbyState.gameMode === mode ? 'bg-purple-600 border-purple-400' : 'bg-slate-700 border-slate-600 hover:bg-slate-600'} ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
+                                    >
+                                        {mode}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         {/* DIFFICULTY */}
                         <div>
                             <label className="block text-sm text-gray-400 mb-2">Difficulty</label>

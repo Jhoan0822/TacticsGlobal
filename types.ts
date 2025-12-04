@@ -176,6 +176,7 @@ export interface LobbyState {
   scenarioId: string;
   difficulty: Difficulty;
   botCount: number;
+  gameMode: 'DOMINATION' | 'SURVIVAL';
 }
 
 export interface Scenario {

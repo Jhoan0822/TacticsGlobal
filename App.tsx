@@ -19,7 +19,8 @@ const App: React.FC = () => {
         players: [],
         scenarioId: 'WORLD',
         difficulty: Difficulty.MEDIUM,
-        botCount: 3
+        botCount: 3,
+        gameMode: 'DOMINATION'
     });
     const [networkMode, setNetworkMode] = useState<'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | null>(null);
 
