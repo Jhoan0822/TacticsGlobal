@@ -153,21 +153,61 @@ export const TerrainService = {
         }
 
         terrainTypeCache.set(key, result);
-        // if (terrainTypeCache.size > 10000) terrainTypeCache.clear(); // Cache no longer needed as lookup is fast
-
         return result;
     },
 
-    isValidPlacement: (unitClass: UnitClass, lat: number, lng: number, pois: POI[]): boolean => {
+    isValidPlacement: (unitClass: UnitClass, lat: number, lng: number, pois: POI[],
+        playerUnits?: { unitClass: UnitClass, factionId: string, position: { lat: number, lng: number } }[],
+        playerId?: string): boolean => {
         const terrain = TerrainService.getTerrainType(lat, lng, pois);
 
+        // TERRAIN CHECK
         if (unitClass === UnitClass.PORT) {
-            // Ports can be placed on COAST.
-            return terrain === 'COAST';
+            // Ports can ONLY be placed on COAST or OCEAN (NOT inland)
+            if (terrain !== 'COAST' && terrain !== 'OCEAN') {
+                console.log('[PLACEMENT] Port rejected - not coastal/ocean');
+                return false;
+            }
         }
         if (unitClass === UnitClass.AIRBASE || unitClass === UnitClass.MILITARY_BASE) {
-            return terrain === 'LAND' || terrain === 'COAST';
+            // Land structures need LAND or COAST
+            if (terrain !== 'LAND' && terrain !== 'COAST') {
+                console.log('[PLACEMENT] Structure rejected - not land/coast');
+                return false;
+            }
         }
+
+        // CONTROL AREA CHECK - Building must be near owned city or HQ
+        const CONTROL_RADIUS_KM = 500; // Buildings must be within 500km of city/HQ
+
+        if (playerId && playerUnits) {
+            // Check if near any owned city
+            const nearCity = pois.some(p =>
+                p.ownerFactionId === playerId &&
+                p.type === POIType.CITY &&
+                getDistanceKm(lat, lng, p.position.lat, p.position.lng) < CONTROL_RADIUS_KM
+            );
+
+            // Check if near any owned command center
+            const nearHQ = playerUnits.some(u =>
+                u.factionId === playerId &&
+                u.unitClass === UnitClass.COMMAND_CENTER &&
+                getDistanceKm(lat, lng, u.position.lat, u.position.lng) < CONTROL_RADIUS_KM
+            );
+
+            // Check if near any Mobile Command Center
+            const nearMobileHQ = playerUnits.some(u =>
+                u.factionId === playerId &&
+                u.unitClass === UnitClass.MOBILE_COMMAND_CENTER &&
+                getDistanceKm(lat, lng, u.position.lat, u.position.lng) < CONTROL_RADIUS_KM
+            );
+
+            if (!nearCity && !nearHQ && !nearMobileHQ) {
+                console.log('[PLACEMENT] Structure rejected - not in control area');
+                return false;
+            }
+        }
+
         return true;
     },
 

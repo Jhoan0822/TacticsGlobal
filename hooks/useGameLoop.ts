@@ -250,35 +250,90 @@ export const useGameLoop = () => {
             return;
         }
 
-        // Find spawn location for units
-        let spawnLat: number | null = null;
-        let spawnLng: number | null = null;
-
+        // Define unit categories
+        const airUnits = [UnitClass.FIGHTER_JET, UnitClass.HEAVY_BOMBER, UnitClass.HELICOPTER,
+        UnitClass.RECON_DRONE, UnitClass.TROOP_TRANSPORT];
         const seaUnits = [UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.SUBMARINE,
         UnitClass.AIRCRAFT_CARRIER, UnitClass.BATTLESHIP, UnitClass.PATROL_BOAT, UnitClass.MINELAYER];
-        const isSea = seaUnits.includes(type);
+        const landUnits = [UnitClass.INFANTRY, UnitClass.SPECIAL_FORCES, UnitClass.GROUND_TANK,
+        UnitClass.MISSILE_LAUNCHER, UnitClass.SAM_LAUNCHER];
 
-        if (isSea) {
-            const validSites = [
-                ...gameState.pois.filter(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY && p.isCoastal),
-                ...gameState.units.filter(u => u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.PORT)
+        // Find spawn location based on unit type
+        let spawnLat: number | null = null;
+        let spawnLng: number | null = null;
+        let validSites: { position: { lat: number, lng: number } }[] = [];
+
+        if (airUnits.includes(type)) {
+            // AIR UNITS: Only spawn at AIRBASE
+            validSites = gameState.units.filter(u =>
+                u.factionId === gameState.localPlayerId &&
+                u.unitClass === UnitClass.AIRBASE
+            );
+            if (validSites.length === 0) {
+                console.log('[SPAWN] No AIRBASE found for air unit');
+                AudioService.playAlert();
+                return;
+            }
+        } else if (seaUnits.includes(type)) {
+            // SEA UNITS: Only spawn at PORT (NOT coastal cities)
+            validSites = gameState.units.filter(u =>
+                u.factionId === gameState.localPlayerId &&
+                u.unitClass === UnitClass.PORT
+            );
+            if (validSites.length === 0) {
+                console.log('[SPAWN] No PORT found for sea unit');
+                AudioService.playAlert();
+                return;
+            }
+        } else if (landUnits.includes(type)) {
+            // LAND UNITS: Cities, Military Base, or Command Center
+            validSites = [
+                ...gameState.pois.filter(p =>
+                    p.ownerFactionId === gameState.localPlayerId &&
+                    p.type === POIType.CITY
+                ),
+                ...gameState.units.filter(u =>
+                    u.factionId === gameState.localPlayerId &&
+                    (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MILITARY_BASE)
+                )
             ];
-            if (validSites.length > 0) {
-                const site = validSites[Math.floor(Math.random() * validSites.length)];
-                spawnLat = site.position.lat;
-                spawnLng = site.position.lng;
+            if (validSites.length === 0) {
+                console.log('[SPAWN] No city/base found for land unit');
+                AudioService.playAlert();
+                return;
+            }
+        } else if (type === UnitClass.MOBILE_COMMAND_CENTER) {
+            // MOBILE HQ: Spawns at any owned city, HQ, or as fallback at any owned unit
+            const ownedCities = gameState.pois.filter(p =>
+                p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY);
+            const ownedHQs = gameState.units.filter(u =>
+                u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.COMMAND_CENTER);
+            const ownedUnits = gameState.units.filter(u =>
+                u.factionId === gameState.localPlayerId && u.hp > 0);
+
+            if (ownedCities.length > 0) {
+                validSites = ownedCities;
+            } else if (ownedHQs.length > 0) {
+                validSites = ownedHQs;
+            } else if (ownedUnits.length > 0) {
+                // FALLBACK: Spawn at any owned unit (emergency HQ)
+                validSites = ownedUnits;
+                console.log('[SPAWN] Emergency Mobile HQ spawn at unit position');
+            } else {
+                console.log('[SPAWN] No valid spawn location for Mobile HQ');
+                AudioService.playAlert();
+                return;
             }
         } else {
-            const validSites = [
-                ...gameState.pois.filter(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY),
-                ...gameState.units.filter(u => u.factionId === gameState.localPlayerId &&
-                    (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MILITARY_BASE || u.unitClass === UnitClass.AIRBASE))
-            ];
-            if (validSites.length > 0) {
-                const site = validSites[Math.floor(Math.random() * validSites.length)];
-                spawnLat = site.position.lat;
-                spawnLng = site.position.lng;
-            }
+            // Unknown unit type - try cities as fallback
+            validSites = gameState.pois.filter(p =>
+                p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY);
+        }
+
+        if (validSites.length > 0) {
+            const site = validSites[Math.floor(Math.random() * validSites.length)];
+            spawnLat = site.position.lat;
+            spawnLng = site.position.lng;
         }
 
         if (spawnLat !== null && spawnLng !== null) {
@@ -300,8 +355,10 @@ export const useGameLoop = () => {
             if (!gameState.placementType) return;
 
             const type = gameState.placementType;
-            if (!TerrainService.isValidPlacement(type, lat, lng, gameState.pois)) {
-                alert("Invalid Terrain!");
+            const playerUnits = gameState.units.filter(u => u.factionId === gameState.localPlayerId);
+
+            if (!TerrainService.isValidPlacement(type, lat, lng, gameState.pois, playerUnits, gameState.localPlayerId)) {
+                alert("Invalid location! Check terrain type and ensure you're within control area of a city or HQ.");
                 AudioService.playAlert();
                 return;
             }
