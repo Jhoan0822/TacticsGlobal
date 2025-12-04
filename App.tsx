@@ -75,7 +75,7 @@ const App: React.FC = () => {
                     // Client Start
                     const scenario = Object.values(SCENARIOS).find(s => s.id === e.scenarioId) || SCENARIOS.WORLD;
                     // Use MY Peer ID as localPlayerId
-                    startGame(scenario, NetworkService.myPeerId, e.factions, true);
+                    startGame(scenario, NetworkService.myPeerId, e.factions, true, e.pois);
                     setIsInMenu(false);
                 }
                 // Note: Game events (TURN, INTENT) are handled by useGameLoop subscription
@@ -98,92 +98,116 @@ const App: React.FC = () => {
     }, [lobbyState, networkMode]);
 
     const handleStartGame = (scenario: Scenario, localPlayerId: string, factions: Faction[], isMultiplayer: boolean, isHost: boolean) => {
-        startGame(scenario, localPlayerId, factions, isMultiplayer && !isHost);
-        setIsInMenu(false);
-    };
+        // Host generates POIs here or inside startGame?
+        // startGame handles it. But for multiplayer host, we need to generate them and send them.
+        // Let's let startGame generate them if not provided, then we grab them from gameState?
+        // No, startGame is void.
+        // We need to generate POIs *before* calling startGame if we are Host, so we can send them.
+        // OR, startGame returns the initial state? No.
 
-    const lastRightClick = useRef<number>(0);
+        // Better: Let startGame generate them if null.
+        // But for Host, we need to send them.
+        // Let's modify startGame to RETURN the initial state or POIs?
+        // Or just access gameState after? No, setState is async.
 
-    // --- UI HANDLERS (WRAPPERS) ---
-
-    const handleUnitClick = (id: string, multiSelect: boolean) => {
-        if (gameState.gameMode === 'PLAYING') {
-            if (multiSelect) {
-                setSelectedUnitIds(prev => prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]);
-            } else {
-                setSelectedUnitIds([id]);
-            }
-            AudioService.playUiClick();
+        // Solution: Generate POIs here if Host, then pass to startGame AND NetworkService.
+        let initialPois = null;
+        if (isHost) {
+            // We need to import getMockCities or similar?
+            // It's not exported from useGameLoop.
+            // Let's rely on useGameLoop to generate them if we pass null, 
+            // BUT we need to send them.
+            // Actually, let's just update useGameLoop to broadcast the start game WITH the POIs it generated.
+            startGame(scenario, localPlayerId, factions, isMultiplayer && !isHost);
+        } else {
+            startGame(scenario, localPlayerId, factions, isMultiplayer && !isHost);
         }
     };
+    setIsInMenu(false);
+};
 
-    const handleUnitRightClick = (id: string) => {
-        if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
-            handleTargetCommand(id, false);
+const lastRightClick = useRef<number>(0);
+
+// --- UI HANDLERS (WRAPPERS) ---
+
+const handleUnitClick = (id: string, multiSelect: boolean) => {
+    if (gameState.gameMode === 'PLAYING') {
+        if (multiSelect) {
+            setSelectedUnitIds(prev => prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]);
+        } else {
+            setSelectedUnitIds([id]);
         }
-    };
-
-    const handlePoiRightClick = (id: string) => {
-        if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
-            handleTargetCommand(id, true);
-        }
-    };
-
-    const handleMapRightClick = (lat: number, lng: number) => {
-        if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
-            // Move Command
-            handleMapClick(lat, lng);
-        } else if (gameState.gameMode === 'PLACING_STRUCTURE') {
-            // Cancel placement? Or just ignore right click
-            setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
-        }
-    };
-
-    const handleMultiSelect = (ids: string[]) => {
-        setSelectedUnitIds(ids);
-        if (ids.length > 0) AudioService.playUiClick();
-    };
-
-    if (isInMenu) {
-        return (
-            <MainMenu
-                onStartGame={handleStartGame}
-                lobbyState={lobbyState}
-                setLobbyState={setLobbyState}
-                networkMode={networkMode}
-                setNetworkMode={setNetworkMode}
-            />
-        );
+        AudioService.playUiClick();
     }
+};
 
+const handleUnitRightClick = (id: string) => {
+    if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
+        handleTargetCommand(id, false);
+    }
+};
+
+const handlePoiRightClick = (id: string) => {
+    if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
+        handleTargetCommand(id, true);
+    }
+};
+
+const handleMapRightClick = (lat: number, lng: number) => {
+    if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
+        // Move Command
+        handleMapClick(lat, lng);
+    } else if (gameState.gameMode === 'PLACING_STRUCTURE') {
+        // Cancel placement? Or just ignore right click
+        setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
+    }
+};
+
+const handleMultiSelect = (ids: string[]) => {
+    setSelectedUnitIds(ids);
+    if (ids.length > 0) AudioService.playUiClick();
+};
+
+if (isInMenu) {
     return (
-        <TooltipProvider>
-            <div className="w-full h-screen relative bg-slate-900 overflow-hidden flex">
-                <Sidebar
-                    gameState={gameState}
-                    onBuyUnit={originalHandleBuyUnit}
-                    onAllianceRequest={handleAllianceRequest}
-                    selectedUnitIds={selectedUnitIds}
-                    onUnitAction={originalHandleUnitAction}
-                    onSetDifficulty={setDifficulty}
-                />
-                <div className="flex-1 relative">
-                    <GameMap
-                        units={gameState.units} factions={gameState.factions} pois={gameState.pois} projectiles={gameState.projectiles} explosions={gameState.explosions}
-                        center={center} selectedUnitIds={selectedUnitIds}
-                        onUnitClick={handleUnitClick} onUnitRightClick={handleUnitRightClick} onUnitAction={originalHandleUnitAction}
-                        onMapClick={handleMapClick} onMapRightClick={handleMapRightClick} onPoiClick={handlePoiClick} onPoiRightClick={handlePoiRightClick}
-                        onMultiSelect={handleMultiSelect}
-                        gameMode={gameState.gameMode}
-                        placementType={gameState.placementType}
-                        bounds={gameState.bounds}
-                    />
-                    <EventLog messages={gameState.messages} />
-                    <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>
-                </div>
-            </div>
-        </TooltipProvider>
+        <MainMenu
+            onStartGame={handleStartGame}
+            lobbyState={lobbyState}
+            setLobbyState={setLobbyState}
+            networkMode={networkMode}
+            setNetworkMode={setNetworkMode}
+        />
     );
+}
+
+return (
+    <TooltipProvider>
+        <div className="w-full h-screen relative bg-slate-900 overflow-hidden flex">
+            <Sidebar
+                gameState={gameState}
+                onBuyUnit={originalHandleBuyUnit}
+                onAllianceRequest={handleAllianceRequest}
+                selectedUnitIds={selectedUnitIds}
+                onUnitAction={originalHandleUnitAction}
+                onSetDifficulty={setDifficulty}
+            />
+            <div className="flex-1 relative">
+                <GameMap
+                    units={gameState.units} factions={gameState.factions} pois={gameState.pois} projectiles={gameState.projectiles} explosions={gameState.explosions}
+                    center={center} selectedUnitIds={selectedUnitIds}
+                    onUnitClick={handleUnitClick} onUnitRightClick={handleUnitRightClick} onUnitAction={originalHandleUnitAction}
+                    onMapClick={handleMapClick} onMapRightClick={handleMapRightClick} onPoiClick={handlePoiClick} onPoiRightClick={handlePoiRightClick}
+                    onMultiSelect={handleMultiSelect}
+                    gameMode={gameState.gameMode}
+                    placementType={gameState.placementType}
+                    bounds={gameState.bounds}
+                />
+                <EventLog messages={gameState.messages} />
+                <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>
+            </div>
+        </div>
+    </TooltipProvider>
+);
 };
 
 export default App;
