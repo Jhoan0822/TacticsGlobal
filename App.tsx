@@ -156,29 +156,31 @@ const App: React.FC = () => {
     }
 
     return (
-        <div className="w-full h-screen relative bg-slate-900 overflow-hidden flex">
-            <Sidebar
-                gameState={gameState}
-                onBuyUnit={originalHandleBuyUnit} // useGameLoop's handleBuyUnit handles intents
-                onAllianceRequest={handleAllianceRequest}
-                selectedUnitIds={selectedUnitIds}
-                onUnitAction={originalHandleUnitAction} // useGameLoop's handleUnitAction handles intents
-                onSetDifficulty={setDifficulty}
-            />
-            <div className="flex-1 relative">
-                <GameMap
-                    units={gameState.units} factions={gameState.factions} pois={gameState.pois} projectiles={gameState.projectiles} explosions={gameState.explosions}
-                    center={center} selectedUnitIds={selectedUnitIds}
-                    onUnitClick={handleUnitClick} onUnitRightClick={handleUnitRightClick} onUnitAction={originalHandleUnitAction}
-                    onMapClick={handleMapClick} onMapRightClick={handleMapRightClick} onPoiClick={handlePoiClick} onPoiRightClick={handlePoiRightClick}
-                    onMultiSelect={handleMultiSelect}
-                    gameMode={gameState.gameMode}
-                    placementType={gameState.placementType}
+        <TooltipProvider>
+            <div className="w-full h-screen relative bg-slate-900 overflow-hidden flex">
+                <Sidebar
+                    gameState={gameState}
+                    onBuyUnit={originalHandleBuyUnit}
+                    onAllianceRequest={handleAllianceRequest}
+                    selectedUnitIds={selectedUnitIds}
+                    onUnitAction={originalHandleUnitAction}
+                    onSetDifficulty={setDifficulty}
                 />
-                <EventLog messages={gameState.messages} />
-                <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>
+                <div className="flex-1 relative">
+                    <GameMap
+                        units={gameState.units} factions={gameState.factions} pois={gameState.pois} projectiles={gameState.projectiles} explosions={gameState.explosions}
+                        center={center} selectedUnitIds={selectedUnitIds}
+                        onUnitClick={handleUnitClick} onUnitRightClick={handleUnitRightClick} onUnitAction={originalHandleUnitAction}
+                        onMapClick={handleMapClick} onMapRightClick={handleMapRightClick} onPoiClick={handlePoiClick} onPoiRightClick={handlePoiRightClick}
+                        onMultiSelect={handleMultiSelect}
+                        gameMode={gameState.gameMode}
+                        placementType={gameState.placementType}
+                    />
+                    <EventLog messages={gameState.messages} />
+                    <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>
+                </div>
             </div>
-        </div>
+        </TooltipProvider>
     );
 };
 
