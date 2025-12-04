@@ -113,12 +113,19 @@ export const useGameLoop = () => {
         console.log('[START GAME]', scenario.id, 'localPlayerId:', localPlayerId, 'isClient:', isClient);
 
         // Load POIs: Use provided (Client) or Generate (Host/Single)
-        // We need to import getMockCities from somewhere? It was used before but not imported in the snippet I saw?
-        // Ah, it was likely imported from services/mockDataService.
-        // Let's assume it's available or we use TerrainService/MockDataService.
-        // Wait, the previous code had `getMockCities()`.
-
         let allCities = initialPois || getMockCities();
+
+        // DEBUG: Log POI counts by type
+        const cities = allCities.filter(p => p.type === POIType.CITY);
+        const oilRigs = allCities.filter(p => p.type === POIType.OIL_RIG);
+        const goldMines = allCities.filter(p => p.type === POIType.GOLD_MINE);
+        console.log('[START GAME] POI COUNTS:', {
+            total: allCities.length,
+            cities: cities.length,
+            oilRigs: oilRigs.length,
+            goldMines: goldMines.length,
+            initialPoisProvided: !!initialPois
+        });
 
         // Define initial state object
         const initialState: GameState = {
@@ -215,6 +222,12 @@ export const useGameLoop = () => {
             // Update POIs and Units in initial state
             initialState.pois = allCities;
             initialState.units = initialUnits;
+
+            console.log('[START GAME] FINAL COUNTS:', {
+                totalPOIs: allCities.length,
+                totalUnits: initialUnits.length,
+                neutralDefenders: initialUnits.filter(u => u.factionId === 'NEUTRAL_DEFENDER').length
+            });
 
             // BROADCAST START GAME (Host only) - SEND ALL POIs INCLUDING RESOURCES
             if (NetworkService.isHost || (!isClient && NetworkService.myPeerId)) {

@@ -192,7 +192,7 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                         <button
                             onClick={() => onSetAutoMode?.('DEFEND')}
                             className="flex-1 py-1.5 text-[10px] rounded bg-green-900/50 hover:bg-green-800/50 text-green-400 border border-green-700 transition-all"
-                            title="Defend Position [F]"
+                            title="Defend Area (Patrol + Attack)"
                         >
                             🛡️ DEFEND
                         </button>
@@ -201,26 +201,12 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                         <button
                             onClick={() => onSetAutoMode?.('ATTACK')}
                             className="flex-1 py-1.5 text-[10px] rounded bg-red-900/50 hover:bg-red-800/50 text-red-400 border border-red-700 transition-all"
-                            title="Seek & Destroy [F]"
+                            title="Seek & Destroy Anywhere"
                         >
                             ⚔️ ATTACK
                         </button>
-                        <button
-                            onClick={() => onSetAutoMode?.('PATROL')}
-                            className="flex-1 py-1.5 text-[10px] rounded bg-blue-900/50 hover:bg-blue-800/50 text-blue-400 border border-blue-700 transition-all"
-                            title="Patrol Area [F]"
-                        >
-                            🔄 PATROL
-                        </button>
                     </div>
-                    <button
-                        onClick={() => onToggleAutoTarget?.()}
-                        className="w-full py-1.5 text-[10px] rounded bg-amber-900/50 hover:bg-amber-800/50 text-amber-400 border border-amber-700 transition-all"
-                        title="Toggle Auto-Target [G]"
-                    >
-                        🎯 TOGGLE AUTO-TARGET
-                    </button>
-                    <div className="text-[8px] text-slate-500 mt-1 text-center">Hotkeys: F (cycle mode) | G (auto-target)</div>
+                    <div className="text-[8px] text-slate-500 mt-1 text-center">DEFEND = patrols area + attacks enemies | ATTACK = hunts everywhere</div>
                 </div>
             )}
 
