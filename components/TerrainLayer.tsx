@@ -75,11 +75,25 @@ const TerrainLayer: React.FC = () => {
 
             if (cachedFeaturesRef.current) {
                 const visibleFeatures = cachedFeaturesRef.current.filter(cf => {
+                    const [minLng, minLat, maxLng, maxLat] = cf.bbox;
+
+                    // Check if this feature crosses the antimeridian (180°/-180° line)
+                    // This happens when minLng > maxLng (e.g., Russia: bbox goes from ~30°E to ~-170°W)
+                    const crossesAntimeridian = minLng > maxLng;
+
+                    if (crossesAntimeridian) {
+                        // For features crossing the antimeridian, always include them
+                        // as they span most of the world anyway (like Russia)
+                        // Just check latitude bounds
+                        return minLat <= n && maxLat >= s;
+                    }
+
+                    // Standard bounding box check for normal features
                     return (
-                        cf.bbox[0] <= e &&
-                        cf.bbox[2] >= w &&
-                        cf.bbox[1] <= n &&
-                        cf.bbox[3] >= s
+                        minLng <= e &&
+                        maxLng >= w &&
+                        minLat <= n &&
+                        maxLat >= s
                     );
                 });
 

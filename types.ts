@@ -218,7 +218,6 @@ export interface GameState {
     startTime: number;
   };
   startTime?: number; // Timestamp for game start countdown
-  selectionEndTime?: number; // Timestamp when city selection phase ends (for timeout)
   // Network Sync Fields (NEW)
   stateVersion: number;    // Authoritative state version from host
   hostTick: number;        // Last known host tick for reconciliation
