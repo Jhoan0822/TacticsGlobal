@@ -2,7 +2,16 @@ import { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 
-export const SmoothZoom = () => {
+interface SmoothZoomProps {
+    scenarioBounds?: {
+        minLat: number;
+        maxLat: number;
+        minLng: number;
+        maxLng: number;
+    };
+}
+
+export const SmoothZoom: React.FC<SmoothZoomProps> = ({ scenarioBounds }) => {
     const map = useMap();
 
     // State refs
@@ -13,6 +22,30 @@ export const SmoothZoom = () => {
     const dragDeltaRef = useRef(L.point(0, 0));
     const cursorRef = useRef(L.point(0, 0));
     const rafRef = useRef<number>(null);
+    const boundsRef = useRef(scenarioBounds);
+
+    // Keep bounds ref updated
+    useEffect(() => {
+        boundsRef.current = scenarioBounds;
+
+        // Set Leaflet's max bounds for double protection
+        if (scenarioBounds) {
+            const leafletBounds = L.latLngBounds(
+                [scenarioBounds.minLat, scenarioBounds.minLng],
+                [scenarioBounds.maxLat, scenarioBounds.maxLng]
+            );
+            map.setMaxBounds(leafletBounds);
+
+            // Calculate minimum zoom to fit entire scenario
+            const mapSize = map.getSize();
+            const boundsSize = leafletBounds.getNorthEast().lat - leafletBounds.getSouthWest().lat;
+            // Rough calculation for min zoom - prevent zooming out too far
+            const minZoomForBounds = Math.max(2, Math.ceil(Math.log2(180 / boundsSize)));
+            if (map.getMinZoom() < minZoomForBounds) {
+                map.setMinZoom(minZoomForBounds);
+            }
+        }
+    }, [scenarioBounds, map]);
 
     useEffect(() => {
         // COMPLETELY DISABLE Native Handlers to prevent fighting

@@ -74,22 +74,81 @@ class NetworkServiceImpl {
     initialize(onReady: (id: string) => void) {
         if (this.peer) return;
 
-        this.peer = new Peer({ debug: 0 });
+        // ============================================
+        // PEERJS SERVER CONFIGURATION
+        // ============================================
+        // The default 0.peerjs.com cloud server is unreliable.
+        // Options:
+        // 1. Use default (may fail): new Peer()
+        // 2. Use local server: run `npx peerjs --port 9000` and use config below
+        // 3. Use custom hosted server (Render, Railway, Glitch)
+        // ============================================
 
-        this.peer.on('open', (id) => {
-            this.myPeerId = id;
-            console.log('[NETWORK] Peer initialized:', id);
-            onReady(id);
-        });
+        // Try with retries and fallback
+        const createPeer = (attempt: number = 1) => {
+            console.log(`[NETWORK] Initializing PeerJS (attempt ${attempt}/3)...`);
 
-        this.peer.on('connection', (conn) => {
-            console.log('[NETWORK] Incoming connection:', conn.peer);
-            this.handleConnection(conn);
-        });
+            try {
+                // Default: use PeerJS cloud (may be unreliable)
+                // For local server, uncomment below:
+                // this.peer = new Peer({ host: 'localhost', port: 9000, path: '/' });
 
-        this.peer.on('error', (err) => {
-            console.error('[NETWORK] Peer error:', err);
-        });
+                this.peer = new Peer({
+                    debug: 1,
+                    // Increase timeout for slow connections
+                    config: {
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' },
+                            { urls: 'stun:stun2.l.google.com:19302' }
+                        ]
+                    }
+                });
+
+                this.peer.on('open', (id) => {
+                    this.myPeerId = id;
+                    console.log('[NETWORK] Peer initialized:', id);
+                    onReady(id);
+                });
+
+                this.peer.on('connection', (conn) => {
+                    console.log('[NETWORK] Incoming connection:', conn.peer);
+                    this.handleConnection(conn);
+                });
+
+                this.peer.on('error', (err: any) => {
+                    console.error('[NETWORK] Peer error:', err);
+
+                    // Retry on connection errors
+                    if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
+                        if (attempt < 3) {
+                            console.log('[NETWORK] Retrying connection in 2 seconds...');
+                            this.peer?.destroy();
+                            this.peer = null;
+                            setTimeout(() => createPeer(attempt + 1), 2000);
+                        } else {
+                            console.error('[NETWORK] Failed after 3 attempts. PeerJS cloud server may be down.');
+                            console.error('[NETWORK] TIP: Run local server with: npx peerjs --port 9000');
+                        }
+                    }
+                });
+
+                this.peer.on('disconnected', () => {
+                    console.warn('[NETWORK] Disconnected from signaling server. Attempting reconnect...');
+                    if (this.peer && !this.peer.destroyed) {
+                        this.peer.reconnect();
+                    }
+                });
+
+            } catch (err) {
+                console.error('[NETWORK] Failed to create peer:', err);
+                if (attempt < 3) {
+                    setTimeout(() => createPeer(attempt + 1), 2000);
+                }
+            }
+        };
+
+        createPeer();
     }
 
     connect(hostId: string) {
