@@ -6,18 +6,16 @@ import { isPointInFactionTerritory } from './territoryService';
 let worldGeoJson: any = null;
 let isLoading = false;
 
-// CACHE & OPTIMIZATION
-// We use a Canvas to rasterize the world map for O(1) terrain lookups
-const TERRAIN_WIDTH = 2048;
-const TERRAIN_HEIGHT = 1024;
+// CACHE & OPTIMIZATION - HIGHER RESOLUTION for better terrain precision
+const TERRAIN_WIDTH = 4096;  // Doubled from 2048
+const TERRAIN_HEIGHT = 2048; // Doubled from 1024
 let terrainCtx: CanvasRenderingContext2D | null = null;
 
 // Spatial Cache
-const landCache = new Map<string, boolean>();
 const terrainTypeCache = new Map<string, 'LAND' | 'OCEAN' | 'COAST'>();
 
-// Round coordinates to ~1km precision for caching (0.01 degrees)
-const CACHE_PRECISION = 100; // 2 decimal places
+// Round coordinates to ~1km precision for caching
+const CACHE_PRECISION = 100;
 const getCacheKey = (lat: number, lng: number) => {
     return `${Math.round(lat * CACHE_PRECISION)},${Math.round(lng * CACHE_PRECISION)}`;
 };
@@ -40,7 +38,7 @@ const loadGeoJson = async () => {
 
             worldGeoJson = rawData;
 
-            // RASTERIZE TO CANVAS
+            // RASTERIZE TO CANVAS with higher resolution
             const canvas = document.createElement('canvas');
             canvas.width = TERRAIN_WIDTH;
             canvas.height = TERRAIN_HEIGHT;
@@ -63,7 +61,7 @@ const loadGeoJson = async () => {
                 ctx.fill();
 
                 terrainCtx = ctx;
-                console.log("Terrain Rasterized for O(1) Lookup");
+                console.log("Terrain Rasterized @ 4096x2048 for high precision lookup");
             }
 
             console.log("Terrain Data Loaded & Filtered");
@@ -90,28 +88,37 @@ const getDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) =
 };
 
 export const TerrainService = {
-    // ASYNC INIT CHECK
     isReady: () => !!worldGeoJson,
     getWorldData: () => worldGeoJson,
 
-    // Helper to check if a point is Land using Raster Lookup
+    // Check if point is Land using Canvas lookup with d3 fallback
     isPointLand: (lat: number, lng: number): boolean => {
-        if (!terrainCtx) return false;
+        // Use canvas raster lookup (fast)
+        if (terrainCtx) {
+            const x = Math.floor((lng + 180) * (TERRAIN_WIDTH / 360));
+            const y = Math.floor((90 - lat) * (TERRAIN_HEIGHT / 180));
 
-        const x = Math.floor((lng + 180) * (TERRAIN_WIDTH / 360));
-        const y = Math.floor((90 - lat) * (TERRAIN_HEIGHT / 180));
+            const safeX = Math.max(0, Math.min(TERRAIN_WIDTH - 1, x));
+            const safeY = Math.max(0, Math.min(TERRAIN_HEIGHT - 1, y));
 
-        const safeX = Math.max(0, Math.min(TERRAIN_WIDTH - 1, x));
-        const safeY = Math.max(0, Math.min(TERRAIN_HEIGHT - 1, y));
+            const pixel = terrainCtx.getImageData(safeX, safeY, 1, 1).data;
+            return pixel[0] > 128;
+        }
 
-        const pixel = terrainCtx.getImageData(safeX, safeY, 1, 1).data;
-        return pixel[0] > 128;
+        // Fallback: Use d3.geoContains for precise check (slower)
+        if (worldGeoJson) {
+            return d3.geoContains(worldGeoJson, [lng, lat]);
+        }
+
+        return false;
     },
 
+    // Get terrain type with improved accuracy
     getTerrainType: (lat: number, lng: number, pois: POI[]): 'LAND' | 'OCEAN' | 'COAST' => {
         const key = getCacheKey(lat, lng);
         if (terrainTypeCache.has(key)) return terrainTypeCache.get(key)!;
 
+        // If GeoJSON not loaded, use fallback based on city proximity
         if (!worldGeoJson) {
             let minDist = Infinity;
             for (const poi of pois) {
@@ -124,12 +131,17 @@ export const TerrainService = {
 
         const isLand = TerrainService.isPointLand(lat, lng);
 
-        const offset = 0.1;
+        // COAST CHECK: Sample 8 points around (more accurate)
+        const offset = 0.08; // ~9km
         const neighbors = [
             TerrainService.isPointLand(lat + offset, lng),
             TerrainService.isPointLand(lat - offset, lng),
             TerrainService.isPointLand(lat, lng + offset),
-            TerrainService.isPointLand(lat, lng - offset)
+            TerrainService.isPointLand(lat, lng - offset),
+            TerrainService.isPointLand(lat + offset, lng + offset),
+            TerrainService.isPointLand(lat + offset, lng - offset),
+            TerrainService.isPointLand(lat - offset, lng + offset),
+            TerrainService.isPointLand(lat - offset, lng - offset)
         ];
 
         const hasLandNeighbor = neighbors.some(n => n);
@@ -144,6 +156,11 @@ export const TerrainService = {
         return result;
     },
 
+    // Clear terrain cache (useful after map reload)
+    clearCache: () => {
+        terrainTypeCache.clear();
+    },
+
     isValidPlacement: (unitClass: UnitClass, lat: number, lng: number, pois: POI[],
         playerUnits?: GameUnit[],
         playerId?: string): boolean => {
@@ -151,14 +168,16 @@ export const TerrainService = {
 
         // TERRAIN CHECK
         if (unitClass === UnitClass.PORT) {
-            if (terrain !== 'COAST' && terrain !== 'OCEAN') {
-                console.log('[PLACEMENT] Port rejected - not coastal/ocean');
+            // Ports need to be on COAST (near water AND land)
+            if (terrain !== 'COAST') {
+                console.log('[PLACEMENT] Port rejected - terrain:', terrain, '(needs COAST)');
                 return false;
             }
         }
         if (unitClass === UnitClass.AIRBASE || unitClass === UnitClass.MILITARY_BASE) {
-            if (terrain !== 'LAND' && terrain !== 'COAST') {
-                console.log('[PLACEMENT] Structure rejected - not land/coast');
+            // Land structures need LAND or COAST
+            if (terrain === 'OCEAN') {
+                console.log('[PLACEMENT] Structure rejected - terrain: OCEAN');
                 return false;
             }
         }
@@ -179,17 +198,25 @@ export const TerrainService = {
     isValidMove: (unitClass: UnitClass, lat: number, lng: number, pois: POI[]): boolean => {
         const terrain = TerrainService.getTerrainType(lat, lng, pois);
 
-        // Sea Units
+        // Sea Units - can move on OCEAN or COAST
         if ([UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.BATTLESHIP, UnitClass.AIRCRAFT_CARRIER, UnitClass.SUBMARINE, UnitClass.PATROL_BOAT, UnitClass.MINELAYER].includes(unitClass)) {
             return terrain === 'OCEAN' || terrain === 'COAST';
         }
 
-        // Land Units
+        // Land Units - can move on LAND or COAST
         if ([UnitClass.GROUND_TANK, UnitClass.INFANTRY, UnitClass.MISSILE_LAUNCHER, UnitClass.SAM_LAUNCHER, UnitClass.MOBILE_COMMAND_CENTER].includes(unitClass)) {
             return terrain === 'LAND' || terrain === 'COAST';
         }
 
         // Air units fly everywhere
         return true;
+    },
+
+    // Debug function to log terrain at a specific point
+    debugTerrain: (lat: number, lng: number, pois: POI[]) => {
+        const isLand = TerrainService.isPointLand(lat, lng);
+        const terrain = TerrainService.getTerrainType(lat, lng, pois);
+        console.log(`[TERRAIN DEBUG] lat=${lat.toFixed(4)}, lng=${lng.toFixed(4)} | isLand=${isLand} | type=${terrain}`);
+        return { isLand, terrain };
     }
 };
