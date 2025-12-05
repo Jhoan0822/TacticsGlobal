@@ -14,6 +14,7 @@ import { spawnUnit } from './services/gameLogic'; // Import spawnUnit
 import { Scenario, Faction, LobbyState, Difficulty, UnitClass, POIType } from './types';
 import { SCENARIOS, UNIT_CONFIG } from './constants';
 import { TooltipProvider } from './components/Tooltip';
+import { FormationType, calculateFormationPositions, getGroupCenter, getFacingAngle } from './services/formationService';
 
 
 const App: React.FC = () => {
@@ -312,6 +313,45 @@ const App: React.FC = () => {
                         }));
                     }}
                     onToggleAutoTarget={handleToggleAutoTarget}
+                    onSetFormation={(formation) => {
+                        if (selectedUnitIds.length < 2) return;
+
+                        const selectedUnits = gameState.units.filter(u =>
+                            selectedUnitIds.includes(u.id) && u.factionId === gameState.localPlayerId
+                        );
+
+                        if (selectedUnits.length < 2) return;
+
+                        // Get current center of the group
+                        const groupCenter = getGroupCenter(selectedUnits);
+
+                        // Calculate formation positions (facing north by default)
+                        const positions = calculateFormationPositions(
+                            selectedUnits,
+                            formation,
+                            groupCenter.lat,
+                            groupCenter.lng,
+                            0 // Face north
+                        );
+
+                        // Apply formation positions as destinations
+                        setGameState(prev => ({
+                            ...prev,
+                            units: prev.units.map(u => {
+                                const pos = positions.find(p => p.unitId === u.id);
+                                if (pos) {
+                                    return {
+                                        ...u,
+                                        destination: { lat: pos.lat, lng: pos.lng },
+                                        targetId: null
+                                    };
+                                }
+                                return u;
+                            })
+                        }));
+
+                        AudioService.playUnitSelect();
+                    }}
                 />
                 <div className="flex-1 relative">
                     <GameMap
