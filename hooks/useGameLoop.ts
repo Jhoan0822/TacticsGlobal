@@ -388,6 +388,11 @@ export const useGameLoop = () => {
                     p.id === res.poiId ? { ...p, ownerFactionId: res.factionId, tier: 1 } : p
                 );
 
+                // CRITICAL: Also update faction's ready state
+                const nextFactions = prev.factions.map(f =>
+                    f.id === res.factionId ? { ...f, ready: true } : f
+                );
+
                 // If it's ME who got the base, center camera
                 if (res.factionId === prev.localPlayerId) {
                     const poi = nextPois.find(p => p.id === res.poiId);
@@ -395,7 +400,7 @@ export const useGameLoop = () => {
                     AudioService.playCityCapture();
                 }
 
-                return { ...prev, pois: nextPois };
+                return { ...prev, pois: nextPois, factions: nextFactions };
             }
             else if (res.type === 'GAME_MODE_UPDATE') {
                 console.log('[NET] Game Mode Update:', res.mode);
