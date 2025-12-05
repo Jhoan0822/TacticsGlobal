@@ -644,6 +644,37 @@ export const useGameLoop = () => {
     // ============================================
     const startGame = (scenario: Scenario, localPlayerId: string, factions: Faction[], isClient: boolean, initialPois?: POI[]) => {
         console.log('[START GAME]', scenario.id, 'localPlayerId:', localPlayerId, 'isClient:', isClient);
+        console.log('[START GAME] Factions received:', factions.map(f => ({ id: f.id, type: f.type, color: f.color })));
+
+        // CRITICAL: Ensure player faction exists with the correct ID
+        let finalFactions = [...factions];
+        const playerFactionExists = finalFactions.some(f => f.id === localPlayerId);
+        if (!playerFactionExists && !isClient) {
+            console.warn('[START GAME] Player faction missing! Adding player faction with ID:', localPlayerId);
+            // Find a faction with type PLAYER that might have wrong ID (empty/undefined)
+            const wrongPlayerFaction = finalFactions.find(f => f.type === 'PLAYER' && (!f.id || f.id !== localPlayerId));
+            if (wrongPlayerFaction) {
+                // Fix the ID
+                finalFactions = finalFactions.map(f =>
+                    f === wrongPlayerFaction ? { ...f, id: localPlayerId } : f
+                );
+                console.log('[START GAME] Fixed player faction ID');
+            } else {
+                // Add new player faction
+                finalFactions.push({
+                    id: localPlayerId,
+                    name: 'Player',
+                    type: 'PLAYER',
+                    color: '#00ff00', // Default green
+                    gold: 10000,
+                    oil: 1000,
+                    relations: {},
+                    aggression: 0
+                });
+                console.log('[START GAME] Added new player faction');
+            }
+        }
+        console.log('[START GAME] Final factions:', finalFactions.map(f => ({ id: f.id, type: f.type, color: f.color })));
 
         let allCities = initialPois || getMockCities();
 
@@ -662,14 +693,14 @@ export const useGameLoop = () => {
 
             // Broadcast Initial Setup
             if (NetworkService.isHost || (!isClient && NetworkService.myPeerId)) {
-                NetworkService.startGame(scenario.id, factions, allCities);
+                NetworkService.startGame(scenario.id, finalFactions, allCities);
             }
         }
 
         setGameState({
             units: [],
             pois: allCities,
-            factions: factions,
+            factions: finalFactions,
             projectiles: [],
             explosions: [],
             messages: [],
@@ -683,7 +714,7 @@ export const useGameLoop = () => {
             localPlayerId,
             isClient,
             placementType: null,
-            pendingBotFactions: factions.filter(f => f.type === 'BOT').map(f => f.id),
+            pendingBotFactions: finalFactions.filter(f => f.type === 'BOT').map(f => f.id),
             // Network sync fields
             stateVersion: 0,
             hostTick: 0
