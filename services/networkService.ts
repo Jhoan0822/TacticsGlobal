@@ -1,5 +1,5 @@
 import Peer, { DataConnection } from 'peerjs';
-import { GameState, LobbyState } from '../types';
+import { GameState, LobbyState, NetworkRequest, NetworkResponse } from '../types';
 import { GameAction, NetworkMessage, ActionMessage, FullStateMessage } from './schemas';
 
 // ============================================
@@ -14,21 +14,62 @@ export type NetworkEvent =
     | { type: 'ACTION', action: GameAction }
     | { type: 'FULL_STATE', gameState: GameState, timestamp: number }
     | { type: 'LOBBY_UPDATE', state: LobbyState }
-    | { type: 'START_GAME', scenarioId: string, factions: any[], pois: any[] };
+    | { type: 'START_GAME', scenarioId: string, factions: any[], pois: any[] }
+    | { type: 'REQUEST', request: NetworkRequest, fromPeerId: string }
+    | { type: 'RESPONSE', response: NetworkResponse };
 
 type EventHandler = (event: NetworkEvent) => void;
 
 class NetworkServiceImpl {
     private peer: Peer | null = null;
     private conns: DataConnection[] = [];
-    private handlers: EventHandler[] = []
-        ;
+    private handlers: EventHandler[] = [];
+
     public myPeerId: string = '';
-    public isHost: boolean = false;
+    private _isHost: boolean = false;  // Private backing field
     public hostConn: DataConnection | null = null;
 
     // Action deduplication (prevent processing same action twice)
     private processedActions = new Set<string>();
+
+    // State versioning for authoritative sync
+    private _stateVersion: number = 0;
+
+    // ============================================
+    // HOST STATUS - SINGLE SOURCE OF TRUTH
+    // ============================================
+
+    /**
+     * Get authoritative host status. This is THE ONLY way to check host status.
+     */
+    get isHost(): boolean {
+        return this._isHost;
+    }
+
+    /**
+     * Set host status. Should only be called during game initialization.
+     */
+    set isHost(value: boolean) {
+        this._isHost = value;
+        console.log('[NETWORK] Host status set to:', value);
+    }
+
+    /**
+     * Get current state version (for sync tracking)
+     */
+    get stateVersion(): number {
+        return this._stateVersion;
+    }
+
+    /**
+     * Increment state version (host only, called after each authoritative update)
+     */
+    incrementStateVersion(): number {
+        if (this._isHost) {
+            this._stateVersion++;
+        }
+        return this._stateVersion;
+    }
 
     initialize(onReady: (id: string) => void) {
         if (this.peer) return;
@@ -120,7 +161,21 @@ class NetworkServiceImpl {
                 break;
 
             case 'START_GAME':
-                this.notify({ type: 'START_GAME', ...msg.payload });
+                // Ensure all required fields are passed
+                this.notify({
+                    type: 'START_GAME',
+                    scenarioId: msg.payload.scenarioId,
+                    factions: msg.payload.factions,
+                    pois: msg.payload.pois || []
+                });
+                break;
+
+            case 'REQUEST':
+                this.notify({ type: 'REQUEST', request: msg.payload, fromPeerId: conn.peer });
+                break;
+
+            case 'RESPONSE':
+                this.notify({ type: 'RESPONSE', response: msg.payload });
                 break;
         }
     }
@@ -184,6 +239,33 @@ class NetworkServiceImpl {
     }
 
     // ============================================
+    // NEW AUTHORITATIVE METHODS
+    // ============================================
+
+    sendRequest(request: import('../types').NetworkRequest) {
+        if (this.isHost) {
+            // If I am host, loopback immediately
+            this.notify({ type: 'REQUEST', request, fromPeerId: this.myPeerId });
+            return;
+        }
+        if (this.hostConn && this.hostConn.open) {
+            this.hostConn.send({ type: 'REQUEST', payload: request });
+        }
+    }
+
+    broadcastResponse(response: import('../types').NetworkResponse) {
+        // Loopback to self
+        this.notify({ type: 'RESPONSE', response });
+
+        // Send to all clients
+        this.conns.forEach(conn => {
+            if (conn.open) {
+                conn.send({ type: 'RESPONSE', payload: response });
+            }
+        });
+    }
+
+    // ============================================
     // EVENT SUBSCRIPTION
     // ============================================
 
@@ -207,6 +289,11 @@ class NetworkServiceImpl {
             this.peer = null;
         }
         this.processedActions.clear();
+        // Reset state for clean reconnection
+        this._isHost = false;
+        this._stateVersion = 0;
+        this.hostConn = null;
+        this.myPeerId = '';
     }
 
     // ============================================

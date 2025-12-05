@@ -17,7 +17,6 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
     const [selectedFactionIndex, setSelectedFactionIndex] = useState<number>(0);
     const [peerId, setPeerId] = useState<string>('');
 
-    // Sync PeerID
     useEffect(() => {
         const checkId = setInterval(() => {
             if (NetworkService.myPeerId) {
@@ -30,7 +29,6 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
 
     const handleSinglePlayerStart = () => {
         const scenario = Object.values(SCENARIOS).find(s => s.id === lobbyState.scenarioId) || SCENARIOS.WORLD;
-
         const playerFaction = {
             ...FACTION_PRESETS[selectedFactionIndex],
             id: 'PLAYER',
@@ -41,7 +39,6 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             aggression: 0
         };
 
-        // Generate Bots
         const otherFactions = FACTION_PRESETS
             .filter((_, i) => i !== selectedFactionIndex)
             .slice(0, lobbyState.botCount)
@@ -63,15 +60,12 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
         if (networkMode !== 'MULTI_HOST' && networkMode !== 'LOBBY') return;
 
         const scenario = Object.values(SCENARIOS).find(s => s.id === lobbyState.scenarioId) || SCENARIOS.WORLD;
-
-        // Construct Factions from Lobby Players + Bots
         const factions: Faction[] = [];
 
-        // 1. Players
         lobbyState.players.forEach((p, idx) => {
             factions.push({
                 ...FACTION_PRESETS[p.factionIndex],
-                id: p.id, // USE PEER ID AS FACTION ID
+                id: p.id,
                 name: p.name,
                 type: 'PLAYER',
                 gold: 10000,
@@ -81,7 +75,6 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             });
         });
 
-        // 2. Bots
         const usedIndices = lobbyState.players.map(p => p.factionIndex);
         const availablePresets = FACTION_PRESETS.filter((_, i) => !usedIndices.includes(i));
 
@@ -93,12 +86,11 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 type: 'BOT',
                 gold: 10000,
                 oil: 1000,
-                relations: {}, // Set relations below
+                relations: {},
                 aggression: 1.0
             });
         }
 
-        // Set Hostility
         factions.forEach(f => {
             factions.forEach(target => {
                 if (f.id !== target.id) {
@@ -107,22 +99,18 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             });
         });
 
-        // Start for Host (Host ID is NetworkService.myPeerId)
-        // NOTE: NetworkService.startGame is called inside useGameLoop.startGame() with proper POIs
         onStartGame(scenario, NetworkService.myPeerId, factions, true, true);
     };
 
     const handleJoin = () => {
         setConnectionStatus('Connecting to Host...');
         NetworkService.connect(hostIdInput);
-        // Do NOT switch to LOBBY yet. Wait for LOBBY_UPDATE from App.tsx which populates lobbyState.players
     };
 
     const updateLobbySetting = (key: keyof LobbyState, value: any) => {
         setLobbyState(prev => ({ ...prev, [key]: value }));
     };
 
-    // Initial Host Setup
     useEffect(() => {
         if (networkMode === 'MULTI_HOST' && NetworkService.myPeerId && lobbyState.players.length === 0) {
             setLobbyState({
@@ -131,94 +119,208 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 difficulty: Difficulty.MEDIUM,
                 botCount: 2
             });
-            // Stay in MULTI_HOST mode
         }
     }, [networkMode, peerId]);
 
-    // RENDERERS
-
-    if (!networkMode || networkMode === 'SINGLE') { // Default Menu View (SINGLE is just a mode flag here, UI handled below)
+    // ============================================
+    // INITIAL MENU SCREEN
+    // ============================================
+    if (!networkMode || networkMode === 'SINGLE') {
         if (networkMode === 'SINGLE') {
-            // Single Player Setup UI is same as Lobby but local
+            // Falls through to shared lobby UI
         } else {
             return (
-                <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white space-y-8 font-sans">
-                    <h1 className="text-6xl font-bold text-blue-500 tracking-widest drop-shadow-lg">TACTIC OPS</h1>
-                    <div className="flex space-x-4">
-                        <button onClick={() => setNetworkMode('SINGLE')} className="px-8 py-4 bg-blue-600 hover:bg-blue-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">SINGLE PLAYER</button>
-                        <button onClick={() => setNetworkMode('MULTI_HOST')} className="px-8 py-4 bg-green-600 hover:bg-green-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">HOST GAME</button>
-                        <button onClick={() => setNetworkMode('MULTI_JOIN')} className="px-8 py-4 bg-purple-600 hover:bg-purple-500 rounded text-xl font-bold shadow-lg transition-transform hover:scale-105">JOIN GAME</button>
+                <div className="relative flex flex-col items-center justify-center h-screen bg-tactical-900 text-white overflow-hidden">
+                    {/* Animated Background */}
+                    <div className="absolute inset-0 bg-grid-animated opacity-30"></div>
+                    <div className="absolute inset-0 bg-radial-glow"></div>
+
+                    {/* Scan Line Effect */}
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                        <div className="absolute w-full h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent animate-scan-line" style={{ animation: 'scan-line 4s linear infinite' }}></div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="relative z-10 flex flex-col items-center space-y-12">
+                        {/* Title */}
+                        <div className="text-center space-y-4">
+                            <h1 className="font-display text-7xl font-black tracking-wider text-glow-cyan">
+                                <span className="gradient-text">TACTIC</span>
+                                <span className="text-white"> OPS</span>
+                            </h1>
+                            <p className="text-slate-400 text-sm tracking-[0.3em] uppercase">Global Strategic Command</p>
+                            <div className="flex items-center justify-center gap-2 text-xs text-cyan-500/60">
+                                <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse"></span>
+                                <span className="tracking-widest">SYSTEM ONLINE</span>
+                            </div>
+                        </div>
+
+                        {/* Menu Buttons */}
+                        <div className="flex flex-col gap-4 w-80">
+                            <button
+                                onClick={() => setNetworkMode('SINGLE')}
+                                className="group relative px-8 py-5 rounded-xl bg-gradient-to-r from-cyan-900/40 to-blue-900/40 border border-cyan-500/30 text-xl font-bold tracking-wider transition-all duration-300 hover:border-cyan-400/60 hover:shadow-glow-cyan hover:scale-[1.02] overflow-hidden"
+                            >
+                                <span className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/10 to-cyan-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
+                                <span className="relative flex items-center justify-center gap-3">
+                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                    SINGLE PLAYER
+                                </span>
+                            </button>
+
+                            <button
+                                onClick={() => setNetworkMode('MULTI_HOST')}
+                                className="group relative px-8 py-5 rounded-xl bg-gradient-to-r from-green-900/40 to-emerald-900/40 border border-green-500/30 text-xl font-bold tracking-wider transition-all duration-300 hover:border-green-400/60 hover:shadow-[0_0_20px_rgba(34,197,94,0.4)] hover:scale-[1.02] overflow-hidden"
+                            >
+                                <span className="absolute inset-0 bg-gradient-to-r from-green-500/0 via-green-500/10 to-green-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
+                                <span className="relative flex items-center justify-center gap-3">
+                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                                    HOST GAME
+                                </span>
+                            </button>
+
+                            <button
+                                onClick={() => setNetworkMode('MULTI_JOIN')}
+                                className="group relative px-8 py-5 rounded-xl bg-gradient-to-r from-purple-900/40 to-violet-900/40 border border-purple-500/30 text-xl font-bold tracking-wider transition-all duration-300 hover:border-purple-400/60 hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:scale-[1.02] overflow-hidden"
+                            >
+                                <span className="absolute inset-0 bg-gradient-to-r from-purple-500/0 via-purple-500/10 to-purple-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
+                                <span className="relative flex items-center justify-center gap-3">
+                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                                    JOIN GAME
+                                </span>
+                            </button>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="text-center text-slate-600 text-xs tracking-wider">
+                            <p>v1.0.0 • Real-Time Strategy</p>
+                        </div>
                     </div>
                 </div>
             );
         }
     }
 
-    // Show Join UI if we are in JOIN mode AND we haven't received the lobby state yet (players empty)
+    // ============================================
+    // JOIN GAME SCREEN
+    // ============================================
     if (networkMode === 'MULTI_JOIN' && lobbyState.players.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white space-y-8">
-                <h2 className="text-4xl font-bold">JOIN GAME</h2>
-                <div className="bg-slate-800 p-6 rounded-lg shadow-xl w-96 space-y-4">
-                    <div>
-                        <label className="block text-sm text-gray-400 mb-1">Your ID</label>
-                        <div className="font-mono text-green-400 bg-black p-2 rounded">{peerId || 'Generating...'}</div>
+            <div className="relative flex flex-col items-center justify-center h-screen bg-tactical-900 text-white overflow-hidden">
+                <div className="absolute inset-0 bg-grid-animated opacity-20"></div>
+                <div className="absolute inset-0 bg-radial-glow"></div>
+
+                <div className="relative z-10 animate-slide-up">
+                    <h2 className="font-display text-4xl font-bold mb-8 text-center tracking-wider text-glow-purple" style={{ textShadow: '0 0 20px rgb(168 85 247 / 0.5)' }}>
+                        JOIN GAME
+                    </h2>
+
+                    <div className="glass-panel rounded-2xl p-8 w-[420px] space-y-6 border border-purple-500/20">
+                        <div>
+                            <label className="block text-xs text-slate-400 mb-2 tracking-wider uppercase">Your Connection ID</label>
+                            <div className="font-mono text-lg text-cyan-400 bg-black/40 p-4 rounded-xl border border-cyan-500/20 flex items-center justify-between">
+                                <span>{peerId || 'Initializing...'}</span>
+                                {peerId && <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs text-slate-400 mb-2 tracking-wider uppercase">Host ID</label>
+                            <input
+                                type="text"
+                                placeholder="Paste the Host's ID here"
+                                className="w-full px-4 py-4 bg-black/40 text-white rounded-xl border border-slate-600/50 focus:border-purple-500/60 focus:shadow-[0_0_15px_rgba(168,85,247,0.2)] outline-none transition-all font-mono"
+                                value={hostIdInput}
+                                onChange={e => setHostIdInput(e.target.value)}
+                            />
+                        </div>
+
+                        {connectionStatus && (
+                            <div className="text-sm text-slate-400 bg-slate-800/50 p-3 rounded-lg border border-slate-700/50">
+                                {connectionStatus}
+                            </div>
+                        )}
+
+                        <button
+                            onClick={handleJoin}
+                            disabled={!hostIdInput}
+                            className="w-full px-8 py-4 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 rounded-xl text-lg font-bold tracking-wider shadow-lg transition-all hover:shadow-[0_0_25px_rgba(168,85,247,0.4)] hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+                        >
+                            CONNECT TO HOST
+                        </button>
+
+                        <button
+                            onClick={() => setNetworkMode(null)}
+                            className="w-full text-slate-400 hover:text-white text-sm py-2 transition-colors"
+                        >
+                            ← Back to Menu
+                        </button>
                     </div>
-                    <div>
-                        <label className="block text-sm text-gray-400 mb-1">Host ID</label>
-                        <input
-                            type="text"
-                            placeholder="Enter Host ID"
-                            className="w-full px-4 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none"
-                            value={hostIdInput}
-                            onChange={e => setHostIdInput(e.target.value)}
-                        />
-                    </div>
-                    <button onClick={handleJoin} className="w-full px-8 py-4 bg-purple-600 hover:bg-purple-500 rounded text-xl font-bold shadow-lg">CONNECT</button>
-                    <button onClick={() => setNetworkMode(null)} className="w-full text-gray-400 hover:text-white text-sm">Back</button>
                 </div>
             </div>
         );
     }
 
-    // SHARED LOBBY / SINGLE PLAYER SETUP UI
+    // ============================================
+    // LOBBY / SINGLE PLAYER SETUP
+    // ============================================
     const isHost = networkMode === 'MULTI_HOST' || (networkMode === 'LOBBY' && lobbyState.players.find(p => p.id === peerId)?.isHost);
     const isSingle = networkMode === 'SINGLE';
     const canEdit = isSingle || isHost;
 
     return (
-        <div className="flex flex-col h-screen bg-slate-900 text-white p-8 overflow-y-auto">
-            <div className="flex justify-between items-center mb-8">
-                <h2 className="text-4xl font-bold tracking-wider">{isSingle ? 'SINGLE PLAYER' : 'LOBBY'}</h2>
+        <div className="relative flex flex-col h-screen bg-tactical-900 text-white overflow-hidden">
+            {/* Background Effects */}
+            <div className="absolute inset-0 bg-grid-animated opacity-15"></div>
+            <div className="absolute inset-0 bg-radial-glow"></div>
+
+            {/* Header */}
+            <div className="relative z-10 flex justify-between items-center p-6 border-b border-slate-700/30">
+                <div className="flex items-center gap-4">
+                    <h2 className="font-display text-3xl font-bold tracking-wider">
+                        {isSingle ? (
+                            <span className="gradient-text">MISSION SETUP</span>
+                        ) : (
+                            <span className="text-glow-cyan" style={{ textShadow: '0 0 15px rgb(6 182 212 / 0.4)' }}>LOBBY</span>
+                        )}
+                    </h2>
+                    <span className="px-3 py-1 rounded-full text-xs font-bold tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+                        {isSingle ? 'OFFLINE' : 'ONLINE'}
+                    </span>
+                </div>
+
                 {!isSingle && (
-                    <div className="bg-slate-800 p-4 rounded border border-slate-700">
-                        <p className="text-sm text-gray-400">Lobby ID:</p>
-                        <p className="text-xl font-mono text-green-400 select-all">{peerId}</p>
-                        <p className="text-xs text-gray-500 mt-1">{connectionStatus}</p>
-                        {/* DEBUG INFO */}
-                        <div className="mt-2 pt-2 border-t border-slate-700 text-xs text-gray-600 font-mono">
-                            Mode: {networkMode} | Host: {isHost ? 'YES' : 'NO'} | Edit: {canEdit ? 'YES' : 'NO'}
-                        </div>
+                    <div className="glass-panel rounded-xl p-4 border border-cyan-500/20">
+                        <p className="text-xs text-slate-400 mb-1">Lobby ID</p>
+                        <p className="text-lg font-mono text-cyan-400 select-all">{peerId}</p>
                     </div>
                 )}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* SETTINGS COLUMN */}
-                <div className="space-y-6 lg:col-span-1">
-                    <div className="bg-slate-800 p-6 rounded-lg shadow-lg space-y-6">
-                        <h3 className="text-2xl font-bold text-blue-400">Game Settings</h3>
+            {/* Main Content */}
+            <div className="relative z-10 flex-1 overflow-y-auto p-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
 
-                        {/* SCENARIO */}
+                    {/* SETTINGS PANEL */}
+                    <div className="glass-panel rounded-2xl p-6 space-y-6 border border-slate-600/20">
+                        <h3 className="font-display text-lg font-bold tracking-wider text-cyan-400 flex items-center gap-2">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                            GAME SETTINGS
+                        </h3>
+
+                        {/* Theater Selection */}
                         <div>
-                            <label className="block text-sm text-gray-400 mb-2">Theater</label>
+                            <label className="block text-xs text-slate-400 mb-3 tracking-wider uppercase">Theater of War</label>
                             <div className="grid grid-cols-2 gap-2">
                                 {Object.values(SCENARIOS).map((scen) => (
                                     <button
                                         key={scen.id}
                                         disabled={!canEdit}
                                         onClick={() => isSingle ? setLobbyState(p => ({ ...p, scenarioId: scen.id })) : updateLobbySetting('scenarioId', scen.id)}
-                                        className={`p-2 rounded text-sm font-bold border ${lobbyState.scenarioId === scen.id ? 'bg-blue-600 border-blue-400' : 'bg-slate-700 border-slate-600 hover:bg-slate-600'} ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
+                                        className={`p-3 rounded-xl text-sm font-bold border transition-all ${lobbyState.scenarioId === scen.id
+                                                ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
+                                                : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50 hover:border-slate-500/50'
+                                            } ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
                                     >
                                         {scen.name}
                                     </button>
@@ -226,31 +328,36 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                             </div>
                         </div>
 
-                        {/* BOTS */}
+                        {/* Bot Count */}
                         <div>
-                            <label className="block text-sm text-gray-400 mb-2">Enemy Factions (Bots): {lobbyState.botCount}</label>
+                            <label className="block text-xs text-slate-400 mb-3 tracking-wider uppercase">
+                                Enemy Factions: <span className="text-red-400 font-bold">{lobbyState.botCount}</span>
+                            </label>
                             <input
                                 type="range" min="0" max="7"
                                 disabled={!canEdit}
                                 value={lobbyState.botCount}
                                 onChange={(e) => isSingle ? setLobbyState(p => ({ ...p, botCount: parseInt(e.target.value) })) : updateLobbySetting('botCount', parseInt(e.target.value))}
-                                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
                             />
-                            <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <div className="flex justify-between text-xs text-slate-500 mt-1">
                                 <span>0</span><span>7</span>
                             </div>
                         </div>
 
-                        {/* GAME MODE */}
+                        {/* Game Mode */}
                         <div>
-                            <label className="block text-sm text-gray-400 mb-2">Game Mode</label>
+                            <label className="block text-xs text-slate-400 mb-3 tracking-wider uppercase">Game Mode</label>
                             <div className="grid grid-cols-2 gap-2">
                                 {['DOMINATION', 'SURVIVAL'].map((mode) => (
                                     <button
                                         key={mode}
                                         disabled={!canEdit}
                                         onClick={() => isSingle ? setLobbyState(p => ({ ...p, gameMode: mode as any })) : updateLobbySetting('gameMode', mode)}
-                                        className={`p-2 rounded text-sm font-bold border ${lobbyState.gameMode === mode ? 'bg-purple-600 border-purple-400' : 'bg-slate-700 border-slate-600 hover:bg-slate-600'} ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
+                                        className={`p-3 rounded-xl text-sm font-bold border transition-all ${lobbyState.gameMode === mode
+                                                ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                                                : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
+                                            } ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
                                     >
                                         {mode}
                                     </button>
@@ -258,16 +365,23 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                             </div>
                         </div>
 
-                        {/* DIFFICULTY */}
+                        {/* Difficulty */}
                         <div>
-                            <label className="block text-sm text-gray-400 mb-2">Difficulty</label>
-                            <div className="flex space-x-2">
+                            <label className="block text-xs text-slate-400 mb-3 tracking-wider uppercase">Difficulty</label>
+                            <div className="flex gap-2">
                                 {Object.values(Difficulty).map((diff) => (
                                     <button
                                         key={diff}
                                         disabled={!canEdit}
                                         onClick={() => isSingle ? setLobbyState(p => ({ ...p, difficulty: diff })) : updateLobbySetting('difficulty', diff)}
-                                        className={`flex-1 p-2 rounded text-xs font-bold border ${lobbyState.difficulty === diff ? 'bg-red-600 border-red-400' : 'bg-slate-700 border-slate-600'} ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
+                                        className={`flex-1 py-3 rounded-xl text-xs font-bold border transition-all ${lobbyState.difficulty === diff
+                                                ? diff === Difficulty.HARD
+                                                    ? 'bg-red-500/20 border-red-500/50 text-red-300'
+                                                    : diff === Difficulty.MEDIUM
+                                                        ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
+                                                        : 'bg-green-500/20 border-green-500/50 text-green-300'
+                                                : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
+                                            } ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
                                     >
                                         {diff}
                                     </button>
@@ -275,76 +389,133 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                             </div>
                         </div>
                     </div>
-                </div>
 
-                {/* FACTION SELECTION */}
-                <div className="space-y-6 lg:col-span-1">
-                    <div className="bg-slate-800 p-6 rounded-lg shadow-lg h-full overflow-y-auto">
-                        <h3 className="text-2xl font-bold text-red-400 mb-4">Select Faction</h3>
-                        <div className="space-y-2">
-                            {FACTION_PRESETS.map((fac, idx) => (
-                                <button
-                                    key={idx}
-                                    onClick={() => {
-                                        if (isSingle) setSelectedFactionIndex(idx);
-                                        else {
-                                            // Update My Faction in Lobby
-                                            const myIdx = lobbyState.players.findIndex(p => p.id === peerId);
-                                            if (myIdx !== -1) {
-                                                const newPlayers = [...lobbyState.players];
-                                                newPlayers[myIdx].factionIndex = idx;
-                                                updateLobbySetting('players', newPlayers);
+                    {/* FACTION SELECTION */}
+                    <div className="glass-panel rounded-2xl p-6 border border-slate-600/20">
+                        <h3 className="font-display text-lg font-bold tracking-wider text-red-400 flex items-center gap-2 mb-6">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" /></svg>
+                            SELECT FACTION
+                        </h3>
+                        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+                            {FACTION_PRESETS.map((fac, idx) => {
+                                const isSelected = isSingle
+                                    ? selectedFactionIndex === idx
+                                    : lobbyState.players.find(p => p.id === peerId)?.factionIndex === idx;
+
+                                return (
+                                    <button
+                                        key={idx}
+                                        onClick={() => {
+                                            if (isSingle) setSelectedFactionIndex(idx);
+                                            else {
+                                                const myIdx = lobbyState.players.findIndex(p => p.id === peerId);
+                                                if (myIdx !== -1) {
+                                                    const newPlayers = [...lobbyState.players];
+                                                    newPlayers[myIdx].factionIndex = idx;
+                                                    updateLobbySetting('players', newPlayers);
+                                                }
                                             }
-                                        }
-                                    }}
-                                    className={`w-full p-3 rounded border-l-4 text-left flex justify-between items-center transition-all ${(isSingle ? selectedFactionIndex === idx : lobbyState.players.find(p => p.id === peerId)?.factionIndex === idx)
-                                        ? 'bg-slate-700 border-white' : 'bg-slate-900/50 border-transparent hover:bg-slate-700'
-                                        }`}
-                                    style={{ borderLeftColor: fac.color }}
-                                >
-                                    <span className="font-bold">{fac.name}</span>
-                                </button>
-                            ))}
+                                        }}
+                                        className={`w-full p-4 rounded-xl text-left flex items-center gap-4 transition-all border ${isSelected
+                                                ? 'bg-slate-700/60 border-white/30 shadow-lg'
+                                                : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-700/40 hover:border-slate-600/50'
+                                            }`}
+                                    >
+                                        <div
+                                            className="w-4 h-12 rounded-full shadow-lg"
+                                            style={{
+                                                backgroundColor: fac.color,
+                                                boxShadow: isSelected ? `0 0 15px ${fac.color}` : 'none'
+                                            }}
+                                        />
+                                        <div className="flex-1">
+                                            <span className="font-bold text-white">{fac.name}</span>
+                                            {isSelected && (
+                                                <span className="ml-2 text-xs text-cyan-400">SELECTED</span>
+                                            )}
+                                        </div>
+                                        {isSelected && (
+                                            <svg className="w-5 h-5 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
-                </div>
 
-                {/* PLAYERS LIST (Multiplayer Only) */}
-                {!isSingle && (
-                    <div className="space-y-6 lg:col-span-1">
-                        <div className="bg-slate-800 p-6 rounded-lg shadow-lg h-full">
-                            <h3 className="text-2xl font-bold text-green-400 mb-4">Lobby Players</h3>
-                            <div className="space-y-4">
+                    {/* PLAYERS LIST (Multiplayer Only) */}
+                    {!isSingle && (
+                        <div className="glass-panel rounded-2xl p-6 border border-slate-600/20">
+                            <h3 className="font-display text-lg font-bold tracking-wider text-green-400 flex items-center gap-2 mb-6">
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                                PLAYERS
+                            </h3>
+                            <div className="space-y-3">
                                 {lobbyState.players.map((p, i) => (
-                                    <div key={i} className="flex items-center justify-between bg-slate-900 p-4 rounded border border-slate-700">
-                                        <div>
-                                            <div className="font-bold text-lg">{p.name} {p.isHost && '(Host)'}</div>
-                                            <div className="text-sm text-gray-400" style={{ color: FACTION_PRESETS[p.factionIndex].color }}>
-                                                {FACTION_PRESETS[p.factionIndex].name}
+                                    <div
+                                        key={i}
+                                        className="flex items-center justify-between bg-slate-800/50 p-4 rounded-xl border border-slate-700/30"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div
+                                                className="w-3 h-10 rounded-full"
+                                                style={{ backgroundColor: FACTION_PRESETS[p.factionIndex].color }}
+                                            />
+                                            <div>
+                                                <div className="font-bold text-white flex items-center gap-2">
+                                                    {p.name}
+                                                    {p.isHost && (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                                                            HOST
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-sm" style={{ color: FACTION_PRESETS[p.factionIndex].color }}>
+                                                    {FACTION_PRESETS[p.factionIndex].name}
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className={`w-3 h-3 rounded-full ${p.id ? 'bg-green-500' : 'bg-gray-500'}`}></div>
+                                        <div className={`w-3 h-3 rounded-full ${p.id ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-600'}`}></div>
                                     </div>
                                 ))}
-                                {lobbyState.players.length === 0 && <div className="text-gray-500 italic">Waiting for players...</div>}
+                                {lobbyState.players.length === 0 && (
+                                    <div className="text-center py-8 text-slate-500 italic">
+                                        Waiting for players...
+                                    </div>
+                                )}
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
-            <div className="mt-auto pt-8 flex justify-end space-x-4">
-                <button onClick={() => setNetworkMode(null)} className="px-6 py-3 text-gray-400 hover:text-white font-bold">BACK</button>
-                <button
-                    onClick={isSingle ? handleSinglePlayerStart : handleHostLobbyStart}
-                    disabled={!isSingle && !isHost}
-                    className={`px-12 py-4 rounded text-2xl font-bold shadow-lg transition-all ${(!isSingle && !isHost)
-                        ? 'bg-gray-700 cursor-not-allowed text-gray-500'
-                        : 'bg-blue-600 hover:bg-blue-500 hover:scale-105 text-white'
-                        }`}
-                >
-                    {isSingle ? 'DEPLOY' : (isHost ? 'DEPLOY ALL' : 'WAITING FOR HOST...')}
-                </button>
+            {/* Footer Actions */}
+            <div className="relative z-10 p-6 border-t border-slate-700/30 bg-slate-900/50 backdrop-blur-sm">
+                <div className="flex justify-between items-center max-w-7xl mx-auto">
+                    <button
+                        onClick={() => setNetworkMode(null)}
+                        className="px-6 py-3 text-slate-400 hover:text-white font-bold transition-colors flex items-center gap-2"
+                    >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        BACK
+                    </button>
+
+                    <button
+                        onClick={isSingle ? handleSinglePlayerStart : handleHostLobbyStart}
+                        disabled={!isSingle && !isHost}
+                        className={`px-12 py-4 rounded-xl text-xl font-bold tracking-wider transition-all ${(!isSingle && !isHost)
+                                ? 'bg-slate-700 cursor-not-allowed text-slate-500'
+                                : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg hover:shadow-[0_0_30px_rgba(6,182,212,0.4)] hover:scale-[1.02]'
+                            }`}
+                    >
+                        <span className="flex items-center gap-3">
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            {isSingle ? 'DEPLOY' : (isHost ? 'DEPLOY ALL' : 'WAITING FOR HOST...')}
+                        </span>
+                    </button>
+                </div>
             </div>
         </div>
     );

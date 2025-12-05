@@ -128,15 +128,14 @@ export function applyAction(state: GameState, action: GameAction): GameState {
             const existingFaction = nextState.factions.find(f => f.id === action.playerId);
             if (!existingFaction) {
                 // Create new faction for this player
-                const newFaction = {
+                const newFaction: any = {
                     id: action.playerId,
                     name: action.playerId.startsWith('BOT_') ? `Bot ${action.playerId.slice(4)}` : 'Player',
                     color: action.playerId.startsWith('BOT_') ? '#666666' : '#3b82f6', // Blue for player
+                    type: action.playerId.startsWith('BOT_') ? 'BOT' : 'PLAYER',
                     gold: 10000, // Starting gold
                     oil: 1000,   // Starting oil
-                    relations: {},
-                    isPlayer: !action.playerId.startsWith('BOT_'),
-                    isBot: action.playerId.startsWith('BOT_')
+                    relations: {}
                 };
                 nextState.factions = [...nextState.factions, newFaction];
                 console.log('[APPLY ACTION] Created new faction for player:', action.playerId);

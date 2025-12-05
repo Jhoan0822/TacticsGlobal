@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, useMap, useMapEvents, Marker } from 'react-leaflet';
 import L from 'leaflet';
-import { GameUnit, Projectile, Faction, POI, POIType, Explosion, UnitClass } from '../types';
+import { GameUnit, Projectile, Faction, POI, POIType, Explosion, UnitClass, GameMode } from '../types';
 import { getNearbyUnits } from '../services/gameLogic';
 import TerritoryLayer from './TerritoryLayer';
 import PlacementOverlay from './PlacementOverlay';
@@ -25,7 +25,7 @@ interface Props {
     onPoiClick: (id: string) => void;
     onPoiRightClick: (id: string) => void;
     onMultiSelect: (ids: string[]) => void;
-    gameMode: 'SELECT_BASE' | 'PLAYING' | 'PLACING_STRUCTURE';
+    gameMode: GameMode;
     placementType?: UnitClass | null;
 }
 
@@ -129,21 +129,7 @@ const MapInteraction: React.FC<{
             let clickedPoiId: string | null = null;
 
             // Check Units - OPTIMIZED SPATIAL LOOKUP
-            // We use the helper from gameLogic to get units near the click
-            // Note: getNearbyUnits returns units in a ~11km grid cell.
-            // We still need to check exact distance, but we check fewer units.
             const nearbyUnits = getNearbyUnits({ position: { lat: e.latlng.lat, lng: e.latlng.lng } });
-
-            // Fallback to full list if grid is empty (e.g. client side interpolation might be ahead/behind)
-            // or just use the full list if nearbyUnits is empty? 
-            // Actually, if the grid is working, it should be fine. 
-            // But let's be safe and use 'units' prop if we suspect sync issues, 
-            // but for performance we MUST use the grid.
-            // However, the 'units' prop passed to this component might be different from what's in the grid 
-            // if the grid isn't updated with the prop.
-            // The grid is updated in processGameTick.
-            // Let's assume the grid is up to date.
-
             const candidates = nearbyUnits.length > 0 ? nearbyUnits : units;
 
             const clickedUnits: string[] = [];
@@ -172,7 +158,6 @@ const MapInteraction: React.FC<{
                 });
 
                 // Cycle Logic
-                // If the top unit is already selected, try to select the next one
                 const currentlySelectedInStack = clickedUnits.find(id => selectedUnitIds.includes(id));
 
                 if (currentlySelectedInStack) {
@@ -269,7 +254,7 @@ const MapInteraction: React.FC<{
     useEffect(() => {
         const container = document.querySelector('.leaflet-container') as HTMLElement;
         if (container) {
-            if (gameMode === 'SELECT_BASE') container.style.cursor = 'crosshair';
+            if (gameMode === 'SELECTION') container.style.cursor = 'crosshair';
             else if (gameMode === 'PLACING_STRUCTURE') container.style.cursor = 'copy';
             else container.style.cursor = 'default';
         }
@@ -282,7 +267,7 @@ const MapController: React.FC<{ center: { lat: number; lng: number }, gameMode: 
     useEffect(() => {
         // ONLY zoom/pan if we are in the initial selection mode.
         // Otherwise, let the user control the camera.
-        if (gameMode === 'SELECT_BASE') {
+        if (gameMode === 'SELECTION') {
             map.setView([center.lat, center.lng], 3);
         }
         // REMOVED: map.flyTo(...) for other modes to prevent annoying auto-zoom
@@ -336,7 +321,7 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
 
                 <DragSelection units={units} onSelectionComplete={onMultiSelect} />
 
-                {gameMode !== 'SELECT_BASE' && (
+                {gameMode !== 'SELECTION' && (
                     <>
                         {/* LAYER 2: TERRITORY (Z: 400) - Rendered via SVGOverlay inside TerritoryLayer */}
                         <TerritoryLayer units={units} pois={pois} factions={factions} />
@@ -348,9 +333,24 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
 
             <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-[500] pointer-events-none">
                 <div className="bg-black/70 backdrop-blur text-xs text-white px-4 py-2 rounded-full border border-slate-600 flex gap-4 shadow-xl">
-                    {gameMode === 'SELECT_BASE' ? <span>CLICK A <span className="text-yellow-400 font-bold">CITY MARKER</span> TO START</span> : <><span><span className="text-yellow-400 font-bold">L-CLICK/DRAG</span> SELECT</span><span><span className="text-blue-400 font-bold">R-CLICK MAP</span> MOVE</span><span><span className="text-red-400 font-bold">R-CLICK ENEMY</span> ATTACK</span></>}
+                    {gameMode === 'SELECTION' ? <span>CLICK A <span className="text-yellow-400 font-bold">CITY MARKER</span> TO START</span> :
+                        gameMode === 'COUNTDOWN' ? <span className="text-yellow-400 font-bold animate-pulse">PREPARING WARZONE...</span> :
+                            <><span><span className="text-yellow-400 font-bold">L-CLICK/DRAG</span> SELECT</span><span><span className="text-blue-400 font-bold">R-CLICK MAP</span> MOVE</span><span><span className="text-red-400 font-bold">R-CLICK ENEMY</span> ATTACK</span></>}
                 </div>
             </div>
+
+            {/* START COUNTDOWN OVERLAY */}
+            {gameMode === 'COUNTDOWN' && (
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[1000] pointer-events-none">
+                    <div className="bg-black/80 backdrop-blur-md text-white px-8 py-6 rounded-xl border border-yellow-500 shadow-2xl flex flex-col items-center gap-4">
+                        <h2 className="text-2xl font-bold text-yellow-400 tracking-widest">PREPARING WARZONE</h2>
+                        <div className="w-64 h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div className="h-full bg-yellow-500 animate-[pulse_2s_infinite]"></div>
+                        </div>
+                        <p className="text-sm text-slate-300">WAITING FOR ALL COMMANDERS TO DEPLOY...</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

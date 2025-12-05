@@ -53,6 +53,7 @@ export interface Faction {
   aggression?: number;
   lastAiUpdate?: number;
   maxUnits?: number;
+  ready?: boolean; // For multiplayer lobby/start logic
 }
 
 export interface POI {
@@ -144,6 +145,8 @@ export enum Difficulty {
   HARD = 'HARD'
 }
 
+export type GameMode = 'LOBBY' | 'SELECTION' | 'COUNTDOWN' | 'PLAYING' | 'PLACING_STRUCTURE';
+
 export interface GameState {
   factions: Faction[];
   units: GameUnit[];
@@ -158,7 +161,7 @@ export interface GameState {
   controlGroups: Record<number, string[]>; // Key 1-9 -> Array of Unit IDs
   territoryControlled: number;
   gameTick: number;
-  gameMode: 'SELECT_BASE' | 'PLAYING' | 'PLACING_STRUCTURE';
+  gameMode: GameMode;
   placementType?: UnitClass | null;
   messages: LogMessage[];
   difficulty: Difficulty;
@@ -175,6 +178,10 @@ export interface GameState {
     goldEarned: number;
     startTime: number;
   };
+  startTime?: number; // Timestamp for game start countdown
+  // Network Sync Fields (NEW)
+  stateVersion: number;    // Authoritative state version from host
+  hostTick: number;        // Last known host tick for reconciliation
 }
 
 export interface LobbyPlayer {
@@ -203,3 +210,12 @@ export interface Scenario {
     maxLng: number;
   };
 }
+
+// NETWORK TYPES
+export type NetworkRequest =
+  | { type: 'REQUEST_SELECT_BASE'; poiId: string; playerId: string }
+  | { type: 'REQUEST_READY'; playerId: string; isReady: boolean };
+
+export type NetworkResponse =
+  | { type: 'BASE_SELECTED'; poiId: string; factionId: string }
+  | { type: 'GAME_MODE_UPDATE'; mode: GameMode; startTime?: number };

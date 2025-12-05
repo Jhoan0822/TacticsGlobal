@@ -1,4 +1,4 @@
-import { UnitClass, GameState } from '../types';
+import { UnitClass, GameState, NetworkRequest, NetworkResponse } from '../types';
 
 // ============================================
 // REAL-TIME P2P MULTIPLAYER SYSTEM
@@ -68,7 +68,9 @@ export type NetworkMessageType =
     | 'ACTION'           // GameAction broadcast
     | 'FULL_STATE'       // Complete state sync (resync/join)
     | 'LOBBY_UPDATE'     // Lobby changes
-    | 'START_GAME';      // Game start signal
+    | 'START_GAME'       // Game start signal
+    | 'REQUEST'          // Client -> Host request
+    | 'RESPONSE';        // Host -> Client response
 
 export interface ActionMessage {
     type: 'ACTION';
@@ -91,14 +93,27 @@ export interface StartGameMessage {
     payload: {
         scenarioId: string;
         factions: any[];
+        pois: any[];  // POIs are required for client initialization
     };
+}
+
+export interface RequestMessage {
+    type: 'REQUEST';
+    payload: NetworkRequest;
+}
+
+export interface ResponseMessage {
+    type: 'RESPONSE';
+    payload: NetworkResponse;
 }
 
 export type NetworkMessage =
     | ActionMessage
     | FullStateMessage
     | LobbyUpdateMessage
-    | StartGameMessage;
+    | StartGameMessage
+    | RequestMessage
+    | ResponseMessage;
 
 // Helper to create action with unique ID
 export function createAction(

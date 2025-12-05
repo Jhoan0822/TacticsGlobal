@@ -41,14 +41,17 @@ export const TooltipProvider: React.FC<{ children: React.ReactNode }> = ({ child
             {children}
             {tooltip && (
                 <div
-                    className="fixed z-[9999] bg-slate-900/95 border border-blue-500/50 rounded shadow-xl p-3 pointer-events-none animate-fade-in backdrop-blur-sm"
+                    className="fixed z-[9999] glass-panel rounded-xl shadow-2xl p-4 pointer-events-none animate-fade-in border-t border-cyan-500/30"
                     style={{
-                        top: tooltip.y + 15,
-                        left: tooltip.x + 15,
-                        minWidth: '200px'
+                        top: tooltip.y + 12,
+                        left: tooltip.x + 12,
+                        minWidth: '200px',
+                        maxWidth: '280px',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(6, 182, 212, 0.1)'
                     }}
                 >
-                    <div className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-1 border-b border-slate-700 pb-1">
+                    <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-2 pb-2 border-b border-slate-700/50 flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
                         {tooltip.title}
                     </div>
                     <div className="text-xs text-slate-300">

@@ -290,7 +290,8 @@ export const spawnUnit = (type: UnitClass, lat: number, lng: number, factionId: 
 };
 
 export const processGameTick = (currentState: GameState, intents: Intent[] = [], isHost: boolean = true): GameState => {
-    if (currentState.gameMode === 'SELECT_BASE') return currentState;
+    // Skip game tick during selection phase
+    if (currentState.gameMode === 'SELECTION') return currentState;
 
     // Shallow copies are still needed for React state immutability at the top level
     // But we can optimize the internal operations

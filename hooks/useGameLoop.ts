@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { GameState, GameUnit, POI, UnitClass, POIType, Faction, Difficulty } from '../types';
+import { GameState, GameUnit, POI, UnitClass, POIType, Faction, Difficulty, NetworkRequest, NetworkResponse, GameMode } from '../types';
 import { UNIT_CONFIG } from '../constants';
 import { processGameTick, spawnUnit } from '../services/gameLogic';
 import { NetworkService } from '../services/networkService';
@@ -21,11 +21,18 @@ export const useGameLoop = () => {
         explosions: [],
         messages: [],
         playerResources: { gold: 5000, oil: 1000, intel: 100 },
-        gameMode: 'SELECT_BASE',
-        aiUpdateCounter: 0,
+        gameMode: 'SELECTION', // Start in SELECTION mode (authoritative)
+        gameTick: 0,
+        controlGroups: {},
+        territoryControlled: 0,
+        difficulty: Difficulty.MEDIUM,
+        scenario: { id: 'default', name: 'Global Conflict', bounds: { minLat: -85, maxLat: 85, minLng: -180, maxLng: 180 } },
         localPlayerId: 'PLAYER',
         isClient: false,
-        placementType: null
+        placementType: null,
+        // Network sync fields
+        stateVersion: 0,
+        hostTick: 0
     });
 
     const [center, setCenter] = useState<{ lat: number; lng: number }>({ lat: 20, lng: 0 });
@@ -37,36 +44,64 @@ export const useGameLoop = () => {
     const isPaused = useRef<boolean>(false);
 
     // ============================================
-    // NETWORK ACTION LISTENER
+    // NETWORK EVENT LISTENER
     // ============================================
     useEffect(() => {
         const unsub = NetworkService.subscribe((event) => {
-            console.log('[GAME LOOP] Network event:', event.type);
-
+            // 1. GAMEPLAY ACTIONS
             if (event.type === 'ACTION') {
-                // Received action from another player
-                // Apply IMMEDIATELY to state
-                setGameState(prev => applyAction(prev, event.action));
-            }
-            else if (event.type === 'FULL_STATE') {
-                // Full state sync (late join or resync)
                 setGameState(prev => {
-                    // CRITICAL FIX: Derive local player resources from the SYNCED FACTION state
-                    // The Host sends ITS playerResources, which we must IGNORE.
+                    // CRITICAL: Clients should NOT apply optimistic actions during PLAYING mode
+                    // They receive authoritative state from FULL_STATE broadcasts instead
+                    if (prev.isClient && prev.gameMode === 'PLAYING') {
+                        console.log('[NET] Client ignoring ACTION during PLAYING - waiting for host state');
+                        return prev;
+                    }
+                    // During SELECTION/LOBBY, apply actions normally (base selection, etc.)
+                    return applyAction(prev, event.action);
+                });
+            }
+            // 2. FULL STATE SYNC (Authoritative Update from Host)
+            else if (event.type === 'FULL_STATE') {
+                setGameState(prev => {
+                    // Only clients should process FULL_STATE from host
+                    if (!prev.isClient) {
+                        console.log('[NET] Ignoring FULL_STATE - I am the host');
+                        return prev;
+                    }
+
+                    // Log state version for debugging
+                    const hostVersion = (event.gameState as any).stateVersion || 0;
+                    const hostTick = (event.gameState as any).hostTick || event.gameState.gameTick;
+                    console.log('[NET] Applying FULL_STATE from host. Version:', hostVersion, 'Tick:', hostTick);
+
+                    // Preserve local identity and sync resources from faction
                     const myFaction = event.gameState.factions.find((f: any) => f.id === prev.localPlayerId);
                     const syncedResources = myFaction ? {
                         gold: myFaction.gold,
                         oil: myFaction.oil || 0,
-                        intel: prev.playerResources.intel // Intel is local only for now
+                        intel: prev.playerResources.intel
                     } : prev.playerResources;
 
+                    // Apply authoritative state, preserving ONLY local UI state
                     return {
                         ...event.gameState,
-                        playerResources: syncedResources, // OVERRIDE Host's resources with OURS
-                        isClient: prev.isClient,
-                        localPlayerId: prev.localPlayerId
+                        playerResources: syncedResources,
+                        isClient: true,  // Always true for receiving clients
+                        localPlayerId: prev.localPlayerId,
+                        placementType: prev.placementType,  // UI-only
+                        stateVersion: hostVersion,
+                        hostTick: hostTick
                     };
                 });
+            }
+            // 3. AUTHORITATIVE RESPONSES (Host -> Client)
+            else if (event.type === 'RESPONSE') {
+                handleNetworkResponse(event.response);
+            }
+            // 4. CLIENT REQUESTS (Client -> Host)
+            else if (event.type === 'REQUEST') {
+                handleNetworkRequest(event.request, event.fromPeerId);
             }
         });
 
@@ -74,7 +109,169 @@ export const useGameLoop = () => {
     }, []);
 
     // ============================================
-    // GAME LOOP (Simulation Only)
+    // AUTHORITATIVE HANDLERS
+    // ============================================
+
+    // HOST ONLY: Process Requests
+    const handleNetworkRequest = (req: NetworkRequest, fromPeerId: string) => {
+        if (req.type === 'REQUEST_SELECT_BASE') {
+            setGameState(prev => {
+                const poi = prev.pois.find(p => p.id === req.poiId);
+
+                // VALIDATION: Is POI free? Is Mode SELECTION?
+                if (poi && poi.type === POIType.CITY && !poi.ownerFactionId && prev.gameMode === 'SELECTION') {
+                    console.log('[HOST] Granting base', poi.name, 'to', req.playerId);
+
+                    // 1. Update Local State (Host Authority)
+                    const nextPois = prev.pois.map(p =>
+                        p.id === req.poiId ? { ...p, ownerFactionId: req.playerId, tier: 1 } : p
+                    );
+
+                    const nextFactions = prev.factions.map(f =>
+                        f.id === req.playerId ? { ...f, ready: true } : f
+                    );
+
+                    // 2. Broadcast Response (Authoritative Update)
+                    NetworkService.broadcastResponse({
+                        type: 'BASE_SELECTED',
+                        poiId: req.poiId,
+                        factionId: req.playerId
+                    });
+
+                    // 3. Check for Game Start (All Humans Ready)
+                    const humanFactions = nextFactions.filter(f => f.type === 'PLAYER');
+                    const allReady = humanFactions.every(f => f.ready);
+
+                    let nextMode = prev.gameMode;
+                    let nextStartTime = prev.startTime;
+                    let finalPois = nextPois;
+                    let finalUnits = prev.units;
+                    let finalFactions = nextFactions;
+
+                    if (allReady && prev.gameMode === 'SELECTION') {
+                        console.log('[HOST] All players ready. Assigning Bots & Starting Countdown.');
+                        nextMode = 'COUNTDOWN';
+                        nextStartTime = Date.now() + 5000; // 5s Countdown
+
+                        // --- BOT ASSIGNMENT LOGIC ---
+                        const availableCities = finalPois.filter(p => p.type === POIType.CITY && !p.ownerFactionId);
+                        const botFactions = finalFactions.filter(f => f.type === 'BOT');
+
+                        // Shuffle cities
+                        const shuffledCities = [...availableCities].sort(() => Math.random() - 0.5);
+
+                        // Assign to Bots
+                        botFactions.forEach((bot, index) => {
+                            if (index < shuffledCities.length) {
+                                const city = shuffledCities[index];
+                                city.ownerFactionId = bot.id;
+                                city.tier = 1;
+                                // Mark bot as ready
+                                const botIndex = finalFactions.findIndex(f => f.id === bot.id);
+                                if (botIndex !== -1) finalFactions[botIndex].ready = true;
+                            }
+                        });
+
+                        // Spawn Defenders for Neutral/Remaining Cities
+                        const neutralCities = finalPois.filter(p => p.type === POIType.CITY && !p.ownerFactionId);
+                        const newUnits: GameUnit[] = [];
+
+                        neutralCities.forEach(city => {
+                            // Spawn 1-2 defenders
+                            const count = 1 + Math.floor(Math.random() * 2);
+                            for (let i = 0; i < count; i++) {
+                                const isTank = Math.random() > 0.7;
+                                const unitId = `DEFENDER-${city.id}-${i}-${Date.now()}`;
+                                newUnits.push({
+                                    id: unitId,
+                                    unitClass: isTank ? UnitClass.GROUND_TANK : UnitClass.INFANTRY,
+                                    factionId: 'NEUTRAL',
+                                    position: {
+                                        lat: city.position.lat + (Math.random() - 0.5) * 0.02,
+                                        lng: city.position.lng + (Math.random() - 0.5) * 0.02
+                                    },
+                                    heading: 0,
+                                    hp: 100,
+                                    maxHp: 100,
+                                    attack: isTank ? 15 : 5,
+                                    range: isTank ? 50 : 20,
+                                    speed: 0,
+                                    vision: 50
+                                });
+                            }
+                        });
+
+                        finalUnits = [...prev.units, ...newUnits];
+
+                        // Broadcast Updates
+                        NetworkService.broadcastResponse({
+                            type: 'GAME_MODE_UPDATE',
+                            mode: 'COUNTDOWN',
+                            startTime: nextStartTime
+                        });
+
+                        // Force Full Sync to ensure clients see bots/defenders
+                        const fullState: GameState = {
+                            ...prev,
+                            pois: finalPois,
+                            factions: finalFactions,
+                            units: finalUnits,
+                            gameMode: nextMode,
+                            startTime: nextStartTime
+                        };
+                        NetworkService.broadcastFullState(fullState);
+                    }
+
+                    return {
+                        ...prev,
+                        pois: finalPois,
+                        factions: finalFactions,
+                        units: finalUnits,
+                        gameMode: nextMode,
+                        startTime: nextStartTime
+                    };
+                } else {
+                    console.warn('[HOST] Denied base selection:', req.poiId, 'for', req.playerId);
+                }
+                return prev;
+            });
+        }
+    };
+
+    // CLIENT & HOST: Process Responses
+    const handleNetworkResponse = (res: NetworkResponse) => {
+        setGameState(prev => {
+            if (res.type === 'BASE_SELECTED') {
+                console.log('[NET] Base Selected:', res.poiId, 'by', res.factionId);
+
+                // Update POI ownership
+                const nextPois = prev.pois.map(p =>
+                    p.id === res.poiId ? { ...p, ownerFactionId: res.factionId, tier: 1 } : p
+                );
+
+                // If it's ME who got the base, center camera
+                if (res.factionId === prev.localPlayerId) {
+                    const poi = nextPois.find(p => p.id === res.poiId);
+                    if (poi) setCenter({ lat: poi.position.lat, lng: poi.position.lng });
+                    AudioService.playSuccess();
+                }
+
+                return { ...prev, pois: nextPois };
+            }
+            else if (res.type === 'GAME_MODE_UPDATE') {
+                console.log('[NET] Game Mode Update:', res.mode);
+                return {
+                    ...prev,
+                    gameMode: res.mode,
+                    startTime: res.startTime
+                };
+            }
+            return prev;
+        });
+    };
+
+    // ============================================
+    // GAME LOOP (Authoritative Host Simulation)
     // ============================================
     const gameLoop = useCallback((timestamp: number) => {
         if (isPaused.current) {
@@ -82,23 +279,76 @@ export const useGameLoop = () => {
             return;
         }
 
+        setGameState(prevState => {
+            // COUNTDOWN TIMER (Both host and client can check this)
+            if (prevState.gameMode === 'COUNTDOWN' && prevState.startTime) {
+                if (Date.now() >= prevState.startTime) {
+                    console.log('[LOOP] Countdown finished! Starting Game.');
+                    // Only HOST broadcasts mode change
+                    if (!prevState.isClient) {
+                        NetworkService.broadcastResponse({
+                            type: 'GAME_MODE_UPDATE',
+                            mode: 'PLAYING',
+                            startTime: undefined
+                        });
+                    }
+                    return { ...prevState, gameMode: 'PLAYING' };
+                }
+            }
+            return prevState;
+        });
+
         if (timestamp - lastTickTime.current >= GAME_TICK_MS) {
             setGameState(prevState => {
-                // Only simulate if in PLAYING mode
                 if (prevState.gameMode !== 'PLAYING') return prevState;
 
-                const isHost = !prevState.isClient;
+                // ============================================
+                // CRITICAL: HOST-ONLY SIMULATION
+                // ============================================
+                // Only the HOST runs the authoritative game simulation.
+                // Clients receive state updates via FULL_STATE broadcasts.
 
-                // Run simulation (Host runs AI, Client predicts movement)
-                const nextState = processGameTick(prevState, [], isHost);
+                if (prevState.isClient) {
+                    // CLIENT: Do NOT run simulation
+                    // Only update visual elements that don't affect game state
+                    const updatedProjectiles = prevState.projectiles.map(p => {
+                        if (p.progress < 1) {
+                            return { ...p, progress: Math.min(1, p.progress + (p.speed || 0.1)) };
+                        }
+                        return p;
+                    }).filter(p => p.progress < 1 || Date.now() - p.timestamp < 500);
 
-                // HOST: Broadcast state periodically to ensure sync
-                // FREQUENCY INCREASED: Every 10 ticks (300ms) to ensure smooth resource updates
-                if (isHost && nextState.gameTick % 10 === 0) {
-                    NetworkService.broadcastFullState(nextState);
+                    const updatedExplosions = prevState.explosions.filter(
+                        e => Date.now() - e.timestamp < 1000
+                    );
+
+                    return {
+                        ...prevState,
+                        projectiles: updatedProjectiles,
+                        explosions: updatedExplosions,
+                        gameTick: prevState.gameTick + 1
+                    };
                 }
 
-                return nextState;
+                // HOST: Run full authoritative simulation
+                const nextState = processGameTick(prevState, [], true);
+
+                // HOST: Broadcast state to clients periodically
+                // Every 5 ticks (~200ms) for smoother sync
+                if (nextState.gameTick % 5 === 0) {
+                    NetworkService.incrementStateVersion();
+                    NetworkService.broadcastFullState({
+                        ...nextState,
+                        stateVersion: NetworkService.stateVersion,
+                        hostTick: nextState.gameTick
+                    });
+                }
+
+                return {
+                    ...nextState,
+                    stateVersion: NetworkService.stateVersion,
+                    hostTick: nextState.gameTick
+                };
             });
             lastTickTime.current = timestamp;
         }
@@ -107,60 +357,15 @@ export const useGameLoop = () => {
     }, []);
 
     // ============================================
-    // START GAME
+    // START GAME (Initialization)
     // ============================================
     const startGame = (scenario: Scenario, localPlayerId: string, factions: Faction[], isClient: boolean, initialPois?: POI[]) => {
         console.log('[START GAME]', scenario.id, 'localPlayerId:', localPlayerId, 'isClient:', isClient);
 
-        // Load POIs: Use provided (Client) or Generate (Host/Single)
         let allCities = initialPois || getMockCities();
 
-        // DEBUG: Log POI counts by type
-        const cities = allCities.filter(p => p.type === POIType.CITY);
-        const oilRigs = allCities.filter(p => p.type === POIType.OIL_RIG);
-        const goldMines = allCities.filter(p => p.type === POIType.GOLD_MINE);
-        console.log('[START GAME] POI COUNTS:', {
-            total: allCities.length,
-            cities: cities.length,
-            oilRigs: oilRigs.length,
-            goldMines: goldMines.length,
-            initialPoisProvided: !!initialPois
-        });
-
-        // Define initial state object
-        const initialState: GameState = {
-            units: [],
-            pois: allCities,
-            factions: factions,
-            projectiles: [],
-            explosions: [],
-            messages: [],
-            playerResources: { gold: 10000, oil: 1000, intel: 100 },
-            gameMode: 'SELECT_BASE',
-            gameTick: 0,
-            controlGroups: {},
-            territoryControlled: 0,
-            difficulty: null as any, // Will be overridden by user selection
-            scenario: scenario,
-            localPlayerId,
-            isClient,
-            placementType: null,
-            gameResult: null,
-            gameStats: {
-                unitsKilled: 0,
-                unitsLost: 0,
-                citiesCaptured: 0,
-                goldEarned: 0,
-                startTime: Date.now()
-            }
-        };
-
-        // HOST LOGIC: Initialize game but DO NOT assign cities yet
-        // Cities remain ownerFactionId: undefined until players/bots select
+        // HOST: Initialize Unclaimed Cities
         if (!isClient) {
-            const initialUnits: GameUnit[] = [];
-
-            // Filter by Scenario Bounds
             if (scenario.bounds) {
                 const { minLat, maxLat, minLng, maxLng } = scenario.bounds as any;
                 allCities = allCities.filter(city =>
@@ -168,41 +373,40 @@ export const useGameLoop = () => {
                     city.position.lng >= minLng && city.position.lng <= maxLng
                 );
             }
-
-            // IMPORTANT: Clear any pre-assigned owners (from mockDataService)
-            // ALL cities start UNCLAIMED so players can select
             allCities.forEach(city => {
-                if (city.type === POIType.CITY) {
-                    city.ownerFactionId = undefined as any; // Unclaimed - available for selection
-                }
+                if (city.type === POIType.CITY) city.ownerFactionId = undefined as any;
             });
 
-            // Store bot factions for later assignment (after player selects)
-            initialState.pendingBotFactions = factions.filter(f => f.type === 'BOT').map(f => f.id);
-
-            // Update POIs in initial state (all unclaimed)
-            initialState.pois = allCities;
-            initialState.units = initialUnits;
-
-            console.log('[START GAME] Cities ready for selection:', allCities.filter(c => c.type === POIType.CITY).length);
-
-            // BROADCAST START GAME (Host only) - SEND ALL POIs INCLUDING RESOURCES
+            // Broadcast Initial Setup
             if (NetworkService.isHost || (!isClient && NetworkService.myPeerId)) {
-                console.log('[START GAME] Broadcasting', allCities.length, 'POIs to clients');
                 NetworkService.startGame(scenario.id, factions, allCities);
             }
         }
 
-        setGameState(initialState);
+        setGameState({
+            units: [],
+            pois: allCities,
+            factions: factions,
+            projectiles: [],
+            explosions: [],
+            messages: [],
+            playerResources: { gold: 10000, oil: 1000, intel: 100 },
+            gameMode: 'SELECTION', // Start in Selection
+            gameTick: 0,
+            controlGroups: {},
+            territoryControlled: 0,
+            difficulty: Difficulty.MEDIUM,
+            scenario: scenario,
+            localPlayerId,
+            isClient,
+            placementType: null,
+            pendingBotFactions: factions.filter(f => f.type === 'BOT').map(f => f.id),
+            // Network sync fields
+            stateVersion: 0,
+            hostTick: 0
+        });
 
         NetworkService.isHost = !isClient;
-
-        // Set initial camera position
-        const myFaction = factions.find(f => f.id === localPlayerId);
-        if (myFaction) {
-            setCenter({ lat: 20, lng: 0 });
-        }
-
         AudioService.playSuccess();
     };
 
@@ -213,121 +417,99 @@ export const useGameLoop = () => {
     }, [gameLoop]);
 
     // ============================================
-    // IMMEDIATE ACTION HELPERS
+    // USER ACTIONS
     // ============================================
 
-    /**
-     * Execute action LOCALLY and BROADCAST to network
-     * This is the core of optimistic execution
-     */
-    const executeAndBroadcast = (action: GameAction) => {
-        console.log('[EXECUTE] Action:', action.actionType, 'locally + broadcast');
-
-        // 1. Execute LOCALLY (optimistic)
-        setGameState(prev => applyAction(prev, action));
-
-        // 2. Broadcast to ALL other players
-        NetworkService.broadcastAction(action);
+    const handlePoiClick = (poiId: string) => {
+        // SELECTION MODE: Request Base
+        if (gameState.gameMode === 'SELECTION') {
+            const poi = gameState.pois.find(p => p.id === poiId);
+            if (poi && poi.type === POIType.CITY && !poi.ownerFactionId) {
+                console.log('[UI] Requesting base:', poi.name);
+                NetworkService.sendRequest({
+                    type: 'REQUEST_SELECT_BASE',
+                    poiId,
+                    playerId: gameState.localPlayerId
+                });
+            } else {
+                AudioService.playError();
+            }
+        }
     };
 
-    // ============================================
-    // ACTION HANDLERS
-    // ============================================
+    const handleMapClick = (lat: number, lng: number) => {
+        if (gameState.gameMode === 'PLACING_STRUCTURE') {
+            if (!gameState.placementType) return;
+            const type = gameState.placementType;
+            const playerUnits = gameState.units.filter(u => u.factionId === gameState.localPlayerId);
+
+            if (!TerrainService.isValidPlacement(type, lat, lng, gameState.pois, playerUnits, gameState.localPlayerId)) {
+                alert("Invalid location!");
+                AudioService.playAlert();
+                return;
+            }
+
+            const payload: BuildStructurePayload = {
+                structureType: type,
+                lat,
+                lng,
+                unitId: `STRUCT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            };
+            const action = createAction(gameState.localPlayerId, 'BUILD_STRUCTURE', payload);
+            setGameState(prev => applyAction(prev, action)); // Optimistic
+            NetworkService.broadcastAction(action);
+            setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
+            AudioService.playSuccess();
+        }
+        else if (gameState.gameMode === 'PLAYING') {
+            // Move Units
+            if (selectedUnitIds.length > 0) {
+                const payload: MoveUnitsPayload = {
+                    unitIds: selectedUnitIds,
+                    targetLat: lat,
+                    targetLng: lng,
+                    isBoosting: false
+                };
+                const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
+                setGameState(prev => applyAction(prev, action)); // Optimistic
+                NetworkService.broadcastAction(action);
+                AudioService.playUiClick();
+            }
+        }
+    };
 
     const handleBuyUnit = (type: UnitClass) => {
-        console.log('[HANDLE BUY UNIT]', type);
-
-        // Structures need manual placement
         const structures = [UnitClass.AIRBASE, UnitClass.PORT, UnitClass.MILITARY_BASE];
         if (structures.includes(type)) {
-            console.log('[HANDLE BUY UNIT] Entering PLACING_STRUCTURE mode for', type);
-            setGameState(prev => ({
-                ...prev,
-                gameMode: 'PLACING_STRUCTURE',
-                placementType: type
-            }));
+            setGameState(prev => ({ ...prev, gameMode: 'PLACING_STRUCTURE', placementType: type }));
             AudioService.playUiClick();
             return;
         }
 
-        // Define unit categories
-        const airUnits = [UnitClass.FIGHTER_JET, UnitClass.HEAVY_BOMBER, UnitClass.HELICOPTER,
-        UnitClass.RECON_DRONE, UnitClass.TROOP_TRANSPORT];
-        const seaUnits = [UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.SUBMARINE,
-        UnitClass.AIRCRAFT_CARRIER, UnitClass.BATTLESHIP, UnitClass.PATROL_BOAT, UnitClass.MINELAYER];
-        const landUnits = [UnitClass.INFANTRY, UnitClass.SPECIAL_FORCES, UnitClass.GROUND_TANK,
-        UnitClass.MISSILE_LAUNCHER, UnitClass.SAM_LAUNCHER];
+        const airUnits = [UnitClass.FIGHTER_JET, UnitClass.HEAVY_BOMBER, UnitClass.HELICOPTER, UnitClass.RECON_DRONE, UnitClass.TROOP_TRANSPORT];
+        const seaUnits = [UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.SUBMARINE, UnitClass.AIRCRAFT_CARRIER, UnitClass.BATTLESHIP, UnitClass.PATROL_BOAT, UnitClass.MINELAYER];
+        const landUnits = [UnitClass.INFANTRY, UnitClass.SPECIAL_FORCES, UnitClass.GROUND_TANK, UnitClass.MISSILE_LAUNCHER, UnitClass.SAM_LAUNCHER];
 
-        // Find spawn location based on unit type
         let spawnLat: number | null = null;
         let spawnLng: number | null = null;
         let validSites: { position: { lat: number, lng: number } }[] = [];
 
         if (airUnits.includes(type)) {
-            // AIR UNITS: Only spawn at AIRBASE
-            validSites = gameState.units.filter(u =>
-                u.factionId === gameState.localPlayerId &&
-                u.unitClass === UnitClass.AIRBASE
-            );
-            if (validSites.length === 0) {
-                console.log('[SPAWN] No AIRBASE found for air unit');
-                AudioService.playAlert();
-                return;
-            }
+            validSites = gameState.units.filter(u => u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.AIRBASE);
         } else if (seaUnits.includes(type)) {
-            // SEA UNITS: Only spawn at PORT (NOT coastal cities)
-            validSites = gameState.units.filter(u =>
-                u.factionId === gameState.localPlayerId &&
-                u.unitClass === UnitClass.PORT
-            );
-            if (validSites.length === 0) {
-                console.log('[SPAWN] No PORT found for sea unit');
-                AudioService.playAlert();
-                return;
-            }
+            validSites = gameState.units.filter(u => u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.PORT);
         } else if (landUnits.includes(type)) {
-            // LAND UNITS: Cities, Military Base, or Command Center
             validSites = [
-                ...gameState.pois.filter(p =>
-                    p.ownerFactionId === gameState.localPlayerId &&
-                    p.type === POIType.CITY
-                ),
-                ...gameState.units.filter(u =>
-                    u.factionId === gameState.localPlayerId &&
-                    (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MILITARY_BASE)
-                )
+                ...gameState.pois.filter(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY),
+                ...gameState.units.filter(u => u.factionId === gameState.localPlayerId && (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MILITARY_BASE))
             ];
-            if (validSites.length === 0) {
-                console.log('[SPAWN] No city/base found for land unit');
-                AudioService.playAlert();
-                return;
-            }
         } else if (type === UnitClass.MOBILE_COMMAND_CENTER) {
-            // MOBILE HQ: Spawns at any owned city, HQ, or as fallback at any owned unit
-            const ownedCities = gameState.pois.filter(p =>
-                p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY);
-            const ownedHQs = gameState.units.filter(u =>
-                u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.COMMAND_CENTER);
-            const ownedUnits = gameState.units.filter(u =>
-                u.factionId === gameState.localPlayerId && u.hp > 0);
-
-            if (ownedCities.length > 0) {
-                validSites = ownedCities;
-            } else if (ownedHQs.length > 0) {
-                validSites = ownedHQs;
-            } else if (ownedUnits.length > 0) {
-                // FALLBACK: Spawn at any owned unit (emergency HQ)
-                validSites = ownedUnits;
-                console.log('[SPAWN] Emergency Mobile HQ spawn at unit position');
-            } else {
-                console.log('[SPAWN] No valid spawn location for Mobile HQ');
-                AudioService.playAlert();
-                return;
-            }
+            validSites = [
+                ...gameState.pois.filter(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY),
+                ...gameState.units.filter(u => u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.COMMAND_CENTER)
+            ];
         } else {
-            // Unknown unit type - try cities as fallback
-            validSites = gameState.pois.filter(p =>
-                p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY);
+            validSites = gameState.pois.filter(p => p.ownerFactionId === gameState.localPlayerId && p.type === POIType.CITY);
         }
 
         if (validSites.length > 0) {
@@ -343,197 +525,34 @@ export const useGameLoop = () => {
                 lng: spawnLng + (Math.random() - 0.5) * 0.05,
                 unitId: `UNIT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
             };
-
             const action = createAction(gameState.localPlayerId, 'SPAWN_UNIT', payload);
-            executeAndBroadcast(action);
+            setGameState(prev => applyAction(prev, action));
+            NetworkService.broadcastAction(action);
             AudioService.playUiClick();
-        }
-    };
-
-    const handleMapClick = (lat: number, lng: number) => {
-        if (gameState.gameMode === 'PLACING_STRUCTURE') {
-            if (!gameState.placementType) return;
-
-            const type = gameState.placementType;
-            const playerUnits = gameState.units.filter(u => u.factionId === gameState.localPlayerId);
-
-            if (!TerrainService.isValidPlacement(type, lat, lng, gameState.pois, playerUnits, gameState.localPlayerId)) {
-                alert("Invalid location! Check terrain type and ensure you're within control area of a city or HQ.");
-                AudioService.playAlert();
-                return;
-            }
-
-            const payload: BuildStructurePayload = {
-                structureType: type,
-                lat,
-                lng,
-                unitId: `STRUCT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-            };
-
-            const action = createAction(gameState.localPlayerId, 'BUILD_STRUCTURE', payload);
-            executeAndBroadcast(action);
-
-            setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
-            AudioService.playSuccess();
-        }
-        else if (gameState.gameMode === 'PLAYING') {
-            // Move units
-            if (selectedUnitIds.length > 0) {
-                const payload: MoveUnitsPayload = {
-                    unitIds: selectedUnitIds,
-                    targetLat: lat,
-                    targetLng: lng,
-                    isBoosting: false
-                };
-
-                const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
-                executeAndBroadcast(action);
-                AudioService.playUiClick();
-            }
+        } else {
+            AudioService.playAlert();
         }
     };
 
     const handleUnitAction = (actionType: string, unitId: string) => {
-        console.log('[HANDLE UNIT ACTION]', actionType, unitId);
-
-        // Handle Deployment Actions (Troop Transport / Carrier)
-        if (actionType === 'DEPLOY_TANK' || actionType === 'DEPLOY_INFANTRY' || actionType === 'DEPLOY_SPECOPS') {
+        if (actionType.startsWith('DEPLOY')) {
             const unit = gameState.units.find(u => u.id === unitId);
             if (!unit) return;
-
             let type = UnitClass.INFANTRY;
             if (actionType === 'DEPLOY_TANK') type = UnitClass.GROUND_TANK;
             if (actionType === 'DEPLOY_SPECOPS') type = UnitClass.SPECIAL_FORCES;
 
-            const cost = UNIT_CONFIG[type].cost;
-            const faction = gameState.factions.find(f => f.id === gameState.localPlayerId);
-
-            if (faction && faction.gold >= (cost?.gold || 0) && faction.oil >= (cost?.oil || 0)) {
-                // Execute Deployment
-                const payload: SpawnUnitPayload = {
-                    unitClass: type,
-                    lat: unit.position.lat + (Math.random() - 0.5) * 0.02,
-                    lng: unit.position.lng + (Math.random() - 0.5) * 0.02,
-                    unitId: `DEPLOYED-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    factionId: gameState.localPlayerId
-                };
-
-                const action = createAction(gameState.localPlayerId, 'SPAWN_UNIT', payload);
-                executeAndBroadcast(action);
-                AudioService.playUiClick();
-            } else {
-                console.error('[UNIT ACTION] Insufficient funds');
-                AudioService.playError();
-            }
-        }
-    };
-
-    const handlePoiClick = (poiId: string) => {
-        if (gameState.gameMode === 'SELECT_BASE') {
-            const poi = gameState.pois.find(p => p.id === poiId);
-
-            // CRITICAL: Only allow selecting UNCLAIMED cities (ownerFactionId is undefined/null)
-            if (poi && poi.type === POIType.CITY && !poi.ownerFactionId) {
-                console.log('[HANDLE POI CLICK] Selecting base:', poi.name);
-
-                const payload: SelectBasePayload = {
-                    poiId,
-                    hqUnitId: `HQ-${gameState.localPlayerId}-${Date.now()}`
-                };
-
-                const action = createAction(gameState.localPlayerId, 'SELECT_BASE', payload);
-                executeAndBroadcast(action);
-
-                setCenter({ lat: poi.position.lat, lng: poi.position.lng });
-
-                // AFTER player selects: Assign bots to random cities and convert remaining to NEUTRAL
-                setTimeout(() => {
-                    setGameState(prev => {
-                        let nextPois = [...prev.pois];
-                        let nextUnits = [...prev.units];
-                        const botFactions = prev.pendingBotFactions || [];
-
-                        // Get unassigned cities (exclude player's selected city)
-                        const unassignedCities = nextPois.filter(p =>
-                            p.type === POIType.CITY &&
-                            !p.ownerFactionId &&
-                            p.id !== poiId
-                        );
-
-                        console.log('[POST-SELECT] Assigning', botFactions.length, 'bots to cities from', unassignedCities.length, 'available');
-
-                        // Assign cities to bots
-                        const shuffledCities = [...unassignedCities].sort(() => Math.random() - 0.5);
-
-                        botFactions.forEach((botId, idx) => {
-                            if (idx < shuffledCities.length) {
-                                const city = shuffledCities[idx];
-                                city.ownerFactionId = botId;
-                                city.tier = 1;
-
-                                // Spawn HQ for bot
-                                const hq = spawnUnit(UnitClass.COMMAND_CENTER, city.position.lat, city.position.lng, botId);
-                                nextUnits.push(hq);
-
-                                // Spawn Guard for bot
-                                const guard = spawnUnit(UnitClass.INFANTRY, city.position.lat + 0.01, city.position.lng + 0.01, botId);
-                                nextUnits.push(guard);
-
-                                console.log('[POST-SELECT] Assigned', city.name, 'to bot', botId);
-                            }
-                        });
-
-                        // Convert remaining unclaimed cities to NEUTRAL and spawn defenders
-                        nextPois.forEach(city => {
-                            if (city.type === POIType.CITY && !city.ownerFactionId) {
-                                city.ownerFactionId = 'NEUTRAL';
-
-                                // Spawn tier-based defenders
-                                const tier = city.tier || 3;
-                                let defenders: UnitClass[] = [];
-
-                                if (tier === 1) {
-                                    defenders = [UnitClass.GROUND_TANK, UnitClass.GROUND_TANK, UnitClass.INFANTRY, UnitClass.INFANTRY];
-                                } else if (tier === 2) {
-                                    defenders = [UnitClass.GROUND_TANK, UnitClass.INFANTRY];
-                                } else {
-                                    defenders = [UnitClass.INFANTRY];
-                                }
-
-                                defenders.forEach(unitClass => {
-                                    const offsetLat = (Math.random() - 0.5) * 0.02;
-                                    const offsetLng = (Math.random() - 0.5) * 0.02;
-                                    const defender = spawnUnit(
-                                        unitClass,
-                                        city.position.lat + offsetLat,
-                                        city.position.lng + offsetLng,
-                                        'NEUTRAL_DEFENDER'
-                                    );
-                                    defender.autoMode = 'DEFEND';
-                                    defender.autoTarget = true;
-                                    defender.homePosition = { lat: city.position.lat, lng: city.position.lng };
-                                    nextUnits.push(defender);
-                                });
-                            }
-                        });
-
-                        console.log('[POST-SELECT] Final unit count:', nextUnits.length);
-
-                        return {
-                            ...prev,
-                            gameMode: 'PLAYING',
-                            pois: nextPois,
-                            units: nextUnits,
-                            pendingBotFactions: undefined // Clear pending
-                        };
-                    });
-                }, 100);
-
-                AudioService.playSuccess();
-            } else if (poi && poi.ownerFactionId) {
-                console.log('[HANDLE POI CLICK] City already claimed:', poi.name, 'by', poi.ownerFactionId);
-                AudioService.playError();
-            }
+            const payload: SpawnUnitPayload = {
+                unitClass: type,
+                lat: unit.position.lat + (Math.random() - 0.5) * 0.02,
+                lng: unit.position.lng + (Math.random() - 0.5) * 0.02,
+                unitId: `DEPLOYED-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                factionId: gameState.localPlayerId
+            };
+            const action = createAction(gameState.localPlayerId, 'SPAWN_UNIT', payload);
+            setGameState(prev => applyAction(prev, action));
+            NetworkService.broadcastAction(action);
+            AudioService.playUiClick();
         }
     };
 
@@ -544,21 +563,15 @@ export const useGameLoop = () => {
                 targetId,
                 isPoi
             };
-
             const action = createAction(gameState.localPlayerId, 'ATTACK_TARGET', payload);
-            executeAndBroadcast(action);
+            setGameState(prev => applyAction(prev, action));
+            NetworkService.broadcastAction(action);
             AudioService.playSuccess();
         }
     };
 
-
-    const handleAllianceRequest = (targetFactionId: string) => {
-        // TODO: Implement alliance system
-    };
-
-    const setDifficulty = (diff: Difficulty) => {
-        // TODO: Implement difficulty setting
-    };
+    const handleAllianceRequest = (targetFactionId: string) => { };
+    const setDifficulty = (diff: Difficulty) => { };
 
     return {
         gameState,

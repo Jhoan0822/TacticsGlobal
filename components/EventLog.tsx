@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { LogMessage } from '../types';
 
@@ -7,23 +6,45 @@ interface Props {
 }
 
 const EventLog: React.FC<Props> = ({ messages }) => {
-    const visibleMessages = messages.slice(-5); // Show last 5
+    const visibleMessages = messages.slice(-5);
+
+    const getIcon = (type: string) => {
+        switch (type) {
+            case 'alert': return '⚠️';
+            case 'success': return '✅';
+            default: return '📡';
+        }
+    };
 
     return (
-        <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-1 pointer-events-none w-80">
-            {visibleMessages.map(msg => {
-                let colorClass = 'text-slate-300 border-slate-600 bg-slate-900/50';
-                if (msg.type === 'alert') colorClass = 'text-red-300 border-red-900/50 bg-red-900/30';
-                if (msg.type === 'success') colorClass = 'text-green-300 border-green-900/50 bg-green-900/30';
+        <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-2 pointer-events-none w-96">
+            {visibleMessages.map((msg, idx) => {
+                let colorClass = 'notification-card info border-l-cyan-500';
+                if (msg.type === 'alert') colorClass = 'notification-card alert border-l-red-500';
+                if (msg.type === 'success') colorClass = 'notification-card success border-l-green-500';
 
                 return (
-                    <div key={msg.id} className={`px-3 py-1.5 rounded border backdrop-blur-sm text-xs font-mono shadow-sm animate-fade-in ${colorClass}`}>
-                        <span className="opacity-70 text-[10px] mr-2">{new Date(msg.timestamp).toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit'})}</span>
-                        {msg.text}
+                    <div
+                        key={msg.id}
+                        className={`${colorClass} px-4 py-3 rounded-lg backdrop-blur-md text-sm shadow-xl animate-slide-in-right`}
+                        style={{ animationDelay: `${idx * 50}ms` }}
+                    >
+                        <div className="flex items-start gap-3">
+                            <span className="text-base">{getIcon(msg.type)}</span>
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[10px] text-slate-500 font-mono">
+                                        {new Date(msg.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    </span>
+                                </div>
+                                <p className="text-slate-200 text-xs leading-relaxed">{msg.text}</p>
+                            </div>
+                        </div>
                     </div>
                 );
             })}
         </div>
     );
 };
+
 export default EventLog;
