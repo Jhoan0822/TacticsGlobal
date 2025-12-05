@@ -876,17 +876,89 @@ const playMusicMode = async (mode: MusicMode) => {
 // ============================================
 // DYNAMIC SYNTH MUSIC SYSTEM
 // Distinct music for: Menu, Lobby, Peace, Combat
-// Slower tempo, more melodic like Bastion/C&C Generals
+// With TACTICSOPS signature motif for brand identity
 // ============================================
 
-// Musical scales and constants
-const D_MINOR = [147, 165, 175, 196, 220, 233, 262, 294]; // D3 E3 F3 G3 A3 Bb3 C4 D4
-const D_DORIAN = [147, 165, 175, 196, 220, 247, 262, 294]; // D3 E3 F3 G3 A3 B3 C4 D4
+// Musical scales - multiple for variety
+const SCALES = {
+    dMinor: [147, 165, 175, 196, 220, 233, 262, 294],      // D3 E3 F3 G3 A3 Bb3 C4 D4
+    dDorian: [147, 165, 175, 196, 220, 247, 262, 294],     // D E F G A B C D
+    aMinor: [110, 123, 131, 147, 165, 175, 196, 220],      // A2 B2 C3 D3 E3 F3 G3 A3
+    ePhyrgian: [165, 175, 196, 220, 247, 262, 294, 330],   // E F G A B C D E
+};
+
+// ★★★ TACTICSOPS SIGNATURE MOTIF ★★★
+// This distinctive arpeggio is the game's audio fingerprint
+// Players will instantly recognize "That's TacticsOPS!"
+const TACTICSOPS_SIGNATURE = [294, 349, 440, 349, 294, 262]; // D4-F4-A4-F4-D4-C4 (recognizable rising/falling)
+const SIGNATURE_RHYTHM = [0, 150, 300, 500, 650, 850]; // Timing for signature notes
+
+// Chord progressions for variety - randomly selected
+const CHORD_PROGRESSIONS = [
+    [[147, 220, 294], [175, 220, 294], [165, 220, 330], [196, 247, 392]],  // i - III - v - VII
+    [[147, 220, 294], [196, 247, 294], [175, 233, 349], [147, 220, 294]],  // i - VII - VI - i
+    [[147, 220, 294], [165, 220, 262], [175, 220, 294], [196, 247, 392]],  // i - ii - III - VII
+    [[175, 233, 349], [165, 220, 330], [147, 220, 294], [196, 262, 392]],  // VI - v - i - VII
+];
+
 let synthMeasure = 0;
 let synthMode: 'menu' | 'lobby' | 'peace' | 'combat' = 'peace';
 let lastCombatEvent = 0;
 let isUnderAttack = false;
 let isAttacking = false;
+let currentProgression = 0;
+let signaturePlayCount = 0;
+
+// Play the TacticsOPS signature motif
+const playSignatureMotif = () => {
+    const audio = getContext();
+
+    TACTICSOPS_SIGNATURE.forEach((freq, i) => {
+        setTimeout(() => {
+            if (!isMusicPlaying) return;
+
+            const osc = audio.createOscillator();
+            const oscGain = audio.createGain();
+            const filter = audio.createBiquadFilter();
+
+            // Distinctive bell-like tone for the signature
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audio.currentTime);
+
+            // Add harmonic for richness
+            const harmonic = audio.createOscillator();
+            const harmGain = audio.createGain();
+            harmonic.type = 'triangle';
+            harmonic.frequency.setValueAtTime(freq * 2, audio.currentTime);
+            harmGain.gain.setValueAtTime(0.02, audio.currentTime);
+            harmGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.3);
+
+            filter.type = 'lowpass';
+            filter.frequency.value = 2000;
+            filter.Q.value = 1;
+
+            // Bell envelope
+            oscGain.gain.setValueAtTime(0.12, audio.currentTime);
+            oscGain.gain.exponentialRampToValueAtTime(0.02, audio.currentTime + 0.15);
+            oscGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.5);
+
+            osc.connect(filter);
+            filter.connect(oscGain);
+            harmonic.connect(harmGain);
+            if (musicGain) {
+                oscGain.connect(musicGain);
+                harmGain.connect(musicGain);
+            }
+
+            osc.start();
+            harmonic.start();
+            osc.stop(audio.currentTime + 0.5);
+            harmonic.stop(audio.currentTime + 0.35);
+        }, SIGNATURE_RHYTHM[i]);
+    });
+
+    signaturePlayCount++;
+};
 
 // Start synth with specific mode
 const startFallbackSynthMode = (mode: 'menu' | 'lobby' | 'peace' | 'combat') => {
@@ -894,6 +966,9 @@ const startFallbackSynthMode = (mode: 'menu' | 'lobby' | 'peace' | 'combat') => 
     synthMode = mode;
     useFallbackSynth = true;
     isMusicPlaying = true;
+
+    // Randomize chord progression for variety
+    currentProgression = Math.floor(Math.random() * CHORD_PROGRESSIONS.length);
 
     switch (mode) {
         case 'menu':
@@ -910,28 +985,29 @@ const startFallbackSynthMode = (mode: 'menu' | 'lobby' | 'peace' | 'combat') => 
 };
 
 // ============================================
-// MENU MUSIC - Calm, atmospheric, ambient
+// MENU MUSIC - Calm, atmospheric, with signature
 // ============================================
 const startMenuSynth = () => {
     const audio = getContext();
     beatCount = 0;
+    signaturePlayCount = 0;
 
     musicGain = audio.createGain();
-    musicGain.gain.setValueAtTime(getMusicVolume() * 0.6, audio.currentTime); // Boosted for audibility
+    musicGain.gain.setValueAtTime(getMusicVolume() * 0.6, audio.currentTime);
     musicGain.connect(audio.destination);
 
-    // Ambient pad - slow evolving drone
+    // Play signature motif at start of menu!
+    setTimeout(playSignatureMotif, 1000);
+
+    // Ambient pad with random chord selection
     const createAmbientPad = () => {
         if (!isMusicPlaying || !useFallbackSynth || synthMode !== 'menu') return;
 
-        const chords = [
-            [147, 220, 294],  // Dm
-            [175, 220, 294],  // F/A
-            [165, 220, 330],  // Am/E
-            [196, 247, 392],  // G
-        ];
+        const progression = CHORD_PROGRESSIONS[currentProgression];
+        const chord = progression[synthMeasure % progression.length];
 
-        const chord = chords[synthMeasure % chords.length];
+        // Add subtle random variation to chord voicing
+        const variation = Math.random() > 0.7 ? 12 : 0; // Sometimes octave shift
 
         chord.forEach((freq, i) => {
             const osc = audio.createOscillator();
@@ -939,53 +1015,64 @@ const startMenuSynth = () => {
             const filter = audio.createBiquadFilter();
 
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq, audio.currentTime);
+            osc.frequency.setValueAtTime(freq + variation, audio.currentTime);
 
-            // Very slow LFO for gentle movement
+            // Very slow LFO for gentle movement - randomized
             const lfo = audio.createOscillator();
             const lfoGain = audio.createGain();
-            lfo.frequency.value = 0.1 + Math.random() * 0.1;
-            lfoGain.gain.value = 2;
+            lfo.frequency.value = 0.05 + Math.random() * 0.15;
+            lfoGain.gain.value = 1 + Math.random() * 2;
             lfo.connect(lfoGain);
             lfoGain.connect(osc.frequency);
             lfo.start();
 
             filter.type = 'lowpass';
-            filter.frequency.value = 800;
+            filter.frequency.value = 600 + Math.random() * 400;
 
-            // Very slow fade in and out - 8 seconds
+            // Randomize duration slightly
+            const duration = 6 + Math.random() * 3;
             oscGain.gain.setValueAtTime(0, audio.currentTime);
-            oscGain.gain.linearRampToValueAtTime(0.06 - i * 0.015, audio.currentTime + 2);
-            oscGain.gain.setValueAtTime(0.06 - i * 0.015, audio.currentTime + 6);
-            oscGain.gain.linearRampToValueAtTime(0, audio.currentTime + 8);
+            oscGain.gain.linearRampToValueAtTime(0.08 - i * 0.02, audio.currentTime + 2);
+            oscGain.gain.setValueAtTime(0.08 - i * 0.02, audio.currentTime + duration - 2);
+            oscGain.gain.linearRampToValueAtTime(0, audio.currentTime + duration);
 
             osc.connect(filter);
             filter.connect(oscGain);
             if (musicGain) oscGain.connect(musicGain);
 
             osc.start();
-            osc.stop(audio.currentTime + 8.5);
-            setTimeout(() => { try { lfo.stop(); } catch (e) { } }, 8500);
+            osc.stop(audio.currentTime + duration + 0.5);
+            setTimeout(() => { try { lfo.stop(); } catch (e) { } }, (duration + 0.5) * 1000);
         });
 
         synthMeasure++;
-        const timeoutId = window.setTimeout(createAmbientPad, 7000);
+
+        // Change progression occasionally for more variety
+        if (synthMeasure % 8 === 0 && Math.random() > 0.5) {
+            currentProgression = Math.floor(Math.random() * CHORD_PROGRESSIONS.length);
+        }
+
+        const timeoutId = window.setTimeout(createAmbientPad, 5000 + Math.random() * 2000);
         musicLoopTimeouts.push(timeoutId);
     };
 
-    // Occasional melodic phrase - very slow, Bastion-style
+    // Melodic phrases from random scales
     const createMenuMelody = () => {
         if (!isMusicPlaying || !useFallbackSynth || synthMode !== 'menu') return;
 
-        if (Math.random() > 0.5) {
-            const melodies = [
-                [294, 330, 294],           // D E D
-                [294, 262, 220],           // D C A
-                [330, 294, 262, 294],      // E D C D
-            ];
+        if (Math.random() > 0.4) {
+            // Pick random scale for this phrase
+            const scaleNames = Object.keys(SCALES) as (keyof typeof SCALES)[];
+            const scale = SCALES[scaleNames[Math.floor(Math.random() * scaleNames.length)]];
 
-            const melody = melodies[Math.floor(Math.random() * melodies.length)];
-            const noteDuration = 1.2; // Very slow notes
+            // Generate random melodic phrase from scale
+            const phraseLength = 3 + Math.floor(Math.random() * 3);
+            const melody: number[] = [];
+            for (let i = 0; i < phraseLength; i++) {
+                melody.push(scale[Math.floor(Math.random() * scale.length)]);
+            }
+
+            const noteDuration = 0.8 + Math.random() * 0.6;
 
             melody.forEach((freq, i) => {
                 setTimeout(() => {
@@ -995,11 +1082,11 @@ const startMenuSynth = () => {
                     const oscGain = audio.createGain();
 
                     osc.type = 'sine';
-                    osc.frequency.setValueAtTime(freq, audio.currentTime);
+                    osc.frequency.setValueAtTime(freq * 2, audio.currentTime); // Octave up for clarity
 
                     oscGain.gain.setValueAtTime(0, audio.currentTime);
-                    oscGain.gain.linearRampToValueAtTime(0.04, audio.currentTime + 0.1);
-                    oscGain.gain.setValueAtTime(0.04, audio.currentTime + noteDuration - 0.3);
+                    oscGain.gain.linearRampToValueAtTime(0.05, audio.currentTime + 0.08);
+                    oscGain.gain.setValueAtTime(0.05, audio.currentTime + noteDuration - 0.2);
                     oscGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + noteDuration);
 
                     osc.connect(oscGain);
@@ -1007,17 +1094,22 @@ const startMenuSynth = () => {
 
                     osc.start();
                     osc.stop(audio.currentTime + noteDuration);
-                }, i * noteDuration * 1000);
+                }, i * noteDuration * 800);
             });
         }
 
-        const nextMelody = 12000 + Math.random() * 8000; // 12-20 seconds
+        // Occasionally replay signature motif in menu
+        if (signaturePlayCount < 3 && Math.random() > 0.85) {
+            setTimeout(playSignatureMotif, 500);
+        }
+
+        const nextMelody = 10000 + Math.random() * 10000;
         const timeoutId = window.setTimeout(createMenuMelody, nextMelody);
         musicLoopTimeouts.push(timeoutId);
     };
 
     createAmbientPad();
-    setTimeout(createMenuMelody, 5000);
+    setTimeout(createMenuMelody, 4000);
 };
 
 // ============================================
