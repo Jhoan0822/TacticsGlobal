@@ -998,49 +998,18 @@ export const useGameLoop = () => {
                 }
             });
 
-            // Issue move command for valid units - apply formation offsets directly
+            // Issue move command for valid units - ALWAYS use applyAction to clear formations
             if (validUnits.length > 0) {
-                // When units have formation offsets, set destinations directly (bypass standard action)
-                if (hasFormation) {
-                    setGameState(prev => ({
-                        ...prev,
-                        units: prev.units.map(u => {
-                            const valid = validUnits.find(v => v.id === u.id);
-                            if (valid) {
-                                return {
-                                    ...u,
-                                    destination: { lat: valid.destLat, lng: valid.destLng },
-                                    isBoosting,
-                                    targetId: null
-                                };
-                            }
-                            return u;
-                        })
-                    }));
-
-                    // Broadcast individual moves for multiplayer sync
-                    validUnits.forEach(v => {
-                        const payload: MoveUnitsPayload = {
-                            unitIds: [v.id],
-                            targetLat: v.destLat,
-                            targetLng: v.destLng,
-                            isBoosting
-                        };
-                        const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
-                        NetworkService.broadcastAction(action);
-                    });
-                } else {
-                    // No formation - use standard behavior (all units to same point)
-                    const payload: MoveUnitsPayload = {
-                        unitIds: validUnits.map(v => v.id),
-                        targetLat: lat,
-                        targetLng: lng,
-                        isBoosting
-                    };
-                    const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
-                    setGameState(prev => applyAction(prev, action));
-                    NetworkService.broadcastAction(action);
-                }
+                // Standard move - clears formations via applyAction
+                const payload: MoveUnitsPayload = {
+                    unitIds: validUnits.map(v => v.id),
+                    targetLat: lat,
+                    targetLng: lng,
+                    isBoosting
+                };
+                const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
+                setGameState(prev => applyAction(prev, action));
+                NetworkService.broadcastAction(action);
                 AudioService.playMoveCommand();
             }
 

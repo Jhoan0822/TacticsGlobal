@@ -72,12 +72,13 @@ export function applyAction(state: GameState, action: GameAction): GameState {
                         targetId: null,
                         isBoosting: payload.isBoosting ?? false,
                         autoMode: 'NONE', // Reset to manual on player command
-                        autoTarget: false
+                        autoTarget: false,
+                        formationOffset: undefined // Clear formation - manual override
                     };
                 }
                 return u;
             });
-            console.log('[APPLY ACTION] Units moved:', payload.unitIds.length, '(mode reset to MANUAL)');
+            console.log('[APPLY ACTION] Units moved:', payload.unitIds.length, '(mode reset to MANUAL, formation cleared)');
             break;
         }
 
