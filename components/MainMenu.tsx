@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { SCENARIOS, FACTION_PRESETS, DIFFICULTY_CONFIG, PERSONALITY_CONFIG } from '../constants';
 import { NetworkService } from '../services/networkService';
-import { Scenario, Faction, LobbyState, LobbyPlayer, Difficulty, BotPersonality } from '../types';
+import { PhantomHostService } from '../services/phantomHostService';
+import { BattleRoyaleService } from '../services/battleRoyaleService';
+import { Scenario, Faction, LobbyState, LobbyPlayer, Difficulty, BotPersonality, POI, POIType } from '../types';
 
 // Helper to assign random personality to bots
 const getRandomPersonality = (): BotPersonality => {
@@ -13,8 +15,8 @@ interface MainMenuProps {
     onStartGame: (scenario: Scenario, localPlayerId: string, factions: Faction[], isMultiplayer: boolean, isHost: boolean) => void;
     lobbyState: LobbyState;
     setLobbyState: React.Dispatch<React.SetStateAction<LobbyState>>;
-    networkMode: 'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | null;
-    setNetworkMode: React.Dispatch<React.SetStateAction<'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | null>>;
+    networkMode: 'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | 'BATTLE_ROYALE' | null;
+    setNetworkMode: React.Dispatch<React.SetStateAction<'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | 'BATTLE_ROYALE' | null>>;
 }
 
 const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbyState, networkMode, setNetworkMode }) => {
@@ -22,6 +24,17 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
     const [connectionStatus, setConnectionStatus] = useState<string>('');
     const [selectedFactionIndex, setSelectedFactionIndex] = useState<number>(0);
     const [peerId, setPeerId] = useState<string>('');
+
+    // Battle Royale State
+    const [brLoading, setBrLoading] = useState<boolean>(false);
+    const [brConnected, setBrConnected] = useState<boolean>(false);
+    const [brBots, setBrBots] = useState<Faction[]>([]);
+    const [brCities, setBrCities] = useState<POI[]>([]);
+    const [brJoinOption, setBrJoinOption] = useState<'TAKEOVER_BOT' | 'NEW_FACTION'>('TAKEOVER_BOT');
+    const [brSelectedBot, setBrSelectedBot] = useState<string>('');
+    const [brSelectedCity, setBrSelectedCity] = useState<string>('');
+    const [brRoundTime, setBrRoundTime] = useState<number>(300000);
+    const [brScenario, setBrScenario] = useState<string>('WORLD');
 
     useEffect(() => {
         const checkId = setInterval(() => {
@@ -249,6 +262,20 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                 </span>
                             </button>
 
+                            {/* BATTLE ROYALE - Hot Join Mode */}
+                            <button
+                                onClick={() => setNetworkMode('BATTLE_ROYALE')}
+                                className="group relative px-8 py-6 rounded-2xl bg-gradient-to-r from-orange-900/30 to-red-900/30 border border-orange-500/40 text-xl font-bold tracking-wider transition-all duration-300 hover:border-orange-400/80 hover:shadow-[0_0_40px_rgba(249,115,22,0.5)] hover:scale-[1.03] overflow-hidden backdrop-blur-sm"
+                            >
+                                <span className="absolute inset-0 bg-gradient-to-r from-orange-500/0 via-orange-500/20 to-orange-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
+                                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-t from-orange-500/10 to-transparent"></span>
+                                <span className="relative flex items-center justify-center gap-4">
+                                    <span className="text-2xl group-hover:scale-110 transition-transform">⚔️</span>
+                                    BATTLE ROYALE
+                                </span>
+                                <span className="absolute -top-1 -right-1 px-2 py-0.5 text-[10px] bg-red-500 text-white rounded-full font-bold tracking-wider animate-pulse">HOT JOIN</span>
+                            </button>
+
                             <button
                                 onClick={() => setNetworkMode('MULTI_JOIN')}
                                 className="group relative px-8 py-6 rounded-2xl bg-gradient-to-r from-purple-900/30 to-violet-900/30 border border-purple-500/40 text-xl font-bold tracking-wider transition-all duration-300 hover:border-purple-400/80 hover:shadow-[0_0_40px_rgba(168,85,247,0.5)] hover:scale-[1.03] overflow-hidden backdrop-blur-sm"
@@ -279,6 +306,214 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 </div>
             );
         }
+    }
+
+    // ============================================
+    // BATTLE ROYALE JOIN SCREEN
+    // ============================================
+    if (networkMode === 'BATTLE_ROYALE') {
+        // Connect to phantom host on mount
+        useEffect(() => {
+            if (!brConnected && !brLoading) {
+                setBrLoading(true);
+                setConnectionStatus('Initializing Battle Royale...');
+
+                // Initialize or connect to Battle Royale room
+                PhantomHostService.initialize()
+                    .then((roomId) => {
+                        setBrConnected(true);
+                        setBrLoading(false);
+                        setConnectionStatus(`Connected to room: ${roomId}`);
+
+                        // Get initial state
+                        const brState = PhantomHostService.getBRState();
+                        const gameState = PhantomHostService.getGameState();
+
+                        if (brState && gameState) {
+                            setBrBots(gameState.factions.filter(f => f.type === 'BOT'));
+                            setBrCities(gameState.pois.filter(p =>
+                                p.type === POIType.CITY &&
+                                (p.ownerFactionId === 'NEUTRAL' ||
+                                    gameState.factions.some(f => f.id === p.ownerFactionId && f.type === 'BOT'))
+                            ));
+                            setBrScenario(brState.config.scenarioRotation[brState.currentScenarioIndex]);
+                            setBrRoundTime(brState.config.roundDurationMs - (Date.now() - brState.roundStartTime));
+                        }
+                    })
+                    .catch((err) => {
+                        setBrLoading(false);
+                        setConnectionStatus(`Error: ${err.message}`);
+                    });
+            }
+        }, [networkMode]);
+
+        // Update round timer
+        useEffect(() => {
+            const timer = setInterval(() => {
+                const brState = PhantomHostService.getBRState();
+                if (brState) {
+                    const remaining = brState.config.roundDurationMs - (Date.now() - brState.roundStartTime);
+                    setBrRoundTime(Math.max(0, remaining));
+                }
+            }, 1000);
+            return () => clearInterval(timer);
+        }, [brConnected]);
+
+        const formatTime = (ms: number) => {
+            const secs = Math.floor(ms / 1000);
+            const mins = Math.floor(secs / 60);
+            const remainingSecs = secs % 60;
+            return `${mins}:${remainingSecs.toString().padStart(2, '0')}`;
+        };
+
+        const handleBRJoin = () => {
+            if (brJoinOption === 'TAKEOVER_BOT' && brSelectedBot) {
+                BattleRoyaleService.requestTakeoverBot(brSelectedBot);
+            } else if (brJoinOption === 'NEW_FACTION' && brSelectedCity) {
+                BattleRoyaleService.requestNewFaction(brSelectedCity);
+            }
+            // The PhantomHost will handle the request and send full state
+            // We'll transition to game view when we receive confirmation
+        };
+
+        return (
+            <div className="relative flex flex-col items-center justify-center h-screen bg-tactical-900 text-white overflow-hidden">
+                <div className="absolute inset-0 bg-grid-animated opacity-20"></div>
+                <div className="absolute inset-0 bg-radial-glow"></div>
+
+                <div className="relative z-10 animate-slide-up">
+                    <h2 className="font-display text-4xl font-bold mb-2 text-center tracking-wider" style={{ textShadow: '0 0 20px rgb(249 115 22 / 0.5)' }}>
+                        <span className="text-orange-400">⚔️ BATTLE ROYALE</span>
+                    </h2>
+                    <p className="text-center text-slate-400 mb-6 text-sm">Hot Join • 5-Minute Rounds • Rotating Maps</p>
+
+                    <div className="glass-panel rounded-2xl p-8 w-[520px] space-y-6 border border-orange-500/20">
+                        {/* Status Bar */}
+                        <div className="flex justify-between items-center bg-black/30 rounded-xl p-4 border border-slate-700/30">
+                            <div className="flex items-center gap-3">
+                                <span className={`w-3 h-3 rounded-full ${brConnected ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
+                                <span className="text-sm text-slate-300">{connectionStatus}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-orange-400">
+                                <span className="text-xs text-slate-400">TIME LEFT:</span>
+                                <span className="font-mono text-lg font-bold">{formatTime(brRoundTime)}</span>
+                            </div>
+                        </div>
+
+                        {/* Current Scenario */}
+                        <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
+                            <p className="text-xs text-slate-400 mb-1">CURRENT SCENARIO</p>
+                            <p className="text-xl font-bold text-cyan-400">{SCENARIOS[brScenario as keyof typeof SCENARIOS]?.name || brScenario}</p>
+                        </div>
+
+                        {/* Join Options */}
+                        <div>
+                            <label className="block text-xs text-slate-400 mb-3 tracking-wider uppercase">Join Option</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    onClick={() => setBrJoinOption('TAKEOVER_BOT')}
+                                    className={`p-4 rounded-xl text-center transition-all border ${brJoinOption === 'TAKEOVER_BOT'
+                                            ? 'bg-orange-500/20 border-orange-500/50 text-orange-300'
+                                            : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
+                                        }`}
+                                >
+                                    <span className="text-2xl block mb-1">🤖</span>
+                                    <span className="text-sm font-bold">Take Over Bot</span>
+                                    <span className="text-xs block text-slate-500 mt-1">Inherit units & cities</span>
+                                </button>
+                                <button
+                                    onClick={() => setBrJoinOption('NEW_FACTION')}
+                                    className={`p-4 rounded-xl text-center transition-all border ${brJoinOption === 'NEW_FACTION'
+                                            ? 'bg-orange-500/20 border-orange-500/50 text-orange-300'
+                                            : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
+                                        }`}
+                                >
+                                    <span className="text-2xl block mb-1">🏰</span>
+                                    <span className="text-sm font-bold">New Faction</span>
+                                    <span className="text-xs block text-slate-500 mt-1">Choose a starting city</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Bot Selection */}
+                        {brJoinOption === 'TAKEOVER_BOT' && (
+                            <div>
+                                <label className="block text-xs text-slate-400 mb-3 tracking-wider uppercase">Select Bot to Replace</label>
+                                <div className="space-y-2 max-h-40 overflow-y-auto">
+                                    {brBots.length === 0 ? (
+                                        <p className="text-slate-500 text-center py-4">No bots available</p>
+                                    ) : (
+                                        brBots.map((bot) => (
+                                            <button
+                                                key={bot.id}
+                                                onClick={() => setBrSelectedBot(bot.id)}
+                                                className={`w-full p-3 rounded-lg flex items-center gap-3 transition-all border ${brSelectedBot === bot.id
+                                                        ? 'bg-orange-500/20 border-orange-500/50'
+                                                        : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-700/40'
+                                                    }`}
+                                            >
+                                                <div className="w-4 h-8 rounded" style={{ backgroundColor: bot.color }}></div>
+                                                <span className="font-bold">{bot.name}</span>
+                                                {brSelectedBot === bot.id && <span className="ml-auto text-orange-400">✓</span>}
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* City Selection */}
+                        {brJoinOption === 'NEW_FACTION' && (
+                            <div>
+                                <label className="block text-xs text-slate-400 mb-3 tracking-wider uppercase">Select Starting City</label>
+                                <div className="space-y-2 max-h-40 overflow-y-auto">
+                                    {brCities.length === 0 ? (
+                                        <p className="text-slate-500 text-center py-4">No cities available</p>
+                                    ) : (
+                                        brCities.slice(0, 10).map((city) => (
+                                            <button
+                                                key={city.id}
+                                                onClick={() => setBrSelectedCity(city.id)}
+                                                className={`w-full p-3 rounded-lg flex items-center gap-3 transition-all border ${brSelectedCity === city.id
+                                                        ? 'bg-orange-500/20 border-orange-500/50'
+                                                        : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-700/40'
+                                                    }`}
+                                            >
+                                                <span className="text-xl">🏙️</span>
+                                                <span className="font-bold">{city.name}</span>
+                                                <span className="ml-auto text-xs text-slate-500">
+                                                    {city.ownerFactionId === 'NEUTRAL' ? 'Neutral' : 'Bot-owned'}
+                                                </span>
+                                                {brSelectedCity === city.id && <span className="text-orange-400">✓</span>}
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Join Button */}
+                        <button
+                            onClick={handleBRJoin}
+                            disabled={brLoading || (brJoinOption === 'TAKEOVER_BOT' ? !brSelectedBot : !brSelectedCity)}
+                            className="w-full px-8 py-4 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 rounded-xl text-lg font-bold tracking-wider shadow-lg transition-all hover:shadow-[0_0_25px_rgba(249,115,22,0.4)] hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+                        >
+                            {brLoading ? 'CONNECTING...' : 'JOIN BATTLE'}
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                setNetworkMode(null);
+                                setBrConnected(false);
+                            }}
+                            className="w-full text-slate-400 hover:text-white text-sm py-2 transition-colors"
+                        >
+                            ← Back to Menu
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     // ============================================

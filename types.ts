@@ -253,7 +253,7 @@ export interface LobbyState {
   scenarioId: string;
   difficulty: Difficulty;
   botCount: number;
-  gameMode: 'DOMINATION' | 'SURVIVAL';
+  gameMode: 'DOMINATION' | 'SURVIVAL' | 'BATTLE_ROYALE';
 }
 
 export interface Scenario {
@@ -270,8 +270,45 @@ export interface Scenario {
 // NETWORK TYPES
 export type NetworkRequest =
   | { type: 'REQUEST_SELECT_BASE'; poiId: string; playerId: string }
-  | { type: 'REQUEST_READY'; playerId: string; isReady: boolean };
+  | { type: 'REQUEST_READY'; playerId: string; isReady: boolean }
+  | { type: 'BR_JOIN_REQUEST'; peerId: string; option: 'NEW_FACTION' | 'TAKEOVER_BOT'; targetCityId?: string; botFactionId?: string };
 
 export type NetworkResponse =
   | { type: 'BASE_SELECTED'; poiId: string; factionId: string }
-  | { type: 'GAME_MODE_UPDATE'; mode: GameMode; startTime?: number };
+  | { type: 'GAME_MODE_UPDATE'; mode: GameMode; startTime?: number }
+  | { type: 'BR_JOIN_OPTIONS'; bots: Faction[]; cities: POI[] }
+  | { type: 'BR_PLAYER_JOINED'; factionId: string; peerId: string; tookOverBot: boolean }
+  | { type: 'BR_ROUND_END'; winnerId: string; reason: string; score: number }
+  | { type: 'BR_NEW_ROUND'; startTime: number; scenarioId: string };
+
+// =============================================
+// BATTLE ROYALE TYPES
+// =============================================
+
+export interface BattleRoyaleConfig {
+  maxPlayers: number;          // 20
+  minBots: number;             // 2 (when no players)
+  roundDurationMs: number;     // 300000 (5 minutes)
+  isPermanent: boolean;        // true - room never closes
+  scenarioRotation: string[];  // ['WORLD', 'EUROPE', 'ASIA', ...]
+}
+
+export interface BattleRoyalePlayer {
+  peerId: string;
+  factionId: string;
+  joinTime: number;
+  isBot: boolean;
+  isPhantomHost: boolean;      // True for the invisible host keeping room alive
+  replacedBotId?: string;      // If player took over a bot
+}
+
+export interface BattleRoyaleState {
+  roomId: string;
+  config: BattleRoyaleConfig;
+  players: BattleRoyalePlayer[];
+  roundStartTime: number;
+  roundNumber: number;         // Tracks which round for scenario rotation
+  currentScenarioIndex: number;// Index into scenarioRotation array
+  isRoundActive: boolean;
+  lastWinner?: string;         // Faction ID of last round winner
+}

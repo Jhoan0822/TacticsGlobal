@@ -26,7 +26,7 @@ const App: React.FC = () => {
         botCount: 3,
         gameMode: 'DOMINATION'
     });
-    const [networkMode, setNetworkMode] = useState<'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | null>(null);
+    const [networkMode, setNetworkMode] = useState<'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | 'BATTLE_ROYALE' | null>(null);
 
     const {
         gameState,
