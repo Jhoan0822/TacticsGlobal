@@ -4,6 +4,7 @@ import { UNIT_CONFIG } from '../constants';
 import { processGameTick, spawnUnit } from '../services/gameLogic';
 import { NetworkService } from '../services/networkService';
 import { AudioService } from '../services/audioService';
+import { AudioEvents } from '../services/audioEventDispatcher';
 import { TerrainService } from '../services/terrainService';
 import { GameAction, createAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload } from '../services/schemas';
 import { applyAction } from '../services/applyAction';
@@ -42,6 +43,11 @@ export const useGameLoop = () => {
     const animationFrameId = useRef<number>(0);
     const lastTickTime = useRef<number>(0);
     const isPaused = useRef<boolean>(false);
+
+    // Audio tracking
+    const seenExplosionIds = useRef<Set<string>>(new Set());
+    const seenProjectileIds = useRef<Set<string>>(new Set());
+    const lastAudioTick = useRef<number>(0);
 
     // ============================================
     // NETWORK EVENT LISTENER
@@ -226,6 +232,68 @@ export const useGameLoop = () => {
                                 finalFactions = finalFactions.map(f =>
                                     f.id === bot.id ? { ...f, ready: true } : f
                                 );
+
+                                // =============================================
+                                // SPAWN STARTING UNITS FOR BOT!
+                                // =============================================
+                                // Command Center
+                                finalUnits.push({
+                                    id: `HQ-${bot.id}-${Date.now()}`,
+                                    unitClass: UnitClass.COMMAND_CENTER,
+                                    factionId: bot.id,
+                                    position: { lat: city.position.lat, lng: city.position.lng },
+                                    heading: 0,
+                                    hp: UNIT_CONFIG[UnitClass.COMMAND_CENTER].hp,
+                                    maxHp: UNIT_CONFIG[UnitClass.COMMAND_CENTER].maxHp,
+                                    attack: UNIT_CONFIG[UnitClass.COMMAND_CENTER].attack,
+                                    range: UNIT_CONFIG[UnitClass.COMMAND_CENTER].range,
+                                    speed: 0,
+                                    vision: UNIT_CONFIG[UnitClass.COMMAND_CENTER].vision
+                                });
+
+                                // THREE INFANTRY (needed for capture!)
+                                for (let inf = 0; inf < 3; inf++) {
+                                    finalUnits.push({
+                                        id: `INF-${bot.id}-${inf}-${Date.now()}`,
+                                        unitClass: UnitClass.INFANTRY,
+                                        factionId: bot.id,
+                                        position: {
+                                            lat: city.position.lat + (Math.random() - 0.5) * 0.03,
+                                            lng: city.position.lng + (Math.random() - 0.5) * 0.03
+                                        },
+                                        heading: Math.random() * 360,
+                                        hp: UNIT_CONFIG[UnitClass.INFANTRY].hp,
+                                        maxHp: UNIT_CONFIG[UnitClass.INFANTRY].maxHp,
+                                        attack: UNIT_CONFIG[UnitClass.INFANTRY].attack,
+                                        range: UNIT_CONFIG[UnitClass.INFANTRY].range,
+                                        speed: UNIT_CONFIG[UnitClass.INFANTRY].speed,
+                                        vision: UNIT_CONFIG[UnitClass.INFANTRY].vision,
+                                        canCapture: true
+                                    });
+                                }
+
+                                // TWO TANKS (escorts)
+                                for (let tank = 0; tank < 2; tank++) {
+                                    finalUnits.push({
+                                        id: `TANK-${bot.id}-${tank}-${Date.now()}`,
+                                        unitClass: UnitClass.GROUND_TANK,
+                                        factionId: bot.id,
+                                        position: {
+                                            lat: city.position.lat + (Math.random() - 0.5) * 0.04,
+                                            lng: city.position.lng + (Math.random() - 0.5) * 0.04
+                                        },
+                                        heading: Math.random() * 360,
+                                        hp: UNIT_CONFIG[UnitClass.GROUND_TANK].hp,
+                                        maxHp: UNIT_CONFIG[UnitClass.GROUND_TANK].maxHp,
+                                        attack: UNIT_CONFIG[UnitClass.GROUND_TANK].attack,
+                                        range: UNIT_CONFIG[UnitClass.GROUND_TANK].range,
+                                        speed: UNIT_CONFIG[UnitClass.GROUND_TANK].speed,
+                                        vision: UNIT_CONFIG[UnitClass.GROUND_TANK].vision,
+                                        canCapture: true
+                                    });
+                                }
+
+                                console.log(`[HOST] Spawned starting army for bot ${bot.id}: 1 HQ + 3 Infantry + 2 Tanks`);
                             }
                         });
 
@@ -312,7 +380,7 @@ export const useGameLoop = () => {
                 if (res.factionId === prev.localPlayerId) {
                     const poi = nextPois.find(p => p.id === res.poiId);
                     if (poi) setCenter({ lat: poi.position.lat, lng: poi.position.lng });
-                    AudioService.playSuccess();
+                    AudioService.playCityCapture();
                 }
 
                 return { ...prev, pois: nextPois };
@@ -520,6 +588,7 @@ export const useGameLoop = () => {
         });
 
         NetworkService.isHost = !isClient;
+        AudioService.startBackgroundMusic();
         AudioService.playSuccess();
     };
 
@@ -528,6 +597,80 @@ export const useGameLoop = () => {
         animationFrameId.current = requestAnimationFrame(gameLoop);
         return () => cancelAnimationFrame(animationFrameId.current);
     }, [gameLoop]);
+
+    // ============================================
+    // COMBAT AUDIO EFFECTS (Triggered by state changes)
+    // ============================================
+    useEffect(() => {
+        // Throttle audio to prevent spam
+        if (gameState.gameTick - lastAudioTick.current < 3) return;
+        if (gameState.gameMode !== 'PLAYING') return;
+
+        const localId = gameState.localPlayerId;
+
+        // --- EXPLOSION SOUNDS ---
+        gameState.explosions.forEach(explosion => {
+            if (!seenExplosionIds.current.has(explosion.id)) {
+                seenExplosionIds.current.add(explosion.id);
+
+                // Play explosion sound based on size
+                // Explosions are player-relevant if they're near player units or cities
+                const isNearPlayer = gameState.units.some(u =>
+                    u.factionId === localId &&
+                    Math.abs(u.position.lat - explosion.position.lat) < 0.5 &&
+                    Math.abs(u.position.lng - explosion.position.lng) < 0.5
+                ) || gameState.pois.some(p =>
+                    p.ownerFactionId === localId &&
+                    Math.abs(p.position.lat - explosion.position.lat) < 0.5 &&
+                    Math.abs(p.position.lng - explosion.position.lng) < 0.5
+                );
+
+                if (isNearPlayer) {
+                    AudioService.playExplosion(explosion.size);
+                    AudioService.increaseCombatIntensity(explosion.size === 'LARGE' ? 0.15 : 0.08);
+                }
+            }
+        });
+
+        // Cleanup old explosion IDs (prevent memory leak)
+        if (seenExplosionIds.current.size > 100) {
+            const currentIds = new Set(gameState.explosions.map(e => e.id));
+            seenExplosionIds.current.forEach(id => {
+                if (!currentIds.has(id)) seenExplosionIds.current.delete(id);
+            });
+        }
+
+        // --- WEAPON FIRE SOUNDS ---
+        gameState.projectiles.forEach(projectile => {
+            if (!seenProjectileIds.current.has(projectile.id)) {
+                seenProjectileIds.current.add(projectile.id);
+
+                // Find the source unit to check if it belongs to player or targets player
+                const sourceUnit = gameState.units.find(u => u.id === projectile.fromId);
+                const targetUnit = gameState.units.find(u => u.id === projectile.toId);
+                const targetPoi = gameState.pois.find(p => p.id === projectile.toId);
+
+                const involvesPlayer =
+                    sourceUnit?.factionId === localId ||
+                    targetUnit?.factionId === localId ||
+                    targetPoi?.ownerFactionId === localId;
+
+                if (involvesPlayer) {
+                    AudioService.playWeaponFire(projectile.weaponType);
+                }
+            }
+        });
+
+        // Cleanup old projectile IDs
+        if (seenProjectileIds.current.size > 100) {
+            const currentIds = new Set(gameState.projectiles.map(p => p.id));
+            seenProjectileIds.current.forEach(id => {
+                if (!currentIds.has(id)) seenProjectileIds.current.delete(id);
+            });
+        }
+
+        lastAudioTick.current = gameState.gameTick;
+    }, [gameState.explosions, gameState.projectiles, gameState.gameTick]);
 
     // ============================================
     // USER ACTIONS
@@ -556,23 +699,46 @@ export const useGameLoop = () => {
             const type = gameState.placementType;
             const playerUnits = gameState.units.filter(u => u.factionId === gameState.localPlayerId);
 
-            if (!TerrainService.isValidPlacement(type, lat, lng, gameState.pois, playerUnits, gameState.localPlayerId)) {
-                alert("Invalid location!");
-                AudioService.playAlert();
-                return;
+            let spawnLat = lat;
+            let spawnLng = lng;
+
+            // PORT PLACEMENT: Click on land near coast → snap to nearest coast point
+            if (type === UnitClass.PORT) {
+                const coastPoint = TerrainService.findNearestCoastPoint(lat, lng);
+                if (!coastPoint) {
+                    alert("No coast nearby! Click closer to the water.");
+                    AudioService.playAlert();
+                    return;
+                }
+                spawnLat = coastPoint.lat;
+                spawnLng = coastPoint.lng;
+
+                // Verify the coast point is in player's territory
+                if (!TerrainService.isValidPlacement(type, spawnLat, spawnLng, gameState.pois, playerUnits, gameState.localPlayerId)) {
+                    alert("Coast not in your territory!");
+                    AudioService.playAlert();
+                    return;
+                }
+            } else {
+                // AIRBASE / MILITARY_BASE: Use original validation at clicked location
+                if (!TerrainService.isValidPlacement(type, lat, lng, gameState.pois, playerUnits, gameState.localPlayerId)) {
+                    alert("Invalid location!");
+                    AudioService.playAlert();
+                    return;
+                }
             }
 
             const payload: BuildStructurePayload = {
                 structureType: type,
-                lat,
-                lng,
+                lat: spawnLat,
+                lng: spawnLng,
                 unitId: `STRUCT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
             };
             const action = createAction(gameState.localPlayerId, 'BUILD_STRUCTURE', payload);
             setGameState(prev => applyAction(prev, action)); // Optimistic
             NetworkService.broadcastAction(action);
             setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
-            AudioService.playSuccess();
+            AudioService.playUnitSpawn();
         }
         else if (gameState.gameMode === 'PLAYING') {
             // Move Units
@@ -586,7 +752,7 @@ export const useGameLoop = () => {
                 const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
                 setGameState(prev => applyAction(prev, action)); // Optimistic
                 NetworkService.broadcastAction(action);
-                AudioService.playUiClick();
+                AudioService.playMoveCommand();
             }
         }
     };
@@ -641,7 +807,7 @@ export const useGameLoop = () => {
             const action = createAction(gameState.localPlayerId, 'SPAWN_UNIT', payload);
             setGameState(prev => applyAction(prev, action));
             NetworkService.broadcastAction(action);
-            AudioService.playUiClick();
+            AudioService.playUnitSpawn();
         } else {
             AudioService.playAlert();
         }
@@ -665,7 +831,7 @@ export const useGameLoop = () => {
             const action = createAction(gameState.localPlayerId, 'SPAWN_UNIT', payload);
             setGameState(prev => applyAction(prev, action));
             NetworkService.broadcastAction(action);
-            AudioService.playUiClick();
+            AudioService.playUnitSpawn();
         }
     };
 
@@ -679,7 +845,7 @@ export const useGameLoop = () => {
             const action = createAction(gameState.localPlayerId, 'ATTACK_TARGET', payload);
             setGameState(prev => applyAction(prev, action));
             NetworkService.broadcastAction(action);
-            AudioService.playSuccess();
+            AudioService.playAttackCommand();
         }
     };
 

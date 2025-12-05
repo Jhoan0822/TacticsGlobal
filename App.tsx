@@ -99,6 +99,21 @@ const App: React.FC = () => {
         }
     }, [lobbyState, networkMode]);
 
+    // --- VICTORY/DEFEAT AUDIO ---
+    const prevGameResult = useRef<string | null>(null);
+    useEffect(() => {
+        if (gameState.gameResult && gameState.gameResult !== prevGameResult.current) {
+            if (gameState.gameResult === 'VICTORY') {
+                AudioService.stopBackgroundMusic();
+                setTimeout(() => AudioService.playVictory(), 300);
+            } else if (gameState.gameResult === 'DEFEAT') {
+                AudioService.stopBackgroundMusic();
+                setTimeout(() => AudioService.playDefeat(), 300);
+            }
+            prevGameResult.current = gameState.gameResult;
+        }
+    }, [gameState.gameResult]);
+
     const handleStartGame = (scenario: Scenario, localPlayerId: string, factions: Faction[], isMultiplayer: boolean, isHost: boolean) => {
         // Host generates POIs here or inside startGame?
         // startGame handles it. But for multiplayer host, we need to generate them and send them.
@@ -146,7 +161,7 @@ const App: React.FC = () => {
             } else {
                 setSelectedUnitIds([id]);
             }
-            AudioService.playUiClick();
+            AudioService.playUnitSelect();
         }
     };
 
@@ -180,7 +195,7 @@ const App: React.FC = () => {
             return !unit || !nonSelectableTypes.includes(unit.unitClass);
         });
         setSelectedUnitIds(filteredIds);
-        if (filteredIds.length > 0) AudioService.playUiClick();
+        if (filteredIds.length > 0) AudioService.playUnitSelect();
     };
 
     // Keyboard Shortcuts

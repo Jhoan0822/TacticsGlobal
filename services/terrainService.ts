@@ -232,6 +232,68 @@ export const TerrainService = {
         return { lat, lng };
     },
 
+    /**
+     * Find the nearest coast point (water adjacent to land) for port placement.
+     * Player clicks on land near coast → returns the nearest water point on the coastline.
+     * @param lat Click latitude
+     * @param lng Click longitude
+     * @param maxRangeKm Maximum search radius in km (default ~30km)
+     * @returns Coast point coordinates or null if no coast found nearby
+     */
+    findNearestCoastPoint: (lat: number, lng: number, maxRangeKm: number = 30): { lat: number, lng: number } | null => {
+        // Convert km to degrees (approximate: 1 degree ≈ 111km)
+        const maxRangeDeg = maxRangeKm / 111;
+
+        // Step sizes for search (degrees) - roughly 2km, 5km, 10km, 15km, 20km, 25km, 30km
+        const steps = [0.02, 0.05, 0.1, 0.15, 0.2, 0.25, maxRangeDeg];
+        // 16 directions for finer search
+        const angles = [0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5, 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5];
+
+        // Track best coast point found (closest to original click)
+        let bestPoint: { lat: number, lng: number } | null = null;
+        let bestDist = Infinity;
+
+        for (const step of steps) {
+            for (const angle of angles) {
+                const radians = angle * Math.PI / 180;
+                const testLat = lat + step * Math.cos(radians);
+                const testLng = lng + step * Math.sin(radians);
+
+                // Check if this point is in water
+                if (TerrainService.isPointLand(testLat, testLng)) {
+                    continue; // Skip land points
+                }
+
+                // Check if this water point is adjacent to land (= coastline)
+                const adjacentOffset = 0.015; // ~1.5km check for adjacent land
+                const hasAdjacentLand =
+                    TerrainService.isPointLand(testLat + adjacentOffset, testLng) ||
+                    TerrainService.isPointLand(testLat - adjacentOffset, testLng) ||
+                    TerrainService.isPointLand(testLat, testLng + adjacentOffset) ||
+                    TerrainService.isPointLand(testLat, testLng - adjacentOffset);
+
+                if (hasAdjacentLand) {
+                    // This is a coast point! Check if it's the closest one
+                    const dist = Math.sqrt(Math.pow(testLat - lat, 2) + Math.pow(testLng - lng, 2));
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestPoint = { lat: testLat, lng: testLng };
+                    }
+                }
+            }
+
+            // If we found a coast point at this step level, return it
+            // (no need to search further - we want the closest)
+            if (bestPoint) {
+                console.log(`[TERRAIN] Found coast point at distance ${(bestDist * 111).toFixed(1)}km from click`);
+                return bestPoint;
+            }
+        }
+
+        console.log('[TERRAIN] No coast point found within range');
+        return null;
+    },
+
     debugTerrain: (lat: number, lng: number, pois: POI[]) => {
         const isLand = TerrainService.isPointLand(lat, lng);
         const terrain = TerrainService.getTerrainType(lat, lng, pois);

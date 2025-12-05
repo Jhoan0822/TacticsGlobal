@@ -1,6 +1,6 @@
 
-import { GameState, Faction, POIType, UnitClass, Difficulty } from '../types';
-import { AI_CONFIG, UNIT_CONFIG, POI_CONFIG, DIFFICULTY_CONFIG } from '../constants';
+import { GameState, Faction, POIType, UnitClass, Difficulty, BotPersonality } from '../types';
+import { AI_CONFIG, UNIT_CONFIG, POI_CONFIG, DIFFICULTY_CONFIG, PERSONALITY_CONFIG } from '../constants';
 import { spawnUnit } from './gameLogic';
 
 // AI DIRECTOR: Manages pacing, waves, and overall difficulty
@@ -99,7 +99,11 @@ export class AIDirector {
             }
         });
 
-        // Spawn a diverse squad
+        // Spawn a diverse squad - PERSONALITY AWARE
+        const personality = faction.personality || BotPersonality.TACTICAL;
+        const personalityConfig = PERSONALITY_CONFIG[personality];
+        const preferredUnits = personalityConfig.preferredUnits || [UnitClass.GROUND_TANK, UnitClass.INFANTRY];
+
         for (let i = 0; i < squadSize; i++) {
             // Unit type variety - check if faction has airbase for air units
             const hasAirbase = gameState.units.some(u =>
@@ -109,16 +113,32 @@ export class AIDirector {
             let unitType: UnitClass;
             const rand = Math.random();
 
-            if (rand < 0.35) {
-                unitType = UnitClass.GROUND_TANK; // Main battle force
-            } else if (rand < 0.55) {
-                unitType = UnitClass.INFANTRY; // Capture capability
-            } else if (rand < 0.70 && hasAirbase) {
-                unitType = UnitClass.FIGHTER_JET; // Air support (only with airbase)
-            } else if (rand < 0.85 && hasAirbase) {
-                unitType = UnitClass.HELICOPTER; // Versatile (only with airbase)
+            // Personality-based unit selection
+            if (personality === BotPersonality.AGGRESSIVE) {
+                // Aggressive: Fast attack units
+                if (rand < 0.30) unitType = UnitClass.FIGHTER_JET;
+                else if (rand < 0.60) unitType = UnitClass.GROUND_TANK;
+                else if (rand < 0.80) unitType = UnitClass.INFANTRY;
+                else unitType = UnitClass.HELICOPTER;
+            } else if (personality === BotPersonality.DEFENSIVE) {
+                // Defensive: Ranged and fortification units
+                if (rand < 0.30) unitType = UnitClass.MISSILE_LAUNCHER;
+                else if (rand < 0.50) unitType = UnitClass.SAM_LAUNCHER;
+                else if (rand < 0.75) unitType = UnitClass.GROUND_TANK;
+                else unitType = UnitClass.INFANTRY;
+            } else if (personality === BotPersonality.ECONOMIC) {
+                // Economic: Capture units and heavy hitters
+                if (rand < 0.40) unitType = UnitClass.INFANTRY;
+                else if (rand < 0.70) unitType = UnitClass.GROUND_TANK;
+                else unitType = UnitClass.HEAVY_BOMBER;
             } else {
-                unitType = UnitClass.MISSILE_LAUNCHER; // Heavy support (fallback if no airbase)
+                // Tactical: Balanced combined arms
+                if (rand < 0.25) unitType = UnitClass.GROUND_TANK;
+                else if (rand < 0.40) unitType = UnitClass.INFANTRY;
+                else if (rand < 0.55 && hasAirbase) unitType = UnitClass.FIGHTER_JET;
+                else if (rand < 0.70 && hasAirbase) unitType = UnitClass.HELICOPTER;
+                else if (rand < 0.85) unitType = UnitClass.MISSILE_LAUNCHER;
+                else unitType = UnitClass.INFANTRY;
             }
 
             const offsetLat = (Math.random() - 0.5) * 0.05;
@@ -126,29 +146,32 @@ export class AIDirector {
 
             const unit = spawnUnit(unitType, spawnCity.position.lat + offsetLat, spawnCity.position.lng + offsetLng, faction.id);
 
-            // MIXED TARGETING: Some attack player, others capture neutrals
-            // Infantry ALWAYS targets neutral cities for capture (priority)
+            // PERSONALITY-BASED TARGETING
+            // ALL personalities prioritize neutral cities for capture
+            const prioritizeNeutrals = personality !== BotPersonality.AGGRESSIVE || nearestNeutral;
+
             if (unitType === UnitClass.INFANTRY && nearestNeutral) {
+                // Infantry ALWAYS targets neutral cities (capture priority)
                 unit.targetId = nearestNeutral.id;
-            } else if (i % 2 === 0 && nearestNeutral) {
-                // Half of non-infantry go capture neutrals
+            } else if (prioritizeNeutrals && nearestNeutral && (i < squadSize * 0.6 || !playerHQ)) {
+                // 60% of units go for neutrals (or all if no player target)
                 unit.targetId = nearestNeutral.id;
             } else if (playerHQ) {
                 unit.targetId = playerHQ.id;
             } else if (playerCity) {
                 unit.targetId = playerCity.id;
             } else if (nearestNeutral) {
-                // Fallback to neutral if no player
                 unit.targetId = nearestNeutral.id;
             }
 
             newUnits.push(unit);
         }
 
-        // Alert message
+        // Alert message with personality info
+        const personalityName = PERSONALITY_CONFIG[personality]?.name || 'Unknown';
         const newMessages = [...gameState.messages, {
             id: Math.random().toString(),
-            text: `[INTEL] ${faction.name} is launching an assault! (Wave ${this.waveNumber + 1})`,
+            text: `[INTEL] ${faction.name} (${personalityName}) is launching an assault! (Wave ${this.waveNumber + 1})`,
             type: 'alert',
             timestamp: Date.now()
         } as any];

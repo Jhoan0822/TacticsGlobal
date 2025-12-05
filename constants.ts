@@ -1,5 +1,5 @@
 
-import { UnitClass, UnitStats, POIType, WeaponType, Difficulty } from './types';
+import { UnitClass, UnitStats, POIType, WeaponType, Difficulty, BotPersonality } from './types';
 
 export const GAME_TICK_MS = 30; // Faster tick for "Frenetic" feel
 export const COMBAT_RADIUS_KM = 30;
@@ -31,6 +31,71 @@ export const AI_CONFIG = {
   MIN_GOLD_RESERVE: 100, // Spend everything
   THREAT_SCAN_RADIUS: 1000, // See everything
   BASE_AGGRESSION: 1.0, // Always aggressive
+};
+
+// =============================================
+// BOT PERSONALITY CONFIGURATION
+// =============================================
+export const PERSONALITY_CONFIG = {
+  [BotPersonality.ECONOMIC]: {
+    name: 'Economic',
+    goldReserve: 0.50,           // Keep 50% gold in reserve
+    defenseRatio: 0.20,         // Only 20% units defend
+    attackRatio: 0.80,          // 80% attack/expand
+    neutralPriorityBonus: 1500, // HUGE priority on neutral cities
+    enemyPriorityBonus: 100,    // Low priority on enemy cities
+    resourcePriorityBonus: 800, // High priority on gold/oil
+    threatResponseMultiplier: 0.7, // Slower threat response
+    expansionSpeed: 0.6,        // Methodical expansion
+    retreatThreshold: 0.40,     // Retreat at 40% HP
+    preferredUnits: [UnitClass.GROUND_TANK, UnitClass.HEAVY_BOMBER, UnitClass.BATTLESHIP],
+    productionDelay: 2000,      // Slow but expensive units
+  },
+  [BotPersonality.DEFENSIVE]: {
+    name: 'Defensive',
+    goldReserve: 0.35,
+    defenseRatio: 0.60,         // 60% units defend!
+    attackRatio: 0.40,
+    neutralPriorityBonus: 800,  // Nearby neutrals only
+    enemyPriorityBonus: 150,    // Only attack weak enemies
+    resourcePriorityBonus: 400,
+    threatResponseMultiplier: 2.0, // FAST threat response
+    expansionSpeed: 0.3,        // Very slow expansion
+    retreatThreshold: 0.50,     // Retreat early to preserve units
+    preferredUnits: [UnitClass.SAM_LAUNCHER, UnitClass.MISSILE_LAUNCHER, UnitClass.MILITARY_BASE],
+    productionDelay: 1000,
+  },
+  [BotPersonality.AGGRESSIVE]: {
+    name: 'Aggressive',
+    goldReserve: 0.05,          // Spend almost everything!
+    defenseRatio: 0.10,         // Minimal defense
+    attackRatio: 0.90,          // All-out attack
+    neutralPriorityBonus: 1000, // Capture neutrals fast
+    enemyPriorityBonus: 800,    // Then attack enemies
+    resourcePriorityBonus: 200, // Ignore resources
+    threatResponseMultiplier: 0.5, // Ignore threats, keep attacking
+    expansionSpeed: 1.5,        // FAST expansion
+    retreatThreshold: 0.15,     // Fight to the death
+    preferredUnits: [UnitClass.FIGHTER_JET, UnitClass.GROUND_TANK, UnitClass.INFANTRY],
+    productionDelay: 300,       // Spam units
+  },
+  [BotPersonality.TACTICAL]: {
+    name: 'Tactical',
+    goldReserve: 0.25,
+    defenseRatio: 0.35,
+    attackRatio: 0.65,
+    neutralPriorityBonus: 1200, // Prioritize neutrals
+    enemyPriorityBonus: 400,    // Then enemies
+    resourcePriorityBonus: 500,
+    threatResponseMultiplier: 1.2,
+    expansionSpeed: 0.8,
+    retreatThreshold: 0.35,
+    preferredUnits: [UnitClass.GROUND_TANK, UnitClass.FIGHTER_JET, UnitClass.MISSILE_LAUNCHER, UnitClass.INFANTRY],
+    productionDelay: 800,
+    useCombinedArms: true,      // Coordinates unit types
+    useFlankingManeuvers: true, // Attacks from multiple directions
+    focusFireEnabled: true,     // All units attack same target
+  },
 };
 
 export const TERRITORY_CONFIG = {

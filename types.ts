@@ -54,6 +54,39 @@ export interface Faction {
   lastAiUpdate?: number;
   maxUnits?: number;
   ready?: boolean; // For multiplayer lobby/start logic
+  // Advanced Bot AI Fields
+  personality?: BotPersonality;
+  strategicGoals?: StrategicGoal[];
+  threatMemory?: ThreatMemory[];
+}
+
+// =============================================
+// ADVANCED BOT AI TYPES
+// =============================================
+
+export enum BotPersonality {
+  ECONOMIC = 'ECONOMIC',      // Prioritizes resources, builds slow but powerful
+  DEFENSIVE = 'DEFENSIVE',    // Fortifies territories, counter-attacks only
+  AGGRESSIVE = 'AGGRESSIVE',  // Early rush, constant pressure
+  TACTICAL = 'TACTICAL'       // Balanced, combined arms, flanking maneuvers
+}
+
+export interface StrategicGoal {
+  id: string;
+  type: 'CAPTURE_NEUTRAL' | 'CAPTURE_ENEMY' | 'DEFEND_CITY' | 'DESTROY_ARMY' | 'SECURE_RESOURCE' | 'EXPAND_NAVY';
+  targetId: string;
+  priority: number; // Higher = more urgent
+  assignedUnitIds: string[];
+  createdAt: number;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+}
+
+export interface ThreatMemory {
+  factionId: string;
+  lastAttackTime: number;
+  targetPoiId?: string; // What POI did they attack?
+  threatLevel: number; // 0-100
+  unitsSpotted: number;
 }
 
 export interface POI {

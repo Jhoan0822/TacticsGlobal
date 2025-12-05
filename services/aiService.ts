@@ -1,7 +1,8 @@
-import { GameState, Faction, GameUnit, UnitClass, POI, POIType, Difficulty } from '../types';
-import { UNIT_CONFIG, POI_CONFIG, DIPLOMACY, AI_CONFIG, GAME_TICK_MS, DIFFICULTY_CONFIG } from '../constants';
+import { GameState, Faction, GameUnit, UnitClass, POI, POIType, Difficulty, BotPersonality } from '../types';
+import { UNIT_CONFIG, POI_CONFIG, DIPLOMACY, AI_CONFIG, GAME_TICK_MS, DIFFICULTY_CONFIG, PERSONALITY_CONFIG } from '../constants';
 import { spawnUnit, getNearbyUnits, getDistanceKm } from './gameLogic';
 import { AIDirector } from './aiDirector';
+import { updateAdvancedBotAI } from './AdvancedBotAI';
 
 // ===========================================
 // SMART AI CONFIGURATION
@@ -26,34 +27,27 @@ const ARMY_COMPOSITION = {
   NAVY: 0.10, // 10% - if coastal
 };
 
-// --- CORE AI LOOP ---
+// ===========================================
+// ADVANCED AI SYSTEM (NEW)
+// ===========================================
+// This module now uses the AdvancedBotAI system for intelligent,
+// personality-driven bot behavior. Each bot has a distinct personality:
+// - ECONOMIC: Resource focused, builds powerful late game
+// - DEFENSIVE: Fortifies territory, counter-attacks only
+// - AGGRESSIVE: Constant pressure, early rush tactics
+// - TACTICAL: Combined arms, flanking, focus fire
+//
+// ALL personalities prioritize neutral city capture first!
+// ===========================================
+
+// --- CORE AI LOOP (Uses Advanced Bot AI) ---
 export const updateAI = (gameState: GameState, unitGrid?: Map<string, GameUnit[]>): GameState => {
-  // 1. Run Director (Wave spawns)
+  // 1. Run Director (Wave spawns - manages game pacing)
   let newState = AIDirector.getInstance().update(gameState);
 
-  // 2. Run Faction Logic for EVERY BOT
-  const now = Date.now();
-
-  newState.factions.forEach(faction => {
-    // ONLY process BOT factions
-    if (faction.type !== 'BOT') return;
-
-    // Throttle AI updates
-    const timeSinceLastUpdate = now - (faction.lastAiUpdate || 0);
-    if (timeSinceLastUpdate < 300) return; // 300ms between AI ticks
-
-    faction.lastAiUpdate = now;
-
-    // Evaluate strategic situation
-    const situation = evaluateSituation(faction, newState);
-    const targets = evaluateTargets(faction, newState, situation);
-
-    // Smart production based on situation
-    newState = executeSmartProduction(faction, newState, situation);
-
-    // Strategic movement with defense/attack balance
-    newState = executeStrategicMovement(faction, newState, targets, situation);
-  });
+  // 2. Run Advanced Bot AI for all BOT factions
+  // Replaces basic logic with intelligent, personality-driven decisions
+  newState = updateAdvancedBotAI(newState);
 
   return newState;
 };

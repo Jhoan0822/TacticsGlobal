@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { SCENARIOS, FACTION_PRESETS, DIFFICULTY_CONFIG } from '../constants';
+import { SCENARIOS, FACTION_PRESETS, DIFFICULTY_CONFIG, PERSONALITY_CONFIG } from '../constants';
 import { NetworkService } from '../services/networkService';
-import { Scenario, Faction, LobbyState, LobbyPlayer, Difficulty } from '../types';
+import { Scenario, Faction, LobbyState, LobbyPlayer, Difficulty, BotPersonality } from '../types';
+
+// Helper to assign random personality to bots
+const getRandomPersonality = (): BotPersonality => {
+    const personalities = Object.values(BotPersonality);
+    return personalities[Math.floor(Math.random() * personalities.length)];
+};
 
 interface MainMenuProps {
     onStartGame: (scenario: Scenario, localPlayerId: string, factions: Faction[], isMultiplayer: boolean, isHost: boolean) => void;
@@ -42,15 +48,21 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
         const otherFactions = FACTION_PRESETS
             .filter((_, i) => i !== selectedFactionIndex)
             .slice(0, lobbyState.botCount)
-            .map((preset, i) => ({
-                ...preset,
-                id: `BOT_${i}`,
-                type: 'BOT' as const,
-                gold: 10000,
-                oil: 1000,
-                relations: { 'PLAYER': -100 },
-                aggression: 1.0
-            }));
+            .map((preset, i) => {
+                const personality = getRandomPersonality();
+                return {
+                    ...preset,
+                    id: `BOT_${i}`,
+                    type: 'BOT' as const,
+                    gold: 10000,
+                    oil: 1000,
+                    relations: { 'PLAYER': -100 },
+                    aggression: 1.0,
+                    personality,
+                    strategicGoals: [],
+                    threatMemory: []
+                };
+            });
 
         const allFactions = [playerFaction, ...otherFactions] as Faction[];
         onStartGame(scenario, 'PLAYER', allFactions, false, true);
@@ -80,6 +92,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
 
         for (let i = 0; i < lobbyState.botCount; i++) {
             if (i >= availablePresets.length) break;
+            const personality = getRandomPersonality();
             factions.push({
                 ...availablePresets[i],
                 id: `BOT_${i}`,
@@ -87,7 +100,10 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                 gold: 10000,
                 oil: 1000,
                 relations: {},
-                aggression: 1.0
+                aggression: 1.0,
+                personality,
+                strategicGoals: [],
+                threatMemory: []
             });
         }
 
