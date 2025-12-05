@@ -9,6 +9,7 @@ import GameCanvas from './GameCanvas';
 import TerrainLayer from './TerrainLayer';
 import TerrainDebugLayer from './TerrainDebugLayer';
 import SmoothZoom from './SmoothZoom';
+import FogOfWarCanvas from './FogOfWarCanvas';
 
 interface Props {
     units: GameUnit[];
@@ -30,6 +31,7 @@ interface Props {
     placementType?: UnitClass | null;
     localPlayerId: string;
     nukesInFlight?: NuclearMissile[];
+    fogOfWarEnabled?: boolean;
 }
 
 // DRAG SELECTION OVERLAY
@@ -302,7 +304,7 @@ const MapController: React.FC<{ center: { lat: number; lng: number }, gameMode: 
 
 const MemoizedMapController = React.memo(MapController);
 
-const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, explosions, center, selectedUnitIds, onUnitClick, onUnitRightClick, onUnitAction, onMapClick, onMapRightClick, onPoiClick, onPoiRightClick, onMultiSelect, gameMode, placementType, localPlayerId, nukesInFlight = [] }) => {
+const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, explosions, center, selectedUnitIds, onUnitClick, onUnitRightClick, onUnitAction, onMapClick, onMapRightClick, onPoiClick, onPoiRightClick, onMultiSelect, gameMode, placementType, localPlayerId, nukesInFlight = [], fogOfWarEnabled = false }) => {
     return (
         <div className="w-full h-screen relative z-0">
             <MapContainer
@@ -325,6 +327,17 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
                 <TerrainLayer />
                 {/* LAYER 1.5: TERRAIN DEBUG (Z: 250) - Toggle with F3 */}
                 <TerrainDebugLayer pois={pois} />
+
+                {/* LAYER 2.5: FOG OF WAR (Z: 550) */}
+                {gameMode === 'PLAYING' && (
+                    <FogOfWarCanvas
+                        units={units}
+                        pois={pois}
+                        localPlayerId={localPlayerId}
+                        enabled={fogOfWarEnabled}
+                    />
+                )}
+
                 {/* LAYER 3: UNITS & POIS (Z: 600) */}
                 <GameCanvas
                     units={units}
