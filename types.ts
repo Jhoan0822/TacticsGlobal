@@ -155,6 +155,13 @@ export interface GameUnit extends UnitStats {
   visualPosition?: { lat: number; lng: number };
   visualHeading?: number;
   lastServerUpdate?: number; // Timestamp of last authoritative update
+
+  // === TRANSPORT & CARRIER LOGIC ===
+  cargoUnits?: string[];      // IDs of units loaded in this transport/carrier
+  transportState?: 'IDLE' | 'LOADING' | 'TRANSPORTING' | 'DROPPING';
+  dropZone?: { lat: number; lng: number }; // Where to unload units
+  parentCarrierId?: string;   // For drones - which carrier spawned them
+  isLoaded?: boolean;         // Is this unit loaded into a transport
 }
 
 export interface Projectile {

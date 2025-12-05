@@ -12,6 +12,68 @@ import { UNIT_CONFIG, DIPLOMACY } from '../constants';
 
 const DEFEND_RADIUS = 80; // km - defend/patrol radius around home
 
+// ===========================================
+// FOCUS FIRE SYSTEM
+// ===========================================
+// Units coordinate to kill the most dangerous or weakest enemy first
+
+interface PriorityTarget {
+    enemy: GameUnit;
+    score: number;
+    distance: number;
+}
+
+/**
+ * Select the highest priority target for focus fire
+ * Priority factors: low HP > high damage > support units > distance
+ */
+function selectPriorityTarget(
+    unit: GameUnit,
+    enemies: GameUnit[],
+    maxRange: number
+): PriorityTarget | null {
+    if (enemies.length === 0) return null;
+
+    const scoredEnemies: PriorityTarget[] = enemies.map(enemy => {
+        const distance = getDistanceKm(
+            unit.position.lat, unit.position.lng,
+            enemy.position.lat, enemy.position.lng
+        );
+
+        let score = 0;
+
+        // Factor 1: LOW HP (finish them off!) - 50 points max
+        const hpRatio = enemy.hp / (enemy.maxHp || 100);
+        score += (1 - hpRatio) * 50;
+
+        // Factor 2: HIGH DAMAGE DEALERS - 30 points max
+        const enemyStats = UNIT_CONFIG[enemy.unitClass];
+        const attackPower = enemyStats?.attack || 10;
+        score += Math.min(30, attackPower / 2);
+
+        // Factor 3: PRIORITY UNIT TYPES - bonus points
+        if (enemy.unitClass === UnitClass.MOBILE_COMMAND_CENTER) score += 25; // Kill HQ/support
+        if (enemy.unitClass === UnitClass.MISSILE_LAUNCHER) score += 20; // Kill artillery
+        if (enemy.unitClass === UnitClass.HEAVY_BOMBER) score += 20; // Kill bombers
+        if (enemy.unitClass === UnitClass.MISSILE_SILO) score += 30; // Kill nukes!
+
+        // Factor 4: DISTANCE PENALTY - closer is better
+        score -= distance / 10;
+
+        // Factor 5: IN RANGE BONUS - prefer targets we can hit now
+        if (distance <= maxRange) score += 15;
+
+        return { enemy, score, distance };
+    });
+
+    // Sort by score descending
+    scoredEnemies.sort((a, b) => b.score - a.score);
+
+    // Return highest priority within reasonable range (1.5x max range)
+    const inRangeTargets = scoredEnemies.filter(t => t.distance <= maxRange * 1.5);
+    return inRangeTargets[0] || scoredEnemies[0];
+}
+
 export const processPlayerAutoControl = (gameState: GameState): GameState => {
     // Process units with auto-modes from any faction
     const autoUnits = gameState.units.filter(u =>
@@ -209,11 +271,14 @@ export const processPlayerAutoControl = (gameState: GameState): GameState => {
             }
 
             case 'ATTACK': {
-                // Hunt mode: always find a target anywhere on map
-                if (closestEnemy) {
+                // FOCUS FIRE: Hunt mode with priority targeting
+                // Instead of just closest, find the best tactical target
+                const priorityTarget = selectPriorityTarget(unit, enemies, range);
+
+                if (priorityTarget) {
                     updatedUnits[unitIdx] = {
                         ...updatedUnits[unitIdx],
-                        targetId: closestEnemy.id,
+                        targetId: priorityTarget.enemy.id,
                         destination: null
                     };
                 }

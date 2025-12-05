@@ -219,6 +219,22 @@ interface GameAnalysis {
     needsMilitaryBase: boolean;
     needsNavalPower: boolean;
     needsAirPower: boolean;
+
+    // === RESOURCE DESIRES (NEW!) ===
+    resourceDesires: ResourceDesire[];
+}
+
+// =============================================================================
+// RESOURCE DESIRE SYSTEM
+// =============================================================================
+interface ResourceDesire {
+    poiId: string;
+    type: 'GOLD_MINE' | 'OIL_RIG';
+    position: { lat: number; lng: number };
+    score: number;           // Weighted desire score
+    distance: number;        // Distance from home
+    contested: boolean;      // Enemy units nearby
+    currentOwner: string | undefined;
 }
 
 function analyzeGameState(faction: Faction, state: GameState, brain: BotBrain): GameAnalysis {
@@ -381,13 +397,81 @@ function analyzeGameState(faction: Faction, state: GameState, brain: BotBrain): 
         needsPort,
         needsMilitaryBase,
         needsNavalPower,
-        needsAirPower
+        needsAirPower,
+        // Resource desires (economic gravity)
+        resourceDesires: calculateResourceDesires(faction, state, myCities)
     };
 }
 
 function isHostile(faction: Faction, otherFactionId: string): boolean {
     if (otherFactionId === 'NEUTRAL') return false;
     return (faction.relations[otherFactionId] || 0) <= DIPLOMACY.WAR_THRESHOLD;
+}
+
+/**
+ * Calculate economic "desire" for each resource on the map
+ * Resources have higher pull when AI is low on that resource type
+ */
+function calculateResourceDesires(faction: Faction, state: GameState, myCities: POI[]): ResourceDesire[] {
+    const desires: ResourceDesire[] = [];
+
+    if (myCities.length === 0) return desires;
+    const homeCity = myCities[0];
+
+    // Economic thresholds - desire increases as resources decrease
+    const goldNeed = Math.max(0, 5000 - faction.gold) / 5000; // 0-1, higher = more need
+    const oilNeed = Math.max(0, 2000 - (faction.oil || 0)) / 2000;
+
+    // Weight factors
+    const GOLD_WEIGHT = 10;
+    const OIL_WEIGHT = 15; // Oil is more valuable for advanced units
+
+    // Find all resources we don't own
+    const resources = state.pois.filter(p =>
+        (p.type === POIType.GOLD_MINE || p.type === POIType.OIL_RIG) &&
+        p.ownerFactionId !== faction.id
+    );
+
+    for (const resource of resources) {
+        const dist = getDistanceKm(
+            homeCity.position.lat, homeCity.position.lng,
+            resource.position.lat, resource.position.lng
+        );
+
+        // Check if contested (enemy units nearby)
+        const nearbyEnemies = state.units.filter(u =>
+            u.factionId !== faction.id &&
+            u.factionId !== 'NEUTRAL' &&
+            getDistanceKm(u.position.lat, u.position.lng, resource.position.lat, resource.position.lng) < 30
+        );
+        const contested = nearbyEnemies.length > 0;
+
+        // Calculate desire score using economic gravity model
+        const isGold = resource.type === POIType.GOLD_MINE;
+        const baseValue = isGold ? POI_CONFIG.GOLD_MINE.incomeGold || 10 : 0;
+        const oilValue = !isGold ? POI_CONFIG.OIL_RIG.incomeOil || 5 : 0;
+
+        // Score = (need * value * weight) - (distance penalty) - (contested penalty)
+        let score = (goldNeed * baseValue * GOLD_WEIGHT) + (oilNeed * oilValue * OIL_WEIGHT);
+        score -= dist / 20; // Distance penalty
+        if (contested) score -= 20; // Contested resources are less attractive
+        if (resource.ownerFactionId && resource.ownerFactionId !== 'NEUTRAL') score += 10; // Enemy-owned = strategic denial
+
+        desires.push({
+            poiId: resource.id,
+            type: isGold ? 'GOLD_MINE' : 'OIL_RIG',
+            position: resource.position,
+            score,
+            distance: dist,
+            contested,
+            currentOwner: resource.ownerFactionId
+        });
+    }
+
+    // Sort by score (highest first)
+    desires.sort((a, b) => b.score - a.score);
+
+    return desires;
 }
 
 // =============================================================================
@@ -488,6 +572,46 @@ function updateStrategicPlan(brain: BotBrain, analysis: GameAnalysis, faction: F
                 requiredCombat: 3,
                 createdAt: now
             });
+        }
+    }
+
+    // ================================================================
+    // PRIORITY 3: RESOURCE RAIDS (Economic Gravity)
+    // ================================================================
+    // Only pursue resources when we have:
+    // - At least 1 city secured
+    // - Low on resources (high desire score)
+    // - Enough units to spare
+    const raidTFs = brain.taskForces.filter(tf => tf.type === 'RAID');
+    const resourcesBeingRaided = new Set(raidTFs.map(tf => tf.targetId));
+
+    // Limit concurrent raids
+    const maxRaids = Math.min(2, Math.floor(analysis.idleUnits.length / 3));
+
+    if (analysis.myCities.length >= 1 && raidTFs.length < maxRaids) {
+        // Get top desired resources not already being raided
+        const topDesires = analysis.resourceDesires
+            .filter(d => !resourcesBeingRaided.has(d.poiId))
+            .filter(d => d.score > 20) // Only pursue if desire is strong enough
+            .slice(0, 2);
+
+        for (const desire of topDesires) {
+            if (raidTFs.length >= maxRaids) break;
+
+            brain.taskForces.push({
+                id: `TF_${Math.random().toString(36).substr(2, 8)}`,
+                type: 'RAID',
+                targetId: desire.poiId,
+                targetPosition: { ...desire.position },
+                unitIds: [],
+                status: 'FORMING',
+                requiredInfantry: 1, // 1 infantry to capture
+                requiredCombat: 2,   // 2 combat for protection
+                createdAt: now,
+                priority: desire.score
+            });
+
+            console.log(`[BOT AI] ${faction.name}: Created RAID TF for ${desire.type} (score: ${desire.score.toFixed(1)}, dist: ${desire.distance.toFixed(0)}km)`);
         }
     }
 
