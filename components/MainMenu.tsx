@@ -310,18 +310,49 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                 </span>
                             </button>
 
-                            {/* BATTLE ROYALE - Hot Join Mode */}
+                            {/* BATTLE ROYALE - Preview Tab */}
                             <button
                                 onClick={() => setNetworkMode('BATTLE_ROYALE')}
-                                className="group relative px-8 py-6 rounded-2xl bg-gradient-to-r from-orange-900/30 to-red-900/30 border border-orange-500/40 text-xl font-bold tracking-wider transition-all duration-300 hover:border-orange-400/80 hover:shadow-[0_0_40px_rgba(249,115,22,0.5)] hover:scale-[1.03] overflow-hidden backdrop-blur-sm"
+                                className="group relative rounded-2xl bg-gradient-to-r from-orange-900/40 to-red-900/40 border border-orange-500/40 transition-all duration-300 hover:border-orange-400/80 hover:shadow-[0_0_40px_rgba(249,115,22,0.5)] hover:scale-[1.02] overflow-hidden backdrop-blur-sm"
                             >
                                 <span className="absolute inset-0 bg-gradient-to-r from-orange-500/0 via-orange-500/20 to-orange-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
-                                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-t from-orange-500/10 to-transparent"></span>
-                                <span className="relative flex items-center justify-center gap-4">
-                                    <span className="text-2xl group-hover:scale-110 transition-transform">⚔️</span>
-                                    BATTLE ROYALE
-                                </span>
-                                <span className="absolute -top-1 -right-1 px-2 py-0.5 text-[10px] bg-red-500 text-white rounded-full font-bold tracking-wider animate-pulse">HOT JOIN</span>
+
+                                {/* Content Grid */}
+                                <div className="relative p-4">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xl">⚔️</span>
+                                            <span className="text-sm font-bold tracking-wider text-orange-300">BATTLE ROYALE</span>
+                                        </div>
+                                        <span className="px-2 py-0.5 text-[9px] bg-red-500/80 text-white rounded-full font-bold tracking-wider animate-pulse">LIVE</span>
+                                    </div>
+
+                                    {/* Preview Row */}
+                                    <div className="flex items-center gap-3">
+                                        {/* Mini Map Icon */}
+                                        <div className="w-16 h-10 rounded-lg bg-slate-800/80 border border-slate-600/50 flex items-center justify-center overflow-hidden">
+                                            <span className="text-2xl">🌍</span>
+                                        </div>
+
+                                        {/* Info */}
+                                        <div className="flex-1 text-left">
+                                            <p className="text-xs text-slate-400">Current Scenario</p>
+                                            <p className="text-sm font-bold text-cyan-400">WORLD</p>
+                                        </div>
+
+                                        {/* Timer */}
+                                        <div className="text-right">
+                                            <p className="text-xs text-slate-400">Time Left</p>
+                                            <p className="text-lg font-mono font-bold text-orange-400">5:00</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Join prompt */}
+                                    <div className="mt-3 text-center text-xs text-slate-500 group-hover:text-slate-300 transition-colors">
+                                        Click to join match →
+                                    </div>
+                                </div>
                             </button>
 
                             <button
