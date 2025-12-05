@@ -709,14 +709,23 @@ export const useGameLoop = () => {
         console.log('[JOIN BR] Local player:', existingGameState.localPlayerId);
         console.log('[JOIN BR] Game mode:', existingGameState.gameMode);
         console.log('[JOIN BR] Factions:', existingGameState.factions.map(f => f.name));
+        console.log('[JOIN BR] Units count:', existingGameState.units.length);
+        console.log('[JOIN BR] Player units:', existingGameState.units.filter(u => u.factionId === existingGameState.localPlayerId).length);
 
-        // Copy the game state and ensure it's in PLAYING mode
+        // DEEP COPY the game state to avoid reference issues
+        // Clear any stale game result to avoid immediate defeat
         const gameStateForPlayer: GameState = {
             ...existingGameState,
             gameMode: 'PLAYING', // Ensure we're in playing mode
             pendingBotFactions: [], // No pending bots for BR - they're already active
+            gameResult: null, // CRITICAL: Clear any stale game result
+            // Deep copy arrays to avoid mutation issues
+            units: [...existingGameState.units],
+            factions: [...existingGameState.factions],
+            pois: [...existingGameState.pois],
         };
 
+        console.log('[JOIN BR] Cleared gameResult, setting state...');
         setGameState(gameStateForPlayer);
 
         NetworkService.isHost = true; // BR runs locally
