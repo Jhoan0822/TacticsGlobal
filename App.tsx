@@ -314,6 +314,7 @@ const App: React.FC = () => {
                         localPlayerId={gameState.localPlayerId}
                         selectionEndTime={gameState.selectionEndTime}
                         startTime={gameState.startTime}
+                        scenarioBounds={gameState.scenario?.bounds}
                     />
                     <EventLog messages={gameState.messages} />
                     <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>

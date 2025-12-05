@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -167,7 +167,30 @@ export const SmoothZoom: React.FC<SmoothZoomProps> = ({ scenarioBounds }) => {
                 const finalCenterPoint = newCenterPoint.subtract(dragDeltaRef.current);
 
                 // Convert back to LatLng
-                const finalCenter = map.unproject(finalCenterPoint, nextZ);
+                let finalCenter = map.unproject(finalCenterPoint, nextZ);
+
+                // SCENARIO BOUNDS CLAMPING: Prevent camera from leaving scenario area
+                if (boundsRef.current) {
+                    const bounds = boundsRef.current;
+                    const mapSize = map.getSize();
+
+                    // Calculate visible area in degrees at current zoom
+                    const visibleBounds = map.getBounds();
+                    const halfLatSpan = (visibleBounds.getNorth() - visibleBounds.getSouth()) / 2;
+                    const halfLngSpan = (visibleBounds.getEast() - visibleBounds.getWest()) / 2;
+
+                    // Clamp center so visible area stays within bounds
+                    const clampedLat = Math.max(
+                        bounds.minLat + halfLatSpan,
+                        Math.min(bounds.maxLat - halfLatSpan, finalCenter.lat)
+                    );
+                    const clampedLng = Math.max(
+                        bounds.minLng + halfLngSpan,
+                        Math.min(bounds.maxLng - halfLngSpan, finalCenter.lng)
+                    );
+
+                    finalCenter = L.latLng(clampedLat, clampedLng);
+                }
 
                 // Apply
                 map.setView(finalCenter, nextZ, { animate: false });

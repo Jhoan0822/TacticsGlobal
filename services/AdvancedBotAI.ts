@@ -32,6 +32,24 @@ const CITY_ATTACK_RANGE = 10;       // Distance to attack a city
 const DEFENSE_PERIMETER = 30;       // How far defenders patrol from city
 
 // =============================================================================
+// HELPER: CLAMP POSITION TO SCENARIO BOUNDS
+// =============================================================================
+
+function clampToScenarioBounds(
+    lat: number,
+    lng: number,
+    state: GameState
+): { lat: number; lng: number } {
+    const bounds = state.scenario?.bounds;
+    if (!bounds) return { lat, lng };
+
+    return {
+        lat: Math.max(bounds.minLat, Math.min(bounds.maxLat, lat)),
+        lng: Math.max(bounds.minLng, Math.min(bounds.maxLng, lng))
+    };
+}
+
+// =============================================================================
 // TYPE DEFINITIONS
 // =============================================================================
 
@@ -801,6 +819,12 @@ function executeCommands(brain: BotBrain, analysis: GameAnalysis, faction: Facti
                             },
                             targetId: null // Don't shoot, just move!
                         };
+                        // Clamp destination to scenario bounds
+                        newUnits[unitIdx].destination = clampToScenarioBounds(
+                            newUnits[unitIdx].destination!.lat,
+                            newUnits[unitIdx].destination!.lng,
+                            state
+                        );
                     } else {
                         // In capture range - STAY PUT and capture!
                         newUnits[unitIdx] = {
@@ -822,6 +846,12 @@ function executeCommands(brain: BotBrain, analysis: GameAnalysis, faction: Facti
                             },
                             targetId: null
                         };
+                        // Clamp destination to scenario bounds
+                        newUnits[unitIdx].destination = clampToScenarioBounds(
+                            newUnits[unitIdx].destination!.lat,
+                            newUnits[unitIdx].destination!.lng,
+                            state
+                        );
                     } else {
                         // Attack the city or nearby enemies
                         const nearbyEnemy = findNearbyEnemy(unit, analysis.enemyUnits);
@@ -891,6 +921,12 @@ function executeCommands(brain: BotBrain, analysis: GameAnalysis, faction: Facti
                         },
                         targetId: null
                     };
+                    // Clamp destination to scenario bounds
+                    newUnits[unitIdx].destination = clampToScenarioBounds(
+                        newUnits[unitIdx].destination!.lat,
+                        newUnits[unitIdx].destination!.lng,
+                        state
+                    );
                 }
             }
         }
@@ -911,12 +947,14 @@ function executeCommands(brain: BotBrain, analysis: GameAnalysis, faction: Facti
         // Unassigned infantry: go capture nearest neutral!
         if (unit.unitClass === UnitClass.INFANTRY || unit.unitClass === UnitClass.SPECIAL_FORCES) {
             if (analysis.nearestNeutralCity) {
+                const clampedDest = clampToScenarioBounds(
+                    analysis.nearestNeutralCity.position.lat,
+                    analysis.nearestNeutralCity.position.lng,
+                    state
+                );
                 newUnits[i] = {
                     ...newUnits[i],
-                    destination: {
-                        lat: analysis.nearestNeutralCity.position.lat,
-                        lng: analysis.nearestNeutralCity.position.lng
-                    },
+                    destination: clampedDest,
                     targetId: null
                 };
             }
@@ -931,12 +969,14 @@ function executeCommands(brain: BotBrain, analysis: GameAnalysis, faction: Facti
             );
 
             if (nearestInfantry && nearestInfantry.destination) {
+                const clampedDest = clampToScenarioBounds(
+                    nearestInfantry.destination.lat + (Math.random() - 0.5) * 0.02,
+                    nearestInfantry.destination.lng + (Math.random() - 0.5) * 0.02,
+                    state
+                );
                 newUnits[i] = {
                     ...newUnits[i],
-                    destination: {
-                        lat: nearestInfantry.destination.lat + (Math.random() - 0.5) * 0.02,
-                        lng: nearestInfantry.destination.lng + (Math.random() - 0.5) * 0.02
-                    },
+                    destination: clampedDest,
                     targetId: null
                 };
             } else if (analysis.myCities.length > 0) {
@@ -947,12 +987,14 @@ function executeCommands(brain: BotBrain, analysis: GameAnalysis, faction: Facti
                     homeCity.position.lat, homeCity.position.lng
                 );
                 if (distToHome > DEFENSE_PERIMETER * 2) {
+                    const clampedDest = clampToScenarioBounds(
+                        homeCity.position.lat + (Math.random() - 0.5) * 0.05,
+                        homeCity.position.lng + (Math.random() - 0.5) * 0.05,
+                        state
+                    );
                     newUnits[i] = {
                         ...newUnits[i],
-                        destination: {
-                            lat: homeCity.position.lat + (Math.random() - 0.5) * 0.05,
-                            lng: homeCity.position.lng + (Math.random() - 0.5) * 0.05
-                        },
+                        destination: clampedDest,
                         targetId: null
                     };
                 }

@@ -934,10 +934,19 @@ export const useGameLoop = () => {
 
             // Issue move command for valid units
             if (validUnitIds.length > 0) {
+                // SCENARIO BOUNDS CLAMPING: Prevent player from sending units outside scenario
+                let targetLat = lat;
+                let targetLng = lng;
+                const bounds = gameState.scenario?.bounds;
+                if (bounds) {
+                    targetLat = Math.max(bounds.minLat, Math.min(bounds.maxLat, lat));
+                    targetLng = Math.max(bounds.minLng, Math.min(bounds.maxLng, lng));
+                }
+
                 const payload: MoveUnitsPayload = {
                     unitIds: validUnitIds,
-                    targetLat: lat,
-                    targetLng: lng,
+                    targetLat,
+                    targetLng,
                     isBoosting
                 };
                 const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
