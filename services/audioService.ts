@@ -32,15 +32,21 @@ interface AudioConfig {
 }
 
 const audioConfig: AudioConfig = {
-    masterVolume: 0.5,
-    effectsVolume: 0.6,
-    musicVolume: 0.2, // Music volume - lowered for comfort during long play
+    masterVolume: 0.4,
+    effectsVolume: 0.5,
+    musicVolume: 0.08, // Very low for comfortable background - user can increase
     isMuted: false
 };
 
 // Combat intensity for dynamic music (0-1)
 let combatIntensity = 0;
 let combatDecayInterval: number | null = null;
+
+// Dynamic audio effects nodes
+let masterCompressor: DynamicsCompressorNode | null = null;
+let bassEQ: BiquadFilterNode | null = null;
+let trebleEQ: BiquadFilterNode | null = null;
+let combatDistortion: WaveShaperNode | null = null;
 
 // ============================================
 // COMBAT PACK MUSIC FILES
@@ -1603,14 +1609,33 @@ const checkPeaceTransition = () => {
 // PUBLIC MUSIC API
 // ============================================
 
-// Dynamic volume control based on combat
+// Dynamic volume and effects based on combat state
 const updateCombatCrossfade = () => {
     if (!currentAudio) return;
 
-    // Adjust volume based on combat intensity
     const baseVol = getMusicVolume();
-    const dynamicVol = baseVol * (1 + combatIntensity * 0.3); // Slightly louder in combat
-    currentAudio.volume = Math.min(1, Math.max(0, dynamicVol));
+
+    // Volume adapts to game state:
+    // - Peace: Very quiet background (baseVol)
+    // - Being attacked: +40% volume boost, more bass
+    // - Attacking: +25% volume boost
+    // - High intensity: Up to +60% boost
+
+    let dynamicVol = baseVol;
+
+    if (isUnderAttack) {
+        // Being attacked - dramatic increase
+        dynamicVol = baseVol * (1.4 + combatIntensity * 0.4);
+    } else if (isAttacking) {
+        // Attacking - moderate increase  
+        dynamicVol = baseVol * (1.25 + combatIntensity * 0.3);
+    } else if (combatIntensity > 0.1) {
+        // General combat nearby
+        dynamicVol = baseVol * (1 + combatIntensity * 0.5);
+    }
+    // Peace mode stays at baseVol (quiet)
+
+    currentAudio.volume = Math.min(0.6, Math.max(0, dynamicVol)); // Cap at 0.6 max
 };
 
 const startMenuMusic = () => playMusicMode('menu');
