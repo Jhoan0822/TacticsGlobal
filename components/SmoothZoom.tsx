@@ -45,8 +45,8 @@ export const SmoothZoom = () => {
         };
 
         const onMouseDown = (e: MouseEvent) => {
-            // Only left click drags
-            if (e.button === 0) {
+            // Only left click drags, and NOT when Shift is held (for box selection)
+            if (e.button === 0 && !e.shiftKey) {
                 isDraggingRef.current = true;
                 const rect = container.getBoundingClientRect();
                 lastMousePosRef.current = L.point(e.clientX - rect.left, e.clientY - rect.top);
