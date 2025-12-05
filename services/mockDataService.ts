@@ -254,6 +254,62 @@ export const getMockCities = (): POI[] => {
   return cities;
 };
 
+// ============================================
+// RANDOM RESOURCE GENERATION (After Player Selection)
+// ============================================
+// Generates additional gold mines and oil rigs at random positions
+// Called when all players have selected their starting cities
+export const generateRandomResources = (
+  bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number },
+  goldCount: number = 10,
+  oilCount: number = 10
+): POI[] => {
+  const resources: POI[] = [];
+  const goldStats = POI_CONFIG[POIType.GOLD_MINE];
+  const oilStats = POI_CONFIG[POIType.OIL_RIG];
+
+  // Generate random gold mines (inland positions)
+  for (let i = 0; i < goldCount; i++) {
+    // Random position within bounds, biased towards land (avoiding extreme latitudes)
+    const lat = bounds.minLat + Math.random() * (bounds.maxLat - bounds.minLat);
+    const lng = bounds.minLng + Math.random() * (bounds.maxLng - bounds.minLng);
+
+    resources.push({
+      id: `RAND-GOLD-${Date.now()}-${i}`,
+      type: POIType.GOLD_MINE,
+      name: `Hidden Deposit ${i + 1}`,
+      position: { lat, lng },
+      ownerFactionId: undefined,
+      tier: 2 + Math.floor(Math.random() * 2), // Tier 2 or 3
+      isCoastal: false,
+      hp: goldStats.defaultHp,
+      maxHp: goldStats.defaultHp
+    });
+  }
+
+  // Generate random oil rigs (ocean positions - use coastal bias)
+  for (let i = 0; i < oilCount; i++) {
+    // Random position - oil rigs can be anywhere (will appear in ocean visually)
+    const lat = bounds.minLat + Math.random() * (bounds.maxLat - bounds.minLat);
+    const lng = bounds.minLng + Math.random() * (bounds.maxLng - bounds.minLng);
+
+    resources.push({
+      id: `RAND-OIL-${Date.now()}-${i}`,
+      type: POIType.OIL_RIG,
+      name: `Offshore Platform ${i + 1}`,
+      position: { lat, lng },
+      ownerFactionId: undefined,
+      tier: 2 + Math.floor(Math.random() * 2), // Tier 2 or 3
+      isCoastal: true,
+      hp: oilStats.defaultHp,
+      maxHp: oilStats.defaultHp
+    });
+  }
+
+  console.log(`[RESOURCES] Generated ${goldCount} random gold mines and ${oilCount} random oil rigs`);
+  return resources;
+};
+
 export const fetchWorldData = async (centerLat: number, centerLng: number, radiusKm: number): Promise<{ units: GameUnit[], pois: POI[], factions: Faction[] }> => {
   const units: GameUnit[] = [];
   const pois: POI[] = [];

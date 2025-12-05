@@ -9,7 +9,7 @@ import { TerrainService } from '../services/terrainService';
 import { GameAction, createAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload, LaunchNukePayload } from '../services/schemas';
 import { applyAction } from '../services/applyAction';
 import { Scenario } from '../types';
-import { getMockCities } from '../services/mockDataService';
+import { getMockCities, generateRandomResources } from '../services/mockDataService';
 
 const GAME_TICK_MS = 40; // 25 FPS
 
@@ -376,6 +376,14 @@ export const useGameLoop = () => {
                         });
 
                         finalUnits = [...finalUnits, ...newUnits]; // CRITICAL: Keep player+bot units, add defenders
+
+                        // =============================================
+                        // SPAWN RANDOM RESOURCES (After Player Selection)
+                        // =============================================
+                        const scenarioBounds = prev.scenario?.bounds || { minLat: -85, maxLat: 85, minLng: -180, maxLng: 180 };
+                        const randomResources = generateRandomResources(scenarioBounds, 10, 10);
+                        finalPois = [...finalPois, ...randomResources];
+                        console.log(`[HOST] Added ${randomResources.length} random resource deposits`);
 
                         // Broadcast Updates
                         NetworkService.broadcastResponse({
