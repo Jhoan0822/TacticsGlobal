@@ -24,11 +24,20 @@ const UNIT_COLORS: Record<string, string> = {
 let shakeIntensity = 0;
 let shakeDecay = 0.9; // How fast shake fades (0.9 = 10% reduction per frame)
 const MAX_SHAKE = 15; // Maximum pixel offset
+let shakeMultiplier = 0.5; // Default to 50% intensity (was too aggressive)
 
 // Screen shake trigger - call this from outside
 export const shakeScreen = (intensity: number) => {
-    shakeIntensity = Math.min(MAX_SHAKE, shakeIntensity + intensity);
+    shakeIntensity = Math.min(MAX_SHAKE, shakeIntensity + intensity * shakeMultiplier);
 };
+
+// Set shake intensity multiplier (0-1)
+export const setShakeIntensity = (multiplier: number) => {
+    shakeMultiplier = Math.max(0, Math.min(1, multiplier));
+};
+
+// Get current shake multiplier
+export const getShakeIntensity = () => shakeMultiplier;
 
 // --- SPRITE CACHE ---
 const spriteCache: Record<string, HTMLCanvasElement> = {};

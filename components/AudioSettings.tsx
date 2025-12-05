@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AudioService } from '../services/audioService';
+import { getShakeIntensity, setShakeIntensity } from './GameCanvas';
 
 interface AudioSettingsProps {
     isOpen: boolean;
@@ -11,6 +12,7 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ isOpen, onClose })
     const [musicVolume, setMusicVolume] = useState(8);
     const [effectsVolume, setEffectsVolume] = useState(50);
     const [isMuted, setIsMuted] = useState(false);
+    const [shakeIntensity, setShakeIntensityState] = useState(50);
 
     useEffect(() => {
         // Initialize from AudioService
@@ -19,6 +21,8 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ isOpen, onClose })
         setMusicVolume(Math.round(config.musicVolume * 100));
         setEffectsVolume(Math.round(config.effectsVolume * 100));
         setIsMuted(config.isMuted);
+        // Initialize shake from GameCanvas
+        setShakeIntensityState(Math.round(getShakeIntensity() * 100));
     }, [isOpen]);
 
     const handleMasterChange = (value: number) => {
@@ -36,6 +40,11 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ isOpen, onClose })
         AudioService.setEffectsVolume(value / 100);
     };
 
+    const handleShakeChange = (value: number) => {
+        setShakeIntensityState(value);
+        setShakeIntensity(value / 100);
+    };
+
     const handleMuteToggle = () => {
         const newMuted = AudioService.toggleMute();
         setIsMuted(newMuted);
@@ -51,7 +60,7 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ isOpen, onClose })
             >
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        🔊 Audio Settings
+                        ⚙️ Settings
                     </h2>
                     <button
                         onClick={onClose}
@@ -124,12 +133,35 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ isOpen, onClose })
                     />
                 </div>
 
+                {/* Screen Shake */}
+                <div className="mb-5">
+                    <label className="text-sm text-gray-300 block mb-2">
+                        📳 Screen Shake: {shakeIntensity}%
+                    </label>
+                    <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={shakeIntensity}
+                        onChange={(e) => handleShakeChange(parseInt(e.target.value))}
+                        className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer
+                                   [&::-webkit-slider-thumb]:appearance-none
+                                   [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+                                   [&::-webkit-slider-thumb]:rounded-full
+                                   [&::-webkit-slider-thumb]:bg-red-500
+                                   [&::-webkit-slider-thumb]:shadow-lg"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                        Intensity of camera shake on explosions
+                    </p>
+                </div>
+
                 {/* Mute Button */}
                 <button
                     onClick={handleMuteToggle}
                     className={`w-full py-3 rounded-lg font-medium transition-all ${isMuted
-                            ? 'bg-red-600 hover:bg-red-700 text-white'
-                            : 'bg-slate-700 hover:bg-slate-600 text-gray-300'
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : 'bg-slate-700 hover:bg-slate-600 text-gray-300'
                         }`}
                 >
                     {isMuted ? '🔇 Unmute All' : '🔊 Mute All'}
@@ -145,3 +177,4 @@ export const AudioSettings: React.FC<AudioSettingsProps> = ({ isOpen, onClose })
 };
 
 export default AudioSettings;
+

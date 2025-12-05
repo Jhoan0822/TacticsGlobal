@@ -5,6 +5,7 @@ import { UNIT_CONFIG, POI_CONFIG, DIPLOMACY, NUKE_CONFIG } from '../constants';
 import { evaluateAllianceRequest } from '../services/gameLogic';
 import { useTooltip } from './Tooltip';
 import { HOTKEY_LABELS, AUTO_MODE_LABELS } from '../hooks/useHotkeys';
+import { FormationType, FormationNames } from '../services/formationService';
 
 interface Props {
     gameState: GameState;
@@ -15,9 +16,10 @@ interface Props {
     onSetDifficulty: (diff: Difficulty) => void;
     onSetAutoMode?: (mode: 'NONE' | 'DEFEND' | 'ATTACK' | 'PATROL') => void;
     onToggleAutoTarget?: () => void;
+    onSetFormation?: (formation: FormationType) => void;
 }
 
-const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, selectedUnitIds, onUnitAction, onSetDifficulty, onSetAutoMode, onToggleAutoTarget }) => {
+const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, selectedUnitIds, onUnitAction, onSetDifficulty, onSetAutoMode, onToggleAutoTarget, onSetFormation }) => {
 
     const [activeTab, setActiveTab] = useState<'UNITS' | 'BUILD' | 'DIPLOMACY'>('BUILD');
 
@@ -236,7 +238,7 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                             {selectedUnitIds.length} Unit{selectedUnitIds.length > 1 ? 's' : ''} Selected
                         </span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-2 mb-3">
                         <button
                             onClick={() => onSetAutoMode?.('NONE')}
                             className="py-2.5 text-[10px] rounded-lg bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 border border-slate-600/30 hover:border-slate-500/50 transition-all font-medium"
@@ -256,6 +258,24 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                             ⚔️ ATTACK
                         </button>
                     </div>
+
+                    {/* Formations - only show when 2+ units selected */}
+                    {selectedUnitIds.length >= 2 && onSetFormation && (
+                        <div className="mt-3">
+                            <div className="text-xs text-slate-400 mb-2 tracking-wider uppercase">Formation</div>
+                            <div className="grid grid-cols-3 gap-1.5">
+                                {Object.values(FormationType).map(formation => (
+                                    <button
+                                        key={formation}
+                                        onClick={() => onSetFormation(formation)}
+                                        className="py-2 text-[9px] rounded-lg bg-purple-900/30 hover:bg-purple-800/40 text-purple-300 border border-purple-600/30 hover:border-purple-500/50 transition-all font-medium"
+                                    >
+                                        {FormationNames[formation]}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -407,8 +427,8 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                                     onClick={() => onUnitAction('LAUNCH_NUKE', selectedUnit.id)}
                                     disabled={!canAffordNuke || isOnCooldown}
                                     className={`w-full py-3 rounded-lg font-bold text-sm transition-all border ${!canAffordNuke || isOnCooldown
-                                            ? 'bg-slate-900/50 border-slate-700/30 text-slate-500 cursor-not-allowed'
-                                            : 'bg-gradient-to-r from-red-600 to-orange-600 border-red-500/50 text-white hover:from-red-500 hover:to-orange-500 shadow-[0_0_20px_rgba(239,68,68,0.3)]'
+                                        ? 'bg-slate-900/50 border-slate-700/30 text-slate-500 cursor-not-allowed'
+                                        : 'bg-gradient-to-r from-red-600 to-orange-600 border-red-500/50 text-white hover:from-red-500 hover:to-orange-500 shadow-[0_0_20px_rgba(239,68,68,0.3)]'
                                         }`}
                                 >
                                     ☢️ LAUNCH NUCLEAR STRIKE
