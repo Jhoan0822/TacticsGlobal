@@ -72,48 +72,67 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
         if (networkMode !== 'MULTI_HOST' && networkMode !== 'LOBBY') return;
 
         const scenario = Object.values(SCENARIOS).find(s => s.id === lobbyState.scenarioId) || SCENARIOS.WORLD;
-        const factions: Faction[] = [];
 
-        lobbyState.players.forEach((p, idx) => {
-            factions.push({
-                ...FACTION_PRESETS[p.factionIndex],
-                id: p.id,
-                name: p.name,
-                type: 'PLAYER',
-                gold: 10000,
-                oil: 1000,
-                relations: {},
-                aggression: 0
-            });
-        });
+        // Helper function to build factions with correct player ID
+        const buildFactions = (playerId: string): Faction[] => {
+            const factions: Faction[] = [];
 
-        const usedIndices = lobbyState.players.map(p => p.factionIndex);
-        const availablePresets = FACTION_PRESETS.filter((_, i) => !usedIndices.includes(i));
-
-        for (let i = 0; i < lobbyState.botCount; i++) {
-            if (i >= availablePresets.length) break;
-            const personality = getRandomPersonality();
-            factions.push({
-                ...availablePresets[i],
-                id: `BOT_${i}`,
-                type: 'BOT',
-                gold: 10000,
-                oil: 1000,
-                relations: {},
-                aggression: 1.0,
-                personality,
-                strategicGoals: [],
-                threatMemory: []
-            });
-        }
-
-        factions.forEach(f => {
-            factions.forEach(target => {
-                if (f.id !== target.id) {
-                    f.relations[target.id] = -100;
+            // CRITICAL: Ensure we have at least the host player
+            let players = [...lobbyState.players];
+            if (players.length === 0 || !players.some(p => p.id === playerId)) {
+                // Add host player if not present or with wrong ID
+                const existingHostIndex = players.findIndex(p => p.isHost);
+                if (existingHostIndex >= 0) {
+                    players[existingHostIndex] = { ...players[existingHostIndex], id: playerId };
+                } else {
+                    players = [{ id: playerId, name: 'Host', factionIndex: 0, isHost: true, isReady: true }];
                 }
+            }
+
+            players.forEach((p, idx) => {
+                factions.push({
+                    ...FACTION_PRESETS[p.factionIndex],
+                    id: p.id,
+                    name: p.name,
+                    type: 'PLAYER',
+                    gold: 10000,
+                    oil: 1000,
+                    relations: {},
+                    aggression: 0
+                });
             });
-        });
+
+            const usedIndices = players.map(p => p.factionIndex);
+            const availablePresets = FACTION_PRESETS.filter((_, i) => !usedIndices.includes(i));
+
+            for (let i = 0; i < lobbyState.botCount; i++) {
+                if (i >= availablePresets.length) break;
+                const personality = getRandomPersonality();
+                factions.push({
+                    ...availablePresets[i],
+                    id: `BOT_${i}`,
+                    type: 'BOT',
+                    gold: 10000,
+                    oil: 1000,
+                    relations: {},
+                    aggression: 1.0,
+                    personality,
+                    strategicGoals: [],
+                    threatMemory: []
+                });
+            }
+
+            factions.forEach(f => {
+                factions.forEach(target => {
+                    if (f.id !== target.id) {
+                        f.relations[target.id] = -100;
+                    }
+                });
+            });
+
+            console.log('[LOBBY] Built factions:', factions.map(f => ({ id: f.id, type: f.type, color: f.color })));
+            return factions;
+        };
 
         // CRITICAL: Wait for peerId to be ready before starting
         const playerId = NetworkService.myPeerId;
@@ -122,6 +141,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             // Wait for peerId using polling
             const checkPeerId = () => {
                 if (NetworkService.myPeerId) {
+                    // Rebuild factions with the correct player ID
+                    const factions = buildFactions(NetworkService.myPeerId);
                     onStartGame(scenario, NetworkService.myPeerId, factions, true, true);
                 } else {
                     setTimeout(checkPeerId, 100);
@@ -131,6 +152,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             return;
         }
 
+        const factions = buildFactions(playerId);
         onStartGame(scenario, playerId, factions, true, true);
     };
 
