@@ -136,6 +136,37 @@ class PhantomHostServiceImpl {
             this.gameState = state.gameState;
             this.brState = state.brState;
 
+            // CRITICAL: Clean up old PLAYER factions - they can't rejoin without proper connection
+            // Convert all PLAYER factions (except bots) back to BOT status
+            if (this.gameState && this.brState) {
+                this.gameState.factions = this.gameState.factions.filter(f => {
+                    if (f.type === 'PLAYER' && f.id.startsWith('PLAYER_')) {
+                        console.log('[PHANTOM] Removing stale player faction:', f.id);
+                        return false; // Remove old player factions
+                    }
+                    return true;
+                });
+
+                // Also remove from BR players list
+                this.brState.players = this.brState.players.filter(p => {
+                    if (!p.isBot && !p.isPhantomHost && p.peerId.startsWith('PLAYER_')) {
+                        return false;
+                    }
+                    return true;
+                });
+
+                // Clean up units belonging to removed player factions
+                const validFactionIds = new Set(this.gameState.factions.map(f => f.id));
+                this.gameState.units = this.gameState.units.filter(u => validFactionIds.has(u.factionId));
+
+                // Reset cities owned by removed players to NEUTRAL
+                this.gameState.pois.forEach(p => {
+                    if (p.ownerFactionId && p.ownerFactionId.startsWith('PLAYER_')) {
+                        p.ownerFactionId = 'NEUTRAL';
+                    }
+                });
+            }
+
             // Update round time based on elapsed time
             if (this.brState) {
                 const elapsed = Date.now() - this.brState.roundStartTime;

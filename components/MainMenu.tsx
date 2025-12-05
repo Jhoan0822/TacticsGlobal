@@ -13,13 +13,14 @@ const getRandomPersonality = (): BotPersonality => {
 
 interface MainMenuProps {
     onStartGame: (scenario: Scenario, localPlayerId: string, factions: Faction[], isMultiplayer: boolean, isHost: boolean) => void;
+    onJoinBattleRoyale?: (gameState: any) => void;
     lobbyState: LobbyState;
     setLobbyState: React.Dispatch<React.SetStateAction<LobbyState>>;
     networkMode: 'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | 'BATTLE_ROYALE' | null;
     setNetworkMode: React.Dispatch<React.SetStateAction<'SINGLE' | 'MULTI_HOST' | 'MULTI_JOIN' | 'LOBBY' | 'BATTLE_ROYALE' | null>>;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbyState, networkMode, setNetworkMode }) => {
+const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onJoinBattleRoyale, lobbyState, setLobbyState, networkMode, setNetworkMode }) => {
     const [hostIdInput, setHostIdInput] = useState<string>('');
     const [connectionStatus, setConnectionStatus] = useState<string>('');
     const [selectedFactionIndex, setSelectedFactionIndex] = useState<number>(0);
@@ -402,16 +403,13 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             if (success) {
                 // Get the updated game state from PhantomHost
                 const gameState = PhantomHostService.getGameState();
-                const brState = PhantomHostService.getBRState();
 
-                if (gameState && brState) {
-                    const scenario = SCENARIOS[brState.config.scenarioRotation[brState.currentScenarioIndex] as keyof typeof SCENARIOS] || SCENARIOS.WORLD;
+                if (gameState && onJoinBattleRoyale) {
                     const playerFaction = gameState.factions.find(f => f.id === gameState.localPlayerId);
-
                     if (playerFaction) {
-                        console.log('[BR] Starting game with faction:', playerFaction.name);
-                        // Start game directly - player joins as "host" since PhantomHost runs locally
-                        onStartGame(scenario, gameState.localPlayerId, gameState.factions, false, true);
+                        console.log('[BR] Joining game directly with faction:', playerFaction.name);
+                        // Use joinBattleRoyale to skip SELECTION mode - inject state directly in PLAYING mode
+                        onJoinBattleRoyale(gameState);
                     }
                 }
             }

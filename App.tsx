@@ -49,6 +49,7 @@ const App: React.FC = () => {
         handleGroupOrder,
         setDifficulty,
         startGame,
+        joinBattleRoyale,
         nukeLaunchMode,
         setNukeLaunchMode
     } = useGameLoop();
@@ -149,6 +150,13 @@ const App: React.FC = () => {
         } else {
             startGame(scenario, localPlayerId, factions, isMultiplayer && !isHost);
         }
+        setIsInMenu(false);
+    };
+
+    // Battle Royale Direct Join - injects existing game state in PLAYING mode
+    const handleJoinBattleRoyale = (existingGameState: any) => {
+        console.log('[APP] Joining Battle Royale with existing state');
+        joinBattleRoyale(existingGameState);
         setIsInMenu(false);
     };
 
