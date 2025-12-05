@@ -29,6 +29,25 @@ interface VoronoiCell {
 const MAX_LAT = 85.05112878;
 const SVG_SIZE = 4096;
 
+// PERFORMANCE: Pre-compute hex color to RGBA conversion
+const colorCache: Map<string, string[]> = new Map();
+const hexToRgbaArray = (hex: string): string[] => {
+    const cached = colorCache.get(hex);
+    if (cached) return cached;
+
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const result = [
+        `rgba(${r}, ${g}, ${b}, 0.7)`,
+        `rgba(${r}, ${g}, ${b}, 0.4)`,
+        `rgba(${r}, ${g}, ${b}, 0.2)`,
+        `rgba(${r}, ${g}, ${b}, 0.05)`
+    ];
+    colorCache.set(hex, result);
+    return result;
+};
+
 const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
     const map = useMap();
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -37,14 +56,34 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
     // Refs for data access in loop
     const cellsRef = useRef<VoronoiCell[]>([]);
 
-    // Extract HQs for Voronoi
-    const hqs = useMemo(() => units.filter(u =>
-        (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MOBILE_COMMAND_CENTER) && u.hp > 0
-    ), [units]);
+    // PERFORMANCE: Create stable key for HQs based on position + faction, not full object
+    const hqKey = useMemo(() => {
+        return units
+            .filter(u => (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MOBILE_COMMAND_CENTER) && u.hp > 0)
+            .map(u => `${u.id}:${u.position.lat.toFixed(3)}:${u.position.lng.toFixed(3)}:${u.factionId}`)
+            .join('|');
+    }, [units]);
 
-    // Calculate Voronoi Geometry (LatLng Polygons)
+    // PERFORMANCE: Create stable key for POIs ownership
+    const poiKey = useMemo(() => {
+        return pois.map(p => `${p.id}:${p.ownerFactionId}:${p.tier}`).join('|');
+    }, [pois]);
+
+    // PERFORMANCE: Create stable faction color map
+    const factionColors = useMemo(() => {
+        const map = new Map<string, string>();
+        factions.forEach(f => map.set(f.id, f.color));
+        return map;
+    }, [factions]);
+
+    // Calculate Voronoi Geometry (LatLng Polygons) - Now with stable dependencies
     const cells = useMemo(() => {
         const sites: Site[] = [];
+
+        // Extract HQs from units
+        const hqs = units.filter(u =>
+            (u.unitClass === UnitClass.COMMAND_CENTER || u.unitClass === UnitClass.MOBILE_COMMAND_CENTER) && u.hp > 0
+        );
 
         // GENERATE SITES FROM CITIES ONLY (plus HQ)
         pois.forEach(p => {
@@ -93,9 +132,9 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
 
         for (let i = 0; i < projectedSites.length; i++) {
             const site = projectedSites[i];
-            const faction = factions.find(f => f.id === site.factionId);
+            const factionColor = factionColors.get(site.factionId);
 
-            if (!faction || site.factionId === 'NEUTRAL') continue;
+            if (!factionColor || site.factionId === 'NEUTRAL') continue;
 
             const polygonCoords = voronoi.cellPolygon(i);
             if (!polygonCoords) continue;
@@ -110,13 +149,13 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
                 id: site.id,
                 polygon: latLngPolygon,
                 site: site,
-                factionColor: faction.color
+                factionColor: factionColor
             });
         }
 
         return generatedCells;
 
-    }, [hqs, pois, factions]);
+    }, [hqKey, poiKey, factionColors]); // PERFORMANCE: Use stable keys instead of full objects
 
     // Update ref when cells change
     useEffect(() => {
@@ -157,12 +196,8 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
             ctx.clearRect(0, 0, size.x, size.y);
 
             const currentCells = cellsRef.current;
-            // const mapBounds = map.getBounds(); // Not used in this version, but useful for culling
-            // const buffer = 0.5; // degrees buffer // Not used in this version, but useful for culling
 
             currentCells.forEach(cell => {
-                // Simple bounds check optimization could go here
-
                 // Project Polygon to Screen
                 ctx.beginPath();
                 let first = true;
@@ -177,40 +212,26 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
                 });
                 ctx.closePath();
 
-                // Gradient Fill
+                // Gradient Fill - PERFORMANCE: Use cached color arrays
                 const centerPos = map.latLngToContainerPoint([cell.site.lat, cell.site.lng]);
-                // Gradient radius in pixels? 
-                // We want it to be "attached" so it should scale.
-                // In SVG it was 600 units in 4096 space.
-                // 600 / 4096 ~= 0.14 of world width.
-                // That's huge.
-                // Let's calculate a pixel radius based on the site radius or a fixed visual size?
-                // The user wants "attached", so it should scale with zoom.
-                // Let's use the site radius (in meters) converted to pixels.
-                // But the gradient was "glowy" and large.
-                // Let's try a fixed large pixel radius that scales?
-                // Or just use the distance to the furthest point?
-                // Let's use a fixed geographic radius (e.g. 500km) converted to pixels.
-
-                // Approximation: 1 degree lat ~= 111km.
-                // 500km ~= 4.5 degrees.
                 const pointAtRadius = map.latLngToContainerPoint([cell.site.lat + 4.5, cell.site.lng]);
                 const dx = pointAtRadius.x - centerPos.x;
                 const dy = pointAtRadius.y - centerPos.y;
                 const gradientRadius = Math.sqrt(dx * dx + dy * dy);
 
+                const colors = hexToRgbaArray(cell.factionColor);
                 const grad = ctx.createRadialGradient(centerPos.x, centerPos.y, 0, centerPos.x, centerPos.y, gradientRadius);
-                grad.addColorStop(0, hexToRgba(cell.factionColor, 0.7));
-                grad.addColorStop(0.15, hexToRgba(cell.factionColor, 0.4));
-                grad.addColorStop(0.4, hexToRgba(cell.factionColor, 0.2));
-                grad.addColorStop(1, hexToRgba(cell.factionColor, 0.05));
+                grad.addColorStop(0, colors[0]);
+                grad.addColorStop(0.15, colors[1]);
+                grad.addColorStop(0.4, colors[2]);
+                grad.addColorStop(1, colors[3]);
 
                 ctx.fillStyle = grad;
                 ctx.fill();
 
                 // Stroke
                 ctx.strokeStyle = cell.factionColor;
-                ctx.lineWidth = 2; // Constant width!
+                ctx.lineWidth = 2;
                 ctx.globalAlpha = 0.3;
                 ctx.stroke();
                 ctx.globalAlpha = 1.0;
@@ -240,13 +261,5 @@ const TerritoryLayer: React.FC<Props> = ({ units, pois, factions }) => {
 
     return null;
 };
-
-// Helper for Hex to RGBA
-function hexToRgba(hex: string, alpha: number) {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 export default React.memo(TerritoryLayer);

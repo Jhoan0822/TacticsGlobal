@@ -51,47 +51,98 @@ export const useGameLoop = () => {
             // 1. GAMEPLAY ACTIONS
             if (event.type === 'ACTION') {
                 setGameState(prev => {
-                    // CRITICAL: Clients should NOT apply optimistic actions during PLAYING mode
-                    // They receive authoritative state from FULL_STATE broadcasts instead
-                    if (prev.isClient && prev.gameMode === 'PLAYING') {
-                        console.log('[NET] Client ignoring ACTION during PLAYING - waiting for host state');
+                    // HOST: Always apply all actions (from self and remote clients)
+                    if (!prev.isClient) {
+                        console.log('[NET][HOST] Applying action:', event.action.actionType, 'from', event.action.playerId);
+                        return applyAction(prev, event.action);
+                    }
+
+                    // CLIENT DURING PLAYING: Only ignore REMOTE actions (not our own)
+                    // Our own actions are already applied locally before broadcast
+                    // Remote actions will arrive in FULL_STATE from host
+                    if (prev.gameMode === 'PLAYING' && event.action.playerId !== prev.localPlayerId) {
+                        console.log('[NET][CLIENT] Ignoring remote ACTION during PLAYING - waiting for host state');
                         return prev;
                     }
-                    // During SELECTION/LOBBY, apply actions normally (base selection, etc.)
+
+                    // CLIENT DURING SELECTION or for own actions: Apply normally
                     return applyAction(prev, event.action);
                 });
             }
             // 2. FULL STATE SYNC (Authoritative Update from Host)
+            // ARCHITECTURE: Only merge AUTHORITATIVE fields, preserve LOCAL UI state
             else if (event.type === 'FULL_STATE') {
                 setGameState(prev => {
                     // Only clients should process FULL_STATE from host
                     if (!prev.isClient) {
-                        console.log('[NET] Ignoring FULL_STATE - I am the host');
                         return prev;
                     }
 
-                    // Log state version for debugging
-                    const hostVersion = (event.gameState as any).stateVersion || 0;
-                    const hostTick = (event.gameState as any).hostTick || event.gameState.gameTick;
-                    console.log('[NET] Applying FULL_STATE from host. Version:', hostVersion, 'Tick:', hostTick);
+                    const hostState = event.gameState;
+                    const hostVersion = (hostState as any).stateVersion || 0;
+                    const hostTick = (hostState as any).hostTick || hostState.gameTick;
 
-                    // Preserve local identity and sync resources from faction
-                    const myFaction = event.gameState.factions.find((f: any) => f.id === prev.localPlayerId);
+                    // Sync resources from our faction in host state
+                    const myFaction = hostState.factions.find((f: any) => f.id === prev.localPlayerId);
                     const syncedResources = myFaction ? {
                         gold: myFaction.gold,
                         oil: myFaction.oil || 0,
                         intel: prev.playerResources.intel
                     } : prev.playerResources;
 
-                    // Apply authoritative state, preserving ONLY local UI state
+                    // Determine gameMode: preserve LOCAL placement mode, otherwise use host's
+                    const isLocalUIMode = prev.gameMode === 'PLACING_STRUCTURE';
+                    const finalGameMode = isLocalUIMode ? prev.gameMode : hostState.gameMode;
+
+                    // SMOOTH RECONCILIATION: Preserve visual positions from existing units
+                    // The interpolation loop will smoothly blend toward new authoritative positions
+                    const prevUnitMap = new Map<string, GameUnit>(prev.units.map(u => [u.id, u]));
+                    const mergedUnits = hostState.units.map((hostUnit: GameUnit) => {
+                        const prevUnit = prevUnitMap.get(hostUnit.id);
+                        if (prevUnit && prevUnit.visualPosition) {
+                            return {
+                                ...hostUnit,
+                                visualPosition: prevUnit.visualPosition,
+                                visualHeading: prevUnit.visualHeading,
+                                lastServerUpdate: Date.now()
+                            };
+                        }
+                        return {
+                            ...hostUnit,
+                            visualPosition: { lat: hostUnit.position.lat, lng: hostUnit.position.lng },
+                            visualHeading: hostUnit.heading,
+                            lastServerUpdate: Date.now()
+                        };
+                    });
+
+                    // MERGE: Only authoritative fields from host
+                    // PRESERVE: All local UI state
                     return {
-                        ...event.gameState,
-                        playerResources: syncedResources,
-                        isClient: true,  // Always true for receiving clients
-                        localPlayerId: prev.localPlayerId,
-                        placementType: prev.placementType,  // UI-only
+                        // === AUTHORITATIVE (from host) ===
+                        units: mergedUnits,
+                        pois: hostState.pois,
+                        factions: hostState.factions,
+                        projectiles: hostState.projectiles,
+                        explosions: hostState.explosions,
+                        messages: hostState.messages,
+                        gameTick: hostState.gameTick,
                         stateVersion: hostVersion,
-                        hostTick: hostTick
+                        hostTick: hostTick,
+                        difficulty: hostState.difficulty,
+                        scenario: hostState.scenario,
+                        territoryControlled: hostState.territoryControlled,
+                        startTime: hostState.startTime,
+                        gameResult: hostState.gameResult,
+                        gameStats: hostState.gameStats,
+                        pendingBotFactions: hostState.pendingBotFactions,
+
+                        // === LOCAL UI STATE (preserved) ===
+                        gameMode: finalGameMode,
+                        placementType: prev.placementType,
+                        localPlayerId: prev.localPlayerId,
+                        isClient: true,
+                        controlGroups: prev.controlGroups,
+                        playerResources: syncedResources
                     };
                 });
             }
@@ -322,8 +373,56 @@ export const useGameLoop = () => {
                         e => Date.now() - e.timestamp < 1000
                     );
 
+                    // ============================================
+                    // CLIENT-SIDE INTERPOLATION + PREDICTION
+                    // ============================================
+                    const LERP_FACTOR = 0.15; // Smooth interpolation speed (higher = faster snap)
+                    const PREDICT_SPEED = 0.00005; // Movement prediction per tick
+
+                    const updatedUnits = prevState.units.map(unit => {
+                        // Initialize visual position if not set
+                        const currentVisualLat = unit.visualPosition?.lat ?? unit.position.lat;
+                        const currentVisualLng = unit.visualPosition?.lng ?? unit.position.lng;
+                        const currentVisualHeading = unit.visualHeading ?? unit.heading;
+
+                        // Target position: authoritative OR predicted from destination
+                        let targetLat = unit.position.lat;
+                        let targetLng = unit.position.lng;
+
+                        // PREDICTION: If unit has a destination, predict movement toward it
+                        if (unit.destination) {
+                            const dx = unit.destination.lng - unit.position.lng;
+                            const dy = unit.destination.lat - unit.position.lat;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+
+                            if (dist > 0.001) { // Only predict if not at destination
+                                const speed = (unit.speed || 100) * PREDICT_SPEED;
+                                targetLat = unit.position.lat + (dy / dist) * speed;
+                                targetLng = unit.position.lng + (dx / dist) * speed;
+                            }
+                        }
+
+                        // LERP visual position toward target
+                        const newVisualLat = currentVisualLat + (targetLat - currentVisualLat) * LERP_FACTOR;
+                        const newVisualLng = currentVisualLng + (targetLng - currentVisualLng) * LERP_FACTOR;
+
+                        // LERP heading for smooth rotation
+                        let headingDiff = unit.heading - currentVisualHeading;
+                        // Handle wrap-around (e.g., 350 -> 10 should go +20, not -340)
+                        if (headingDiff > 180) headingDiff -= 360;
+                        if (headingDiff < -180) headingDiff += 360;
+                        const newVisualHeading = currentVisualHeading + headingDiff * LERP_FACTOR;
+
+                        return {
+                            ...unit,
+                            visualPosition: { lat: newVisualLat, lng: newVisualLng },
+                            visualHeading: newVisualHeading
+                        };
+                    });
+
                     return {
                         ...prevState,
+                        units: updatedUnits,
                         projectiles: updatedProjectiles,
                         explosions: updatedExplosions,
                         gameTick: prevState.gameTick + 1

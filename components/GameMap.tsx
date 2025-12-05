@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { MapContainer, useMap, useMapEvents, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import { GameUnit, Projectile, Faction, POI, POIType, Explosion, UnitClass, GameMode } from '../types';
@@ -107,6 +107,9 @@ const DragSelection: React.FC<{
         }}></div>
     );
 };
+
+// PERFORMANCE: Wrap internal components with React.memo
+const MemoizedDragSelection = React.memo(DragSelection);
 
 const MapInteraction: React.FC<{
     onMapClick: (lat: number, lng: number) => void,
@@ -262,6 +265,8 @@ const MapInteraction: React.FC<{
     return null;
 };
 
+const MemoizedMapInteraction = React.memo(MapInteraction);
+
 const MapController: React.FC<{ center: { lat: number; lng: number }, gameMode: string }> = ({ center, gameMode }) => {
     const map = useMap();
     useEffect(() => {
@@ -274,6 +279,8 @@ const MapController: React.FC<{ center: { lat: number; lng: number }, gameMode: 
     }, [center, map, gameMode]);
     return null;
 };
+
+const MemoizedMapController = React.memo(MapController);
 
 const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, explosions, center, selectedUnitIds, onUnitClick, onUnitRightClick, onUnitAction, onMapClick, onMapRightClick, onPoiClick, onPoiRightClick, onMultiSelect, gameMode, placementType }) => {
     return (
@@ -354,4 +361,4 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
         </div>
     );
 };
-export default GameMap;
+export default React.memo(GameMap);

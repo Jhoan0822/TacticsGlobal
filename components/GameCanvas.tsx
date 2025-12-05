@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { GameUnit, Faction, UnitClass, Projectile, Explosion, WeaponType, POI, POIType } from '../types';
@@ -21,6 +21,75 @@ const UNIT_COLORS: Record<string, string> = {
 
 // --- SPRITE CACHE ---
 const spriteCache: Record<string, HTMLCanvasElement> = {};
+
+// --- PERFORMANCE: Pre-render POI icons to offscreen canvases ---
+const poiSpriteCache: Record<string, HTMLCanvasElement> = {};
+
+const getPoiSprite = (type: POIType, color: string, size: number = 48): HTMLCanvasElement => {
+    const key = `${type}-${color}-${size}`;
+    if (poiSpriteCache[key]) return poiSpriteCache[key];
+
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const cx = size / 2;
+    const cy = size / 2;
+
+    if (type === POIType.CITY) {
+        // City shape with glow pre-rendered
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = color;
+        ctx.fillRect(cx - 12, cy - 12, 24, 24);
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cx - 12, cy - 12, 24, 24);
+        ctx.shadowBlur = 0;
+        // Icon
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('$', cx, cy);
+    } else if (type === POIType.OIL_RIG) {
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath();
+        ctx.moveTo(cx - 8, cy + 8);
+        ctx.lineTo(cx + 8, cy + 8);
+        ctx.lineTo(cx, cy - 12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('OIL', cx, cy + 4);
+    } else if (type === POIType.GOLD_MINE) {
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 10);
+        ctx.lineTo(cx + 10, cy);
+        ctx.lineTo(cx, cy + 10);
+        ctx.lineTo(cx - 10, cy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#78350f';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#78350f';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Au', cx, cy);
+    }
+
+    poiSpriteCache[key] = canvas;
+    return canvas;
+};
 
 const getUnitSprite = (type: UnitClass, color: string): HTMLCanvasElement => {
     const key = `${type}-${color}`;
@@ -303,39 +372,22 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
 
                 const owner = currentFactions.find(f => f.id === poi.ownerFactionId);
                 const color = owner?.color || '#64748b';
-                const isCity = poi.type === POIType.CITY;
 
                 ctx.save();
                 ctx.translate(pos.x, pos.y);
 
-                // City Shape
-                // POI Rendering
+                // PERFORMANCE: Use cached sprite instead of drawing shapes every frame
+                const sprite = getPoiSprite(poi.type, color);
+                ctx.drawImage(sprite, -24, -24);
+
+                // Only draw dynamic elements (health bar, name label)
                 if (poi.type === POIType.CITY) {
-                    // City Shape
-                    // Glow
-                    ctx.shadowColor = color;
-                    ctx.shadowBlur = 10;
-
-                    ctx.fillStyle = color;
-                    ctx.fillRect(-12, -12, 24, 24);
-                    ctx.strokeStyle = 'white';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(-12, -12, 24, 24);
-
-                    // Icon ($)
-                    ctx.fillStyle = 'white';
-                    ctx.font = 'bold 14px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText('$', 0, 0);
-
-                    ctx.shadowBlur = 0;
-
                     // Name Label
                     ctx.fillStyle = 'rgba(0,0,0,0.7)';
                     ctx.fillRect(-20, 16, 40, 14);
                     ctx.fillStyle = 'white';
                     ctx.font = '10px Arial';
+                    ctx.textAlign = 'center';
                     ctx.fillText(poi.name, 0, 23);
 
                     // Health Bar
@@ -349,38 +401,6 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
                     ctx.strokeStyle = 'black';
                     ctx.lineWidth = 1;
                     ctx.strokeRect(-16, -20, 32, 4);
-
-                } else if (poi.type === POIType.OIL_RIG) {
-                    // Oil Rig (Black Tower)
-                    ctx.fillStyle = '#1e293b'; // Slate 800
-                    ctx.beginPath();
-                    ctx.moveTo(-8, 8); ctx.lineTo(8, 8); ctx.lineTo(0, -12); ctx.closePath();
-                    ctx.fill();
-                    ctx.strokeStyle = '#f59e0b'; // Amber border
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-
-                    ctx.fillStyle = '#fbbf24';
-                    ctx.font = 'bold 10px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText('OIL', 0, 4);
-
-                } else if (poi.type === POIType.GOLD_MINE) {
-                    // Gold Mine (Yellow Diamond)
-                    ctx.fillStyle = '#fbbf24'; // Amber 400
-                    ctx.beginPath();
-                    ctx.moveTo(0, -10); ctx.lineTo(10, 0); ctx.lineTo(0, 10); ctx.lineTo(-10, 0); ctx.closePath();
-                    ctx.fill();
-                    ctx.strokeStyle = '#78350f'; // Brown border
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-
-                    ctx.fillStyle = '#78350f';
-                    ctx.font = 'bold 10px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText('Au', 0, 0);
                 }
 
                 ctx.restore();
@@ -430,9 +450,14 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
                 ctx.restore();
             });
 
-            // Units
+            // Units - INTERPOLATION: Use visual position for smooth rendering
             currentUnits.forEach(unit => {
-                const pos = map.latLngToContainerPoint([unit.position.lat, unit.position.lng]);
+                // PERFORMANCE: Use visual position if available, otherwise use authoritative position
+                const renderLat = unit.visualPosition?.lat ?? unit.position.lat;
+                const renderLng = unit.visualPosition?.lng ?? unit.position.lng;
+                const renderHeading = unit.visualHeading ?? unit.heading;
+
+                const pos = map.latLngToContainerPoint([renderLat, renderLng]);
                 if (pos.x < -buffer || pos.y < -buffer || pos.x > mapSize.x + buffer || pos.y > mapSize.y + buffer) return;
 
                 const faction = currentFactions.find(f => f.id === unit.factionId);
@@ -447,7 +472,7 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
                 if (isBoosting) {
                     const pulse = (Math.sin(time / 100) + 1) / 2;
                     ctx.save();
-                    ctx.rotate((unit.heading * Math.PI) / 180);
+                    ctx.rotate((renderHeading * Math.PI) / 180);
                     ctx.strokeStyle = 'cyan';
                     ctx.lineWidth = 2;
                     ctx.globalAlpha = 0.6 * pulse;
@@ -470,7 +495,7 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
                 }
 
                 ctx.save();
-                ctx.rotate((unit.heading * Math.PI) / 180);
+                ctx.rotate((renderHeading * Math.PI) / 180);
 
                 // USE SPRITE CACHE
                 const sprite = getUnitSprite(unit.unitClass, color);

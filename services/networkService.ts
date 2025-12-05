@@ -187,11 +187,21 @@ class NetworkServiceImpl {
     /**
      * Broadcast an action to all connected peers
      * Called AFTER local execution (optimistic update)
+     * For clients: sends to host via hostConn
+     * For host: sends to all connected clients
      */
     broadcastAction(action: GameAction) {
         const msg: ActionMessage = { type: 'ACTION', action };
-        console.log('[NETWORK] Broadcasting action:', action.actionType, 'to', this.conns.length, 'peers');
 
+        // CLIENT: Make sure action reaches host via hostConn
+        if (!this._isHost && this.hostConn && this.hostConn.open) {
+            console.log('[NETWORK] Client sending action to host:', action.actionType);
+            this.hostConn.send(msg);
+            return; // Clients only send to host
+        }
+
+        // HOST: Broadcast to all connected clients
+        console.log('[NETWORK] Host broadcasting action:', action.actionType, 'to', this.conns.length, 'peers');
         this.conns.forEach(conn => {
             if (conn.open) {
                 conn.send(msg);

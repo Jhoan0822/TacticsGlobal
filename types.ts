@@ -110,6 +110,11 @@ export interface GameUnit extends UnitStats {
   autoMode?: 'NONE' | 'DEFEND' | 'ATTACK' | 'PATROL';
   autoTarget?: boolean; // Auto-engage enemies in range
   homePosition?: { lat: number; lng: number }; // For patrol/defend
+
+  // INTERPOLATION: Visual position for smooth client rendering
+  visualPosition?: { lat: number; lng: number };
+  visualHeading?: number;
+  lastServerUpdate?: number; // Timestamp of last authoritative update
 }
 
 export interface Projectile {

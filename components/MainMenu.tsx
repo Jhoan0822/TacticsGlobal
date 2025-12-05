@@ -132,68 +132,94 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             return (
                 <div className="relative flex flex-col items-center justify-center h-screen bg-tactical-900 text-white overflow-hidden">
                     {/* Animated Background */}
-                    <div className="absolute inset-0 bg-grid-animated opacity-30"></div>
+                    <div className="absolute inset-0 bg-grid-animated opacity-20"></div>
                     <div className="absolute inset-0 bg-radial-glow"></div>
+
+                    {/* Floating Particles Effect */}
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl animate-float"></div>
+                        <div className="absolute bottom-1/3 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-float" style={{ animationDelay: '-1.5s' }}></div>
+                        <div className="absolute top-1/2 right-1/3 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl animate-float" style={{ animationDelay: '-3s' }}></div>
+                    </div>
 
                     {/* Scan Line Effect */}
                     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                        <div className="absolute w-full h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent animate-scan-line" style={{ animation: 'scan-line 4s linear infinite' }}></div>
+                        <div className="absolute w-full h-1 bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" style={{ animation: 'scan-line 4s linear infinite' }}></div>
                     </div>
 
                     {/* Content */}
-                    <div className="relative z-10 flex flex-col items-center space-y-12">
+                    <div className="relative z-10 flex flex-col items-center space-y-14 animate-fade-in">
                         {/* Title */}
-                        <div className="text-center space-y-4">
-                            <h1 className="font-display text-7xl font-black tracking-wider text-glow-cyan">
-                                <span className="gradient-text">TACTIC</span>
-                                <span className="text-white"> OPS</span>
-                            </h1>
-                            <p className="text-slate-400 text-sm tracking-[0.3em] uppercase">Global Strategic Command</p>
-                            <div className="flex items-center justify-center gap-2 text-xs text-cyan-500/60">
-                                <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse"></span>
-                                <span className="tracking-widest">SYSTEM ONLINE</span>
+                        <div className="text-center space-y-6">
+                            <div className="relative">
+                                <h1 className="font-display text-8xl font-black tracking-wider">
+                                    <span className="gradient-text-holographic">TACTIC</span>
+                                    <span className="text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]"> OPS</span>
+                                </h1>
+                                {/* Glow effect behind title */}
+                                <div className="absolute inset-0 -z-10 blur-3xl opacity-30 bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500"></div>
+                            </div>
+                            <p className="text-slate-400 text-sm tracking-[0.4em] uppercase font-medium">Global Strategic Command</p>
+                            <div className="flex items-center justify-center gap-3 text-xs">
+                                <div className="relative">
+                                    <span className="absolute inset-0 w-3 h-3 rounded-full bg-cyan-500 animate-ping opacity-75"></span>
+                                    <span className="relative w-3 h-3 rounded-full bg-cyan-400 block shadow-[0_0_12px_rgba(6,182,212,0.8)]"></span>
+                                </div>
+                                <span className="text-cyan-400/80 tracking-[0.3em] font-medium animate-neon-flicker">SYSTEM ONLINE</span>
                             </div>
                         </div>
 
                         {/* Menu Buttons */}
-                        <div className="flex flex-col gap-4 w-80">
+                        <div className="flex flex-col gap-5 w-96">
                             <button
                                 onClick={() => setNetworkMode('SINGLE')}
-                                className="group relative px-8 py-5 rounded-xl bg-gradient-to-r from-cyan-900/40 to-blue-900/40 border border-cyan-500/30 text-xl font-bold tracking-wider transition-all duration-300 hover:border-cyan-400/60 hover:shadow-glow-cyan hover:scale-[1.02] overflow-hidden"
+                                className="group relative px-8 py-6 rounded-2xl bg-gradient-to-r from-cyan-900/30 to-blue-900/30 border border-cyan-500/40 text-xl font-bold tracking-wider transition-all duration-300 hover:border-cyan-400/80 hover:shadow-[0_0_40px_rgba(6,182,212,0.5)] hover:scale-[1.03] overflow-hidden backdrop-blur-sm"
                             >
-                                <span className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/10 to-cyan-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
-                                <span className="relative flex items-center justify-center gap-3">
-                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                <span className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/20 to-cyan-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
+                                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-t from-cyan-500/10 to-transparent"></span>
+                                <span className="relative flex items-center justify-center gap-4">
+                                    <svg className="w-7 h-7 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                                     SINGLE PLAYER
                                 </span>
                             </button>
 
                             <button
                                 onClick={() => setNetworkMode('MULTI_HOST')}
-                                className="group relative px-8 py-5 rounded-xl bg-gradient-to-r from-green-900/40 to-emerald-900/40 border border-green-500/30 text-xl font-bold tracking-wider transition-all duration-300 hover:border-green-400/60 hover:shadow-[0_0_20px_rgba(34,197,94,0.4)] hover:scale-[1.02] overflow-hidden"
+                                className="group relative px-8 py-6 rounded-2xl bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/40 text-xl font-bold tracking-wider transition-all duration-300 hover:border-green-400/80 hover:shadow-[0_0_40px_rgba(34,197,94,0.5)] hover:scale-[1.03] overflow-hidden backdrop-blur-sm"
                             >
-                                <span className="absolute inset-0 bg-gradient-to-r from-green-500/0 via-green-500/10 to-green-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
-                                <span className="relative flex items-center justify-center gap-3">
-                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                                <span className="absolute inset-0 bg-gradient-to-r from-green-500/0 via-green-500/20 to-green-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
+                                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-t from-green-500/10 to-transparent"></span>
+                                <span className="relative flex items-center justify-center gap-4">
+                                    <svg className="w-7 h-7 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
                                     HOST GAME
                                 </span>
                             </button>
 
                             <button
                                 onClick={() => setNetworkMode('MULTI_JOIN')}
-                                className="group relative px-8 py-5 rounded-xl bg-gradient-to-r from-purple-900/40 to-violet-900/40 border border-purple-500/30 text-xl font-bold tracking-wider transition-all duration-300 hover:border-purple-400/60 hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:scale-[1.02] overflow-hidden"
+                                className="group relative px-8 py-6 rounded-2xl bg-gradient-to-r from-purple-900/30 to-violet-900/30 border border-purple-500/40 text-xl font-bold tracking-wider transition-all duration-300 hover:border-purple-400/80 hover:shadow-[0_0_40px_rgba(168,85,247,0.5)] hover:scale-[1.03] overflow-hidden backdrop-blur-sm"
                             >
-                                <span className="absolute inset-0 bg-gradient-to-r from-purple-500/0 via-purple-500/10 to-purple-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
-                                <span className="relative flex items-center justify-center gap-3">
-                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                                <span className="absolute inset-0 bg-gradient-to-r from-purple-500/0 via-purple-500/20 to-purple-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
+                                <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-t from-purple-500/10 to-transparent"></span>
+                                <span className="relative flex items-center justify-center gap-4">
+                                    <svg className="w-7 h-7 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                                     JOIN GAME
                                 </span>
                             </button>
                         </div>
 
                         {/* Footer */}
-                        <div className="text-center text-slate-600 text-xs tracking-wider">
-                            <p>v1.0.0 • Real-Time Strategy</p>
+                        <div className="text-center space-y-2">
+                            <div className="flex items-center justify-center gap-6 text-slate-500 text-xs tracking-wider">
+                                <span className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
+                                    v2.0.0
+                                </span>
+                                <span className="w-px h-3 bg-slate-700"></span>
+                                <span>Real-Time Strategy</span>
+                                <span className="w-px h-3 bg-slate-700"></span>
+                                <span>Multiplayer</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -318,8 +344,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                         disabled={!canEdit}
                                         onClick={() => isSingle ? setLobbyState(p => ({ ...p, scenarioId: scen.id })) : updateLobbySetting('scenarioId', scen.id)}
                                         className={`p-3 rounded-xl text-sm font-bold border transition-all ${lobbyState.scenarioId === scen.id
-                                                ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
-                                                : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50 hover:border-slate-500/50'
+                                            ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
+                                            : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50 hover:border-slate-500/50'
                                             } ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
                                     >
                                         {scen.name}
@@ -355,8 +381,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                         disabled={!canEdit}
                                         onClick={() => isSingle ? setLobbyState(p => ({ ...p, gameMode: mode as any })) : updateLobbySetting('gameMode', mode)}
                                         className={`p-3 rounded-xl text-sm font-bold border transition-all ${lobbyState.gameMode === mode
-                                                ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
-                                                : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
+                                            ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                                            : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
                                             } ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
                                     >
                                         {mode}
@@ -375,12 +401,12 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                         disabled={!canEdit}
                                         onClick={() => isSingle ? setLobbyState(p => ({ ...p, difficulty: diff })) : updateLobbySetting('difficulty', diff)}
                                         className={`flex-1 py-3 rounded-xl text-xs font-bold border transition-all ${lobbyState.difficulty === diff
-                                                ? diff === Difficulty.HARD
-                                                    ? 'bg-red-500/20 border-red-500/50 text-red-300'
-                                                    : diff === Difficulty.MEDIUM
-                                                        ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
-                                                        : 'bg-green-500/20 border-green-500/50 text-green-300'
-                                                : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
+                                            ? diff === Difficulty.HARD
+                                                ? 'bg-red-500/20 border-red-500/50 text-red-300'
+                                                : diff === Difficulty.MEDIUM
+                                                    ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
+                                                    : 'bg-green-500/20 border-green-500/50 text-green-300'
+                                            : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
                                             } ${!canEdit && 'opacity-50 cursor-not-allowed'}`}
                                     >
                                         {diff}
@@ -417,8 +443,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                             }
                                         }}
                                         className={`w-full p-4 rounded-xl text-left flex items-center gap-4 transition-all border ${isSelected
-                                                ? 'bg-slate-700/60 border-white/30 shadow-lg'
-                                                : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-700/40 hover:border-slate-600/50'
+                                            ? 'bg-slate-700/60 border-white/30 shadow-lg'
+                                            : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-700/40 hover:border-slate-600/50'
                                             }`}
                                     >
                                         <div
@@ -506,8 +532,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                         onClick={isSingle ? handleSinglePlayerStart : handleHostLobbyStart}
                         disabled={!isSingle && !isHost}
                         className={`px-12 py-4 rounded-xl text-xl font-bold tracking-wider transition-all ${(!isSingle && !isHost)
-                                ? 'bg-slate-700 cursor-not-allowed text-slate-500'
-                                : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg hover:shadow-[0_0_30px_rgba(6,182,212,0.4)] hover:scale-[1.02]'
+                            ? 'bg-slate-700 cursor-not-allowed text-slate-500'
+                            : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg hover:shadow-[0_0_30px_rgba(6,182,212,0.4)] hover:scale-[1.02]'
                             }`}
                     >
                         <span className="flex items-center gap-3">
