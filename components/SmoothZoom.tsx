@@ -18,7 +18,8 @@ export const SmoothZoom = () => {
         // COMPLETELY DISABLE Native Handlers to prevent fighting
         map.dragging.disable();
         map.scrollWheelZoom.disable();
-        map.doubleClickZoom.disable(); // Optional, but good for consistency
+        map.doubleClickZoom.disable();
+        map.boxZoom.disable(); // Disable Shift+Drag zoom to allow box selection
 
         // Initialize
         targetZoomRef.current = map.getZoom();
@@ -166,6 +167,7 @@ export const SmoothZoom = () => {
             map.dragging.enable();
             map.scrollWheelZoom.enable();
             map.doubleClickZoom.enable();
+            map.boxZoom.enable();
             container.style.cursor = '';
         };
     }, [map]);
