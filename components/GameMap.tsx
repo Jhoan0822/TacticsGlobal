@@ -28,6 +28,8 @@ interface Props {
     gameMode: GameMode;
     placementType?: UnitClass | null;
     localPlayerId: string;
+    selectionEndTime?: number; // Timestamp when selection phase ends
+    startTime?: number; // Timestamp for COUNTDOWN mode
 }
 
 // DRAG SELECTION OVERLAY
@@ -300,7 +302,26 @@ const MapController: React.FC<{ center: { lat: number; lng: number }, gameMode: 
 
 const MemoizedMapController = React.memo(MapController);
 
-const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, explosions, center, selectedUnitIds, onUnitClick, onUnitRightClick, onUnitAction, onMapClick, onMapRightClick, onPoiClick, onPoiRightClick, onMultiSelect, gameMode, placementType, localPlayerId }) => {
+const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, explosions, center, selectedUnitIds, onUnitClick, onUnitRightClick, onUnitAction, onMapClick, onMapRightClick, onPoiClick, onPoiRightClick, onMultiSelect, gameMode, placementType, localPlayerId, selectionEndTime, startTime }) => {
+    // Timer state for live countdown
+    const [now, setNow] = React.useState(Date.now());
+
+    // Update timer every second during SELECTION or COUNTDOWN
+    React.useEffect(() => {
+        if (gameMode !== 'SELECTION' && gameMode !== 'COUNTDOWN') return;
+
+        const interval = setInterval(() => {
+            setNow(Date.now());
+        }, 100); // Update every 100ms for smooth countdown
+
+        return () => clearInterval(interval);
+    }, [gameMode]);
+
+    // Calculate remaining time
+    const selectionTimeRemaining = selectionEndTime ? Math.max(0, Math.ceil((selectionEndTime - now) / 1000)) : 0;
+    const countdownTimeRemaining = startTime ? Math.max(0, Math.ceil((startTime - now) / 1000)) : 0;
+    const selectionProgress = selectionEndTime ? Math.min(100, Math.max(0, ((selectionEndTime - now) / 60000) * 100)) : 100;
+
     return (
         <div className="w-full h-screen relative z-0">
             <MapContainer
@@ -364,15 +385,41 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
                 </div>
             </div>
 
+            {/* SELECTION TIMER OVERLAY */}
+            {gameMode === 'SELECTION' && selectionEndTime && (
+                <div className="absolute top-6 right-6 z-[1000] pointer-events-none">
+                    <div className="bg-black/80 backdrop-blur-md text-white px-6 py-4 rounded-xl border border-cyan-500/50 shadow-2xl flex flex-col items-center gap-3">
+                        <h3 className="text-sm font-bold text-cyan-400 tracking-wider uppercase">SELECT YOUR BASE</h3>
+                        <div className="text-4xl font-mono font-bold text-white">
+                            {selectionTimeRemaining}
+                            <span className="text-lg text-slate-400 ml-1">s</span>
+                        </div>
+                        <div className="w-48 h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-100"
+                                style={{ width: `${selectionProgress}%` }}
+                            />
+                        </div>
+                        <p className="text-xs text-slate-400">Click a city to establish HQ</p>
+                    </div>
+                </div>
+            )}
+
             {/* START COUNTDOWN OVERLAY */}
             {gameMode === 'COUNTDOWN' && (
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[1000] pointer-events-none">
                     <div className="bg-black/80 backdrop-blur-md text-white px-8 py-6 rounded-xl border border-yellow-500 shadow-2xl flex flex-col items-center gap-4">
                         <h2 className="text-2xl font-bold text-yellow-400 tracking-widest">PREPARING WARZONE</h2>
-                        <div className="w-64 h-2 bg-slate-700 rounded-full overflow-hidden">
-                            <div className="h-full bg-yellow-500 animate-[pulse_2s_infinite]"></div>
+                        <div className="text-5xl font-mono font-bold text-white">
+                            {countdownTimeRemaining}
                         </div>
-                        <p className="text-sm text-slate-300">WAITING FOR ALL COMMANDERS TO DEPLOY...</p>
+                        <div className="w-64 h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-yellow-500 transition-all duration-100"
+                                style={{ width: `${startTime ? Math.min(100, ((startTime - now) / 5000) * 100) : 0}%` }}
+                            />
+                        </div>
+                        <p className="text-sm text-slate-300">DEPLOYING ALL COMMANDERS...</p>
                     </div>
                 </div>
             )}

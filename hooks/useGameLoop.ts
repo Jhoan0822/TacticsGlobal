@@ -467,6 +467,72 @@ export const useGameLoop = () => {
         }
 
         setGameState(prevState => {
+            // SELECTION TIMEOUT (HOST only - auto-start if timer expires)
+            if (prevState.gameMode === 'SELECTION' && prevState.selectionEndTime && !prevState.isClient) {
+                if (Date.now() >= prevState.selectionEndTime) {
+                    console.log('[LOOP] Selection timeout! Auto-assigning cities and starting.');
+
+                    // Auto-assign cities to players who haven't selected
+                    const humanFactions = prevState.factions.filter(f => f.type === 'PLAYER' && !f.ready);
+                    const availableCities = prevState.pois.filter(p => p.type === POIType.CITY && !p.ownerFactionId);
+                    const shuffledCities = [...availableCities].sort(() => Math.random() - 0.5);
+
+                    let updatedPois = [...prevState.pois];
+                    let updatedFactions = [...prevState.factions];
+                    let updatedUnits = [...prevState.units];
+
+                    humanFactions.forEach((faction, index) => {
+                        if (index < shuffledCities.length) {
+                            const city = shuffledCities[index];
+                            console.log(`[TIMEOUT] Auto-assigning ${city.name} to ${faction.id}`);
+
+                            // Update POI
+                            updatedPois = updatedPois.map(p =>
+                                p.id === city.id ? { ...p, ownerFactionId: faction.id, tier: 1 } : p
+                            );
+
+                            // Mark faction ready
+                            updatedFactions = updatedFactions.map(f =>
+                                f.id === faction.id ? { ...f, ready: true } : f
+                            );
+
+                            // Spawn HQ for player
+                            updatedUnits.push({
+                                id: `HQ-${faction.id}-${Date.now()}-${index}`,
+                                unitClass: UnitClass.COMMAND_CENTER,
+                                factionId: faction.id,
+                                position: { lat: city.position.lat, lng: city.position.lng },
+                                heading: 0,
+                                hp: UNIT_CONFIG[UnitClass.COMMAND_CENTER].hp,
+                                maxHp: UNIT_CONFIG[UnitClass.COMMAND_CENTER].maxHp,
+                                attack: UNIT_CONFIG[UnitClass.COMMAND_CENTER].attack,
+                                range: UNIT_CONFIG[UnitClass.COMMAND_CENTER].range,
+                                speed: 0,
+                                vision: UNIT_CONFIG[UnitClass.COMMAND_CENTER].vision
+                            });
+                        }
+                    });
+
+                    // Now all players are "ready" - transition to COUNTDOWN
+                    const nextStartTime = Date.now() + 5000;
+                    NetworkService.broadcastResponse({
+                        type: 'GAME_MODE_UPDATE',
+                        mode: 'COUNTDOWN',
+                        startTime: nextStartTime
+                    });
+
+                    return {
+                        ...prevState,
+                        pois: updatedPois,
+                        factions: updatedFactions,
+                        units: updatedUnits,
+                        gameMode: 'COUNTDOWN',
+                        startTime: nextStartTime,
+                        selectionEndTime: undefined
+                    };
+                }
+            }
+
             // COUNTDOWN TIMER (Both host and client can check this)
             if (prevState.gameMode === 'COUNTDOWN' && prevState.startTime) {
                 if (Date.now() >= prevState.startTime) {
@@ -673,6 +739,7 @@ export const useGameLoop = () => {
             isClient,
             placementType: null,
             pendingBotFactions: finalFactions.filter(f => f.type === 'BOT').map(f => f.id),
+            selectionEndTime: Date.now() + 60000, // 60 seconds to select city
             // Network sync fields
             stateVersion: 0,
             hostTick: 0

@@ -312,6 +312,8 @@ const App: React.FC = () => {
                         gameMode={gameState.gameMode}
                         placementType={gameState.placementType}
                         localPlayerId={gameState.localPlayerId}
+                        selectionEndTime={gameState.selectionEndTime}
+                        startTime={gameState.startTime}
                     />
                     <EventLog messages={gameState.messages} />
                     <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>
