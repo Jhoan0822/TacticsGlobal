@@ -43,45 +43,15 @@ let combatIntensity = 0;
 let combatDecayInterval: number | null = null;
 
 // ============================================
-// TABLETOP AUDIO STREAMING SYSTEM
+// SYNTH MUSIC STATE
 // ============================================
-
-// Track URLs from TableTop Audio
-const TRACK_URLS = {
-    // Menu/Lobby - calm, atmospheric
-    menu: [
-        'https://sounds.tabletopaudio.com/Medieval_Library.mp3',
-        'https://sounds.tabletopaudio.com/Antiquarian_Study.mp3',
-    ],
-    // Lobby - preparing for battle
-    lobby: [
-        'https://sounds.tabletopaudio.com/Battle_Stations.mp3',
-        'https://sounds.tabletopaudio.com/High_Alert.mp3',
-        'https://sounds.tabletopaudio.com/Covert_Ops.mp3',
-    ],
-    // Gameplay - calm/strategic
-    gameplay: [
-        'https://sounds.tabletopaudio.com/Skirmish.mp3',
-        'https://sounds.tabletopaudio.com/Fog_of_War.mp3',
-        'https://sounds.tabletopaudio.com/Western_Watchtower.mp3',
-    ],
-    // Combat - intense
-    combat: [
-        'https://sounds.tabletopaudio.com/War_Zone.mp3',
-        'https://sounds.tabletopaudio.com/Cry_Havoc.mp3',
-        'https://sounds.tabletopaudio.com/City_Under_Siege.mp3',
-    ]
-};
 
 // Music state
 type MusicMode = 'menu' | 'lobby' | 'gameplay' | 'combat' | 'none';
 let currentMode: MusicMode = 'none';
-let currentAudio: HTMLAudioElement | null = null;
-let secondaryAudio: HTMLAudioElement | null = null; // For combat crossfade
 let isMusicPlaying = false;
-let volumeUpdateInterval: number | null = null;
 
-// Fallback synth
+// Synth music state
 let useFallbackSynth = false;
 let musicGain: GainNode | null = null;
 let musicLoopTimeouts: number[] = [];
@@ -858,33 +828,17 @@ const playDefeat = () => {
 };
 
 // ============================================
-// STREAMING BACKGROUND MUSIC SYSTEM
+// SYNTH-ONLY BACKGROUND MUSIC SYSTEM
+// No external audio files - all synthesized
 // ============================================
 
-const createStreamingAudio = (url: string): HTMLAudioElement => {
-    const audio = new Audio(url);
-    audio.loop = true;
-    audio.volume = 0;
-    audio.preload = 'auto';
-    return audio;
+const stopAllMusic = () => {
+    isMusicPlaying = false;
+    currentMode = 'none';
+    stopFallbackSynth();
 };
 
-const fadeAudio = (audio: HTMLAudioElement, targetVol: number, duration: number = 1000) => {
-    const startVol = audio.volume;
-    const startTime = Date.now();
-
-    const fade = () => {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(1, elapsed / duration);
-        audio.volume = startVol + (targetVol - startVol) * progress;
-
-        if (progress < 1) {
-            requestAnimationFrame(fade);
-        }
-    };
-    fade();
-};
-
+// Map music modes to synth modes
 const playMusicMode = async (mode: MusicMode) => {
     if (mode === 'none') {
         stopAllMusic();
@@ -894,113 +848,29 @@ const playMusicMode = async (mode: MusicMode) => {
     // If same mode and already playing, do nothing
     if (mode === currentMode && isMusicPlaying) return;
 
-    const tracks = TRACK_URLS[mode];
-    if (!tracks || tracks.length === 0) return;
-
-    // Pick random track
-    const trackUrl = tracks[Math.floor(Math.random() * tracks.length)];
-
-    // Fade out current audio if playing
-    if (currentAudio) {
-        fadeAudio(currentAudio, 0, 500);
-        setTimeout(() => {
-            if (currentAudio) {
-                currentAudio.pause();
-                currentAudio = null;
-            }
-        }, 600);
-    }
-
-    // Create new audio
-    currentAudio = createStreamingAudio(trackUrl);
     currentMode = mode;
-    isMusicPlaying = true;
 
-    // Handle errors - fall back to synth
-    currentAudio.onerror = (e) => {
-        console.warn('TableTop Audio failed, using synth fallback:', e);
-        useFallbackSynth = true;
-        startFallbackSynth();
-    };
-
-    // Loop to next track when this one ends
-    currentAudio.onended = () => {
-        if (isMusicPlaying && currentMode === mode) {
-            // Pick next track
-            const nextTrack = tracks[Math.floor(Math.random() * tracks.length)];
-            if (currentAudio) {
-                currentAudio.src = nextTrack;
-                currentAudio.play().catch(() => { });
-            }
-        }
-    };
-
-    try {
-        await currentAudio.play();
-        // Fade in
-        fadeAudio(currentAudio, getMusicVolume(), 1000);
-
-        // For gameplay mode, also prepare combat audio for crossfade
-        if (mode === 'gameplay') {
-            const combatTrack = TRACK_URLS.combat[Math.floor(Math.random() * TRACK_URLS.combat.length)];
-            secondaryAudio = createStreamingAudio(combatTrack);
-            secondaryAudio.play().catch(() => { });
-
-            // Start combat crossfade updates
+    // Always use synth - no streaming
+    switch (mode) {
+        case 'menu':
+            startFallbackSynthMode('menu');
+            break;
+        case 'lobby':
+            startFallbackSynthMode('lobby');
+            break;
+        case 'gameplay':
+            startFallbackSynthMode('peace');
+            // Start combat decay interval
             if (combatDecayInterval) clearInterval(combatDecayInterval);
             combatDecayInterval = window.setInterval(() => {
                 combatIntensity = Math.max(0, combatIntensity - 0.008);
-                updateCombatCrossfade();
+                checkPeaceTransition();
             }, 500);
-        }
-    } catch (error) {
-        console.warn('Streaming failed:', error);
-        useFallbackSynth = true;
-        startFallbackSynth();
+            break;
+        case 'combat':
+            startFallbackSynthMode('combat');
+            break;
     }
-};
-
-const updateCombatCrossfade = () => {
-    if (!isMusicPlaying || currentMode !== 'gameplay') return;
-
-    const baseVol = getMusicVolume();
-    const gameplayVol = baseVol * (1 - combatIntensity * 0.6);
-    const combatVol = baseVol * combatIntensity * 0.8;
-
-    if (currentAudio) currentAudio.volume = Math.max(0, Math.min(1, gameplayVol));
-    if (secondaryAudio) secondaryAudio.volume = Math.max(0, Math.min(1, combatVol));
-};
-
-const stopAllMusic = () => {
-    isMusicPlaying = false;
-    currentMode = 'none';
-
-    if (currentAudio) {
-        fadeAudio(currentAudio, 0, 500);
-        setTimeout(() => {
-            if (currentAudio) {
-                currentAudio.pause();
-                currentAudio = null;
-            }
-        }, 600);
-    }
-
-    if (secondaryAudio) {
-        fadeAudio(secondaryAudio, 0, 500);
-        setTimeout(() => {
-            if (secondaryAudio) {
-                secondaryAudio.pause();
-                secondaryAudio = null;
-            }
-        }, 600);
-    }
-
-    if (combatDecayInterval) {
-        clearInterval(combatDecayInterval);
-        combatDecayInterval = null;
-    }
-
-    stopFallbackSynth();
 };
 
 // ============================================
