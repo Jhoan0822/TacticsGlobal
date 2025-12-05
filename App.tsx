@@ -315,27 +315,17 @@ const App: React.FC = () => {
                     onToggleAutoTarget={handleToggleAutoTarget}
                     onSetFormation={(formation) => {
                         console.log('[FORMATION] Button clicked:', formation);
-                        console.log('[FORMATION] Selected unit IDs:', selectedUnitIds);
 
-                        if (selectedUnitIds.length < 2) {
-                            console.log('[FORMATION] Not enough units selected');
-                            return;
-                        }
+                        if (selectedUnitIds.length < 2) return;
 
                         const selectedUnits = gameState.units.filter(u =>
                             selectedUnitIds.includes(u.id) && u.factionId === gameState.localPlayerId
                         );
 
-                        console.log('[FORMATION] Selected units:', selectedUnits.length);
-
-                        if (selectedUnits.length < 2) {
-                            console.log('[FORMATION] Not enough player units');
-                            return;
-                        }
+                        if (selectedUnits.length < 2) return;
 
                         // Get current center of the group
                         const groupCenter = getGroupCenter(selectedUnits);
-                        console.log('[FORMATION] Group center:', groupCenter);
 
                         // Calculate formation positions (facing north by default)
                         const positions = calculateFormationPositions(
@@ -346,19 +336,24 @@ const App: React.FC = () => {
                             0 // Face north
                         );
 
-                        console.log('[FORMATION] Calculated positions:', positions);
+                        console.log('[FORMATION] Setting formation with offsets');
 
-                        // Apply formation positions as destinations
+                        // Apply formation positions AND save offsets for future moves
                         setGameState(prev => ({
                             ...prev,
                             units: prev.units.map(u => {
                                 const pos = positions.find(p => p.unitId === u.id);
                                 if (pos) {
-                                    console.log(`[FORMATION] Setting destination for ${u.id}:`, pos);
+                                    // Calculate offset from group center
+                                    const offset = {
+                                        lat: pos.lat - groupCenter.lat,
+                                        lng: pos.lng - groupCenter.lng
+                                    };
                                     return {
                                         ...u,
                                         destination: { lat: pos.lat, lng: pos.lng },
-                                        targetId: null
+                                        targetId: null,
+                                        formationOffset: offset // Save offset for future moves
                                     };
                                 }
                                 return u;

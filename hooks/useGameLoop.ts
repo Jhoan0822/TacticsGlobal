@@ -954,7 +954,7 @@ export const useGameLoop = () => {
     };
 
     // ============================================
-    // RIGHT-CLICK MOVEMENT (Terrain-Aware)
+    // RIGHT-CLICK MOVEMENT (Terrain-Aware + Formation-Preserving)
     // ============================================
     const handleMapRightClick = (lat: number, lng: number) => {
         if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
@@ -964,42 +964,87 @@ export const useGameLoop = () => {
             lastRightClickTime.current = now;
             const isBoosting = timeDiff < 300; // Double right-click = boost
 
-            // Filter units that CAN reach the target terrain
-            const validUnitIds: string[] = [];
+            // Get selected units for formation check
+            const selectedUnits = gameState.units.filter(u =>
+                selectedUnitIds.includes(u.id) && u.factionId === gameState.localPlayerId
+            );
+
+            // Check if any unit has a formation offset - if so, apply formation
+            const hasFormation = selectedUnits.some(u => u.formationOffset);
+
+            // Filter units that CAN reach the target terrain (use their formation-adjusted position)
+            const validUnits: { id: string; destLat: number; destLng: number }[] = [];
             const invalidUnitIds: string[] = [];
 
-            selectedUnitIds.forEach(id => {
-                const unit = gameState.units.find(u => u.id === id);
-                if (!unit) return;
-                if (unit.factionId !== gameState.localPlayerId) return; // Only control own units
+            selectedUnits.forEach(unit => {
+                // Calculate destination: target + formation offset
+                let destLat = lat;
+                let destLng = lng;
 
-                // Check if unit can move to target terrain
-                if (TerrainService.isValidMove(unit.unitClass, lat, lng, gameState.pois)) {
-                    validUnitIds.push(id);
+                if (hasFormation && unit.formationOffset) {
+                    destLat = lat + unit.formationOffset.lat;
+                    destLng = lng + unit.formationOffset.lng;
+                }
+
+                // Check if unit can move to its destination terrain
+                if (TerrainService.isValidMove(unit.unitClass, destLat, destLng, gameState.pois)) {
+                    validUnits.push({ id: unit.id, destLat, destLng });
                 } else {
-                    invalidUnitIds.push(id);
+                    invalidUnitIds.push(unit.id);
                 }
             });
 
-            // Issue move command for valid units
-            if (validUnitIds.length > 0) {
-                const payload: MoveUnitsPayload = {
-                    unitIds: validUnitIds,
-                    targetLat: lat,
-                    targetLng: lng,
-                    isBoosting
-                };
-                const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
-                setGameState(prev => applyAction(prev, action));
-                NetworkService.broadcastAction(action);
+            // Issue move command for valid units - apply formation offsets directly
+            if (validUnits.length > 0) {
+                // When units have formation offsets, set destinations directly (bypass standard action)
+                if (hasFormation) {
+                    setGameState(prev => ({
+                        ...prev,
+                        units: prev.units.map(u => {
+                            const valid = validUnits.find(v => v.id === u.id);
+                            if (valid) {
+                                return {
+                                    ...u,
+                                    destination: { lat: valid.destLat, lng: valid.destLng },
+                                    isBoosting,
+                                    targetId: null
+                                };
+                            }
+                            return u;
+                        })
+                    }));
+
+                    // Broadcast individual moves for multiplayer sync
+                    validUnits.forEach(v => {
+                        const payload: MoveUnitsPayload = {
+                            unitIds: [v.id],
+                            targetLat: v.destLat,
+                            targetLng: v.destLng,
+                            isBoosting
+                        };
+                        const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
+                        NetworkService.broadcastAction(action);
+                    });
+                } else {
+                    // No formation - use standard behavior (all units to same point)
+                    const payload: MoveUnitsPayload = {
+                        unitIds: validUnits.map(v => v.id),
+                        targetLat: lat,
+                        targetLng: lng,
+                        isBoosting
+                    };
+                    const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
+                    setGameState(prev => applyAction(prev, action));
+                    NetworkService.broadcastAction(action);
+                }
                 AudioService.playMoveCommand();
             }
 
             // Alert for units that can't follow due to terrain
-            if (invalidUnitIds.length > 0 && validUnitIds.length > 0) {
+            if (invalidUnitIds.length > 0 && validUnits.length > 0) {
                 AudioService.playAlert();
                 console.log(`[GROUP] ${invalidUnitIds.length} units cannot reach target terrain`);
-            } else if (invalidUnitIds.length > 0 && validUnitIds.length === 0) {
+            } else if (invalidUnitIds.length > 0 && validUnits.length === 0) {
                 // All selected units can't move there
                 AudioService.playError();
             }

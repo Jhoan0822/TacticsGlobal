@@ -148,6 +148,9 @@ export interface GameUnit extends UnitStats {
   homePosition?: { lat: number; lng: number }; // For patrol/defend
   guardingCityId?: string; // For neutral defenders - the city they protect
 
+  // Formation offset from group center - maintained when moving together
+  formationOffset?: { lat: number; lng: number };
+
   // INTERPOLATION: Visual position for smooth client rendering
   visualPosition?: { lat: number; lng: number };
   visualHeading?: number;

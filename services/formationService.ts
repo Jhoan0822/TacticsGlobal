@@ -16,30 +16,31 @@ export enum FormationType {
 }
 
 // Formation configuration - spacing in degrees (~111km per degree)
+// Large values needed for visibility at world map zoom level
 const FORMATION_CONFIG = {
     [FormationType.LINE]: {
-        spacing: 0.2,    // ~22km between units
+        spacing: 1.0,    // ~110km between units - very visible
         description: 'Wide line for maximum firepower'
     },
     [FormationType.COLUMN]: {
-        spacing: 0.15,   // ~17km between units
+        spacing: 0.8,    // ~90km between units
         description: 'Narrow column for fast movement'
     },
     [FormationType.WEDGE]: {
-        spacing: 0.25,   // ~28km
+        spacing: 1.2,    // ~130km
         angle: 45,       // Degrees from center axis
         description: 'Arrow formation for aggressive assault'
     },
     [FormationType.SQUARE]: {
-        spacing: 0.2,    // ~22km
+        spacing: 1.0,    // ~110km
         description: 'Defensive box protecting center'
     },
     [FormationType.CIRCLE]: {
-        radius: 0.3,     // ~33km radius
+        radius: 1.5,     // ~165km radius
         description: 'Circular defense pattern'
     },
     [FormationType.SPREAD]: {
-        spacing: 0.5,    // ~55km - maximum spacing to avoid nukes
+        spacing: 2.5,    // ~275km - maximum spacing to avoid nukes
         description: 'Wide spread to minimize AoE damage'
     }
 };
