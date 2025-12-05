@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SCENARIOS, FACTION_PRESETS, DIFFICULTY_CONFIG, PERSONALITY_CONFIG } from '../constants';
 import { NetworkService } from '../services/networkService';
-import { AudioService } from '../services/audioService';
 import { Scenario, Faction, LobbyState, LobbyPlayer, Difficulty, BotPersonality } from '../types';
 
 // Helper to assign random personality to bots
@@ -33,18 +32,6 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
         }, 1000);
         return () => clearInterval(checkId);
     }, []);
-
-    // Music management based on menu state
-    useEffect(() => {
-        if (!networkMode) {
-            // Main menu - atmospheric music
-            AudioService.startMenuMusic();
-        } else if (networkMode === 'SINGLE' || networkMode === 'MULTI_HOST' || networkMode === 'LOBBY') {
-            // Lobby/setup screen - battle prep music
-            AudioService.startLobbyMusic();
-        }
-        // Note: Music continues playing, stopBackgroundMusic is called elsewhere when game starts
-    }, [networkMode]);
 
     const handleSinglePlayerStart = () => {
         const scenario = Object.values(SCENARIOS).find(s => s.id === lobbyState.scenarioId) || SCENARIOS.WORLD;
@@ -128,7 +115,23 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
             });
         });
 
-        onStartGame(scenario, NetworkService.myPeerId, factions, true, true);
+        // CRITICAL: Wait for peerId to be ready before starting
+        const playerId = NetworkService.myPeerId;
+        if (!playerId) {
+            console.error('[HOST] Cannot start game - peer ID not initialized yet!');
+            // Wait for peerId using polling
+            const checkPeerId = () => {
+                if (NetworkService.myPeerId) {
+                    onStartGame(scenario, NetworkService.myPeerId, factions, true, true);
+                } else {
+                    setTimeout(checkPeerId, 100);
+                }
+            };
+            checkPeerId();
+            return;
+        }
+
+        onStartGame(scenario, playerId, factions, true, true);
     };
 
     const handleJoin = () => {
