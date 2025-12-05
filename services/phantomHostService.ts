@@ -136,35 +136,62 @@ class PhantomHostServiceImpl {
             this.gameState = state.gameState;
             this.brState = state.brState;
 
-            // CRITICAL: Clean up old PLAYER factions - they can't rejoin without proper connection
-            // Convert all PLAYER factions (except bots) back to BOT status
+            // CRITICAL: Convert abandoned PLAYER factions to NEUTRAL defenders
+            // Instead of removing, keep their units as city defenders
             if (this.gameState && this.brState) {
-                this.gameState.factions = this.gameState.factions.filter(f => {
-                    if (f.type === 'PLAYER' && f.id.startsWith('PLAYER_')) {
-                        console.log('[PHANTOM] Removing stale player faction:', f.id);
-                        return false; // Remove old player factions
-                    }
-                    return true;
-                });
+                // Find all player faction IDs that will be removed
+                const abandonedPlayerIds = this.gameState.factions
+                    .filter(f => f.type === 'PLAYER' && f.id.startsWith('PLAYER_'))
+                    .map(f => f.id);
 
-                // Also remove from BR players list
-                this.brState.players = this.brState.players.filter(p => {
-                    if (!p.isBot && !p.isPhantomHost && p.peerId.startsWith('PLAYER_')) {
-                        return false;
-                    }
-                    return true;
-                });
+                if (abandonedPlayerIds.length > 0) {
+                    console.log('[PHANTOM] Converting abandoned player factions to NEUTRAL:', abandonedPlayerIds);
 
-                // Clean up units belonging to removed player factions
-                const validFactionIds = new Set(this.gameState.factions.map(f => f.id));
-                this.gameState.units = this.gameState.units.filter(u => validFactionIds.has(u.factionId));
+                    // Convert player units to NEUTRAL and assign as city defenders
+                    this.gameState.units.forEach(unit => {
+                        if (abandonedPlayerIds.includes(unit.factionId)) {
+                            // Find the nearest city this unit was near
+                            const nearestCity = this.gameState!.pois
+                                .filter(p => p.type === 'CITY')
+                                .sort((a, b) => {
+                                    const distA = Math.hypot(a.position.lat - unit.position.lat, a.position.lng - unit.position.lng);
+                                    const distB = Math.hypot(b.position.lat - unit.position.lat, b.position.lng - unit.position.lng);
+                                    return distA - distB;
+                                })[0];
 
-                // Reset cities owned by removed players to NEUTRAL
-                this.gameState.pois.forEach(p => {
-                    if (p.ownerFactionId && p.ownerFactionId.startsWith('PLAYER_')) {
-                        p.ownerFactionId = 'NEUTRAL';
-                    }
-                });
+                            // Convert to NEUTRAL and assign as city guard
+                            unit.factionId = 'NEUTRAL';
+                            if (nearestCity) {
+                                unit.guardingCityId = nearestCity.id;
+                            }
+                            console.log('[PHANTOM] Converted unit', unit.id, 'to NEUTRAL defender');
+                        }
+                    });
+
+                    // Convert player cities to NEUTRAL
+                    this.gameState.pois.forEach(p => {
+                        if (p.ownerFactionId && abandonedPlayerIds.includes(p.ownerFactionId)) {
+                            console.log('[PHANTOM] City', p.name, 'became NEUTRAL');
+                            p.ownerFactionId = 'NEUTRAL';
+                        }
+                    });
+
+                    // Now remove the player factions (units are already converted)
+                    this.gameState.factions = this.gameState.factions.filter(f => {
+                        if (f.type === 'PLAYER' && f.id.startsWith('PLAYER_')) {
+                            return false;
+                        }
+                        return true;
+                    });
+
+                    // Also remove from BR players list
+                    this.brState.players = this.brState.players.filter(p => {
+                        if (!p.isBot && !p.isPhantomHost && p.peerId.startsWith('PLAYER_')) {
+                            return false;
+                        }
+                        return true;
+                    });
+                }
             }
 
             // Update round time based on elapsed time
