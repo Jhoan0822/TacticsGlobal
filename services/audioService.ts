@@ -34,7 +34,7 @@ interface AudioConfig {
 const audioConfig: AudioConfig = {
     masterVolume: 0.5,
     effectsVolume: 0.7,
-    musicVolume: 0.35, // Music volume
+    musicVolume: 0.15, // Music volume - lower for comfortable background
     isMuted: false
 };
 
@@ -556,42 +556,218 @@ const stopAllMusic = () => {
 };
 
 // ============================================
-// FALLBACK SYNTH
+// FALLBACK SYNTH - C&C/Bastion Style
+// Inspired by Frank Klepacki, Darren Korb
 // ============================================
+
+// Scale: D minor pentatonic for military feel
+const SCALE = [147, 165, 175, 220, 247, 294, 330, 349]; // D3, E3, F3, A3, B3, D4, E4, F4
+let synthMeasure = 0;
 
 const startFallbackSynth = () => {
     const audio = getContext();
     beatCount = 0;
+    synthMeasure = 0;
 
     musicGain = audio.createGain();
-    musicGain.gain.setValueAtTime(getMusicVolume() * 0.3, audio.currentTime);
+    musicGain.gain.setValueAtTime(getMusicVolume() * 0.25, audio.currentTime);
     musicGain.connect(audio.destination);
 
+    // Main rhythm loop - C&C Hell March inspired beat
     const createBeat = () => {
         if (!isMusicPlaying || !useFallbackSynth) return;
 
-        const osc = audio.createOscillator();
-        const oscGain = audio.createGain();
+        const intensity = Math.max(0.3, combatIntensity);
+        const bpm = 110; // Military march tempo
+        const beatInterval = 60000 / bpm / 2; // 8th notes
 
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(150, audio.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(55, audio.currentTime + 0.08);
+        // Kick drum on beats 1 and 3
+        if (beatCount % 4 === 0 || beatCount % 4 === 2) {
+            const kick = audio.createOscillator();
+            const kickGain = audio.createGain();
+            kick.type = 'sine';
+            kick.frequency.setValueAtTime(120, audio.currentTime);
+            kick.frequency.exponentialRampToValueAtTime(50, audio.currentTime + 0.08);
+            kickGain.gain.setValueAtTime(0.12 * intensity, audio.currentTime);
+            kickGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.15);
+            kick.connect(kickGain);
+            if (musicGain) kickGain.connect(musicGain);
+            kick.start();
+            kick.stop(audio.currentTime + 0.15);
+        }
 
-        oscGain.gain.setValueAtTime(0.15, audio.currentTime);
-        oscGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.2);
+        // Snare on beats 2 and 4
+        if (beatCount % 4 === 1 || beatCount % 4 === 3) {
+            // Snare body
+            const snare = audio.createOscillator();
+            const snareGain = audio.createGain();
+            snare.type = 'triangle';
+            snare.frequency.setValueAtTime(200, audio.currentTime);
+            snare.frequency.exponentialRampToValueAtTime(120, audio.currentTime + 0.05);
+            snareGain.gain.setValueAtTime(0.06 * intensity, audio.currentTime);
+            snareGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.1);
+            snare.connect(snareGain);
+            if (musicGain) snareGain.connect(musicGain);
+            snare.start();
+            snare.stop(audio.currentTime + 0.1);
 
-        osc.connect(oscGain);
-        if (musicGain) oscGain.connect(musicGain);
+            // Snare noise
+            const noiseBuffer = audio.createBuffer(1, audio.sampleRate * 0.08, audio.sampleRate);
+            const noiseData = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseBuffer.length; i++) {
+                noiseData[i] = (Math.random() * 2 - 1) * (1 - i / noiseBuffer.length);
+            }
+            const noise = audio.createBufferSource();
+            noise.buffer = noiseBuffer;
+            const noiseGain = audio.createGain();
+            noiseGain.gain.setValueAtTime(0.04 * intensity, audio.currentTime);
+            const hpFilter = audio.createBiquadFilter();
+            hpFilter.type = 'highpass';
+            hpFilter.frequency.value = 2000;
+            noise.connect(hpFilter);
+            hpFilter.connect(noiseGain);
+            if (musicGain) noiseGain.connect(musicGain);
+            noise.start();
+        }
 
-        osc.start();
-        osc.stop(audio.currentTime + 0.2);
+        // Hi-hat on off-beats
+        if (beatCount % 2 === 1) {
+            const hihatBuffer = audio.createBuffer(1, audio.sampleRate * 0.03, audio.sampleRate);
+            const hihatData = hihatBuffer.getChannelData(0);
+            for (let i = 0; i < hihatBuffer.length; i++) {
+                hihatData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / hihatBuffer.length, 2);
+            }
+            const hihat = audio.createBufferSource();
+            hihat.buffer = hihatBuffer;
+            const hihatGain = audio.createGain();
+            hihatGain.gain.setValueAtTime(0.02 * intensity, audio.currentTime);
+            const hihatFilter = audio.createBiquadFilter();
+            hihatFilter.type = 'highpass';
+            hihatFilter.frequency.value = 7000;
+            hihat.connect(hihatFilter);
+            hihatFilter.connect(hihatGain);
+            if (musicGain) hihatGain.connect(musicGain);
+            hihat.start();
+        }
 
         beatCount++;
-        const timeoutId = window.setTimeout(createBeat, 520);
+        const timeoutId = window.setTimeout(createBeat, beatInterval);
         musicLoopTimeouts.push(timeoutId);
     };
 
+    // Bass line - driving military feel
+    const createBassline = () => {
+        if (!isMusicPlaying || !useFallbackSynth) return;
+
+        const intensity = Math.max(0.3, combatIntensity);
+
+        // Simple but driving bass pattern
+        const bassPatterns = [
+            [147, 147, 175, 147],  // D D F D
+            [147, 165, 175, 147],  // D E F D
+            [147, 147, 147, 220],  // D D D A
+            [175, 165, 147, 147],  // F E D D
+        ];
+
+        const pattern = bassPatterns[synthMeasure % bassPatterns.length];
+
+        pattern.forEach((freq, i) => {
+            setTimeout(() => {
+                if (!isMusicPlaying || !useFallbackSynth) return;
+
+                const bass = audio.createOscillator();
+                const bassGain = audio.createGain();
+                const bassFilter = audio.createBiquadFilter();
+
+                bass.type = 'sawtooth';
+                bass.frequency.setValueAtTime(freq, audio.currentTime);
+
+                bassFilter.type = 'lowpass';
+                bassFilter.frequency.value = 400;
+                bassFilter.Q.value = 2;
+
+                bassGain.gain.setValueAtTime(0.08 * intensity, audio.currentTime);
+                bassGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.2);
+
+                bass.connect(bassFilter);
+                bassFilter.connect(bassGain);
+                if (musicGain) bassGain.connect(musicGain);
+
+                bass.start();
+                bass.stop(audio.currentTime + 0.25);
+            }, i * 270); // Slightly faster than quarter notes
+        });
+
+        synthMeasure++;
+        const timeoutId = window.setTimeout(createBassline, 270 * 4);
+        musicLoopTimeouts.push(timeoutId);
+    };
+
+    // Melodic layer - appears occasionally like Bastion/Generals
+    const createMelody = () => {
+        if (!isMusicPlaying || !useFallbackSynth) return;
+
+        // Only play melody sometimes to keep it interesting
+        if (Math.random() > 0.6) {
+            const melodies = [
+                [294, 330, 349, 330, 294],      // D E F E D
+                [294, 349, 330, 294],            // D F E D
+                [440, 392, 349, 294],            // A G F D (descending)
+                [294, 294, 349, 440, 349],       // D D F A F
+            ];
+
+            const melody = melodies[Math.floor(Math.random() * melodies.length)];
+            const noteDuration = 0.35;
+
+            melody.forEach((freq, i) => {
+                setTimeout(() => {
+                    if (!isMusicPlaying || !useFallbackSynth) return;
+
+                    const osc = audio.createOscillator();
+                    const oscGain = audio.createGain();
+                    const filter = audio.createBiquadFilter();
+
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, audio.currentTime);
+
+                    // Subtle vibrato
+                    const lfo = audio.createOscillator();
+                    const lfoGain = audio.createGain();
+                    lfo.frequency.value = 5;
+                    lfoGain.gain.value = 3;
+                    lfo.connect(lfoGain);
+                    lfoGain.connect(osc.frequency);
+                    lfo.start();
+
+                    filter.type = 'lowpass';
+                    filter.frequency.value = 1500;
+
+                    oscGain.gain.setValueAtTime(0, audio.currentTime);
+                    oscGain.gain.linearRampToValueAtTime(0.04, audio.currentTime + 0.02);
+                    oscGain.gain.setValueAtTime(0.04, audio.currentTime + noteDuration - 0.05);
+                    oscGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + noteDuration);
+
+                    osc.connect(filter);
+                    filter.connect(oscGain);
+                    if (musicGain) oscGain.connect(musicGain);
+
+                    osc.start();
+                    osc.stop(audio.currentTime + noteDuration);
+                    setTimeout(() => lfo.stop(), noteDuration * 1000);
+                }, i * noteDuration * 1000);
+            });
+        }
+
+        // Random interval 6-12 seconds
+        const nextMelody = 6000 + Math.random() * 6000;
+        const timeoutId = window.setTimeout(createMelody, nextMelody);
+        musicLoopTimeouts.push(timeoutId);
+    };
+
+    // Start all layers
     createBeat();
+    setTimeout(createBassline, 200);
+    setTimeout(createMelody, 3000);
 };
 
 const stopFallbackSynth = () => {
