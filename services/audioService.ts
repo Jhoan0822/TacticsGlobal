@@ -32,9 +32,9 @@ interface AudioConfig {
 }
 
 const audioConfig: AudioConfig = {
-    masterVolume: 0.6,
-    effectsVolume: 0.7,
-    musicVolume: 0.4, // Music volume - raised for audibility
+    masterVolume: 0.5,
+    effectsVolume: 0.6,
+    musicVolume: 0.2, // Music volume - lowered for comfort during long play
     isMuted: false
 };
 
@@ -1602,6 +1602,16 @@ const checkPeaceTransition = () => {
 // ============================================
 // PUBLIC MUSIC API
 // ============================================
+
+// Dynamic volume control based on combat
+const updateCombatCrossfade = () => {
+    if (!currentAudio) return;
+
+    // Adjust volume based on combat intensity
+    const baseVol = getMusicVolume();
+    const dynamicVol = baseVol * (1 + combatIntensity * 0.3); // Slightly louder in combat
+    currentAudio.volume = Math.min(1, Math.max(0, dynamicVol));
+};
 
 const startMenuMusic = () => playMusicMode('menu');
 const startLobbyMusic = () => playMusicMode('lobby');
