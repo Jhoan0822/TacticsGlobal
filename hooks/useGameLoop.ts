@@ -252,6 +252,7 @@ export const useGameLoop = () => {
                     }
 
                     console.log(`[HOST] Spawned starting army for player ${req.playerId}: 1 HQ + 3 Infantry + 2 Tanks`);
+                    console.log(`[HOST] Player units in nextUnits: ${nextUnits.filter(u => u.factionId === req.playerId).length}`);
 
                     // 2. Broadcast Response (Authoritative Update)
                     NetworkService.broadcastResponse({
@@ -422,6 +423,7 @@ export const useGameLoop = () => {
                             gameMode: nextMode,
                             startTime: nextStartTime
                         };
+                        console.log(`[HOST] Broadcasting full state. Total units: ${fullState.units.length}, Player units: ${fullState.units.filter(u => u.factionId === prev.localPlayerId).length}`);
                         NetworkService.broadcastFullState(fullState);
                     }
 
