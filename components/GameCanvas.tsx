@@ -461,6 +461,10 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
                 if (pos.x < -buffer || pos.y < -buffer || pos.x > mapSize.x + buffer || pos.y > mapSize.y + buffer) return;
 
                 const faction = currentFactions.find(f => f.id === unit.factionId);
+                // DEBUG: Log first unit to check faction lookup
+                if (!faction && currentUnits.indexOf(unit) < 3) {
+                    console.log('[DEBUG] Unit factionId:', unit.factionId, 'Available factions:', currentFactions.map(f => ({ id: f.id, color: f.color })));
+                }
                 const color = faction?.color || UNIT_COLORS[unit.factionId] || '#ff0000';
                 const isSelected = currentSelected.includes(unit.id);
                 const isBoosting = unit.isBoosting;
