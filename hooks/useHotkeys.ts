@@ -7,6 +7,11 @@ interface HotkeyConfig {
     onDeselectAll: () => void;
     onToggleAutoTarget?: () => void;
     onCycleAutoMode?: () => void;
+    // Control group callbacks
+    onAssignGroup?: (groupNum: number) => void;
+    onRecallGroup?: (groupNum: number) => void;
+    onAddToGroup?: (groupNum: number) => void;
+    onRemoveFromGroup?: (groupNum: number) => void;
     enabled: boolean;
 }
 
@@ -15,7 +20,10 @@ interface HotkeyConfig {
 // A = Destroyer, S = Frigate, D = Submarine
 // Z = Missile Launcher, X = SAM
 // G = Toggle Auto-Target, F = Cycle Auto-Mode (NONE -> DEFEND -> ATTACK -> PATROL)
-// 1-9 = Control groups (handled elsewhere)
+// 1-9 = Recall Control Group
+// Ctrl+1-9 = Assign Control Group
+// Shift+1-9 = Add to Control Group
+// Alt+1-9 = Remove from Control Group
 // ESC = Deselect
 
 const PRODUCTION_HOTKEYS: Record<string, UnitClass> = {
@@ -34,6 +42,7 @@ const PRODUCTION_HOTKEYS: Record<string, UnitClass> = {
 export const useHotkeys = ({
     onBuyUnit, onSelectAll, onDeselectAll,
     onToggleAutoTarget, onCycleAutoMode,
+    onAssignGroup, onRecallGroup, onAddToGroup, onRemoveFromGroup,
     enabled
 }: HotkeyConfig) => {
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -43,6 +52,36 @@ export const useHotkeys = ({
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
         const key = e.key.toLowerCase();
+
+        // ============================================
+        // CONTROL GROUPS (1-9)
+        // ============================================
+        if (e.code.startsWith('Digit') && e.code !== 'Digit0') {
+            const groupNum = parseInt(e.key);
+            if (groupNum >= 1 && groupNum <= 9) {
+                if (e.ctrlKey && onAssignGroup) {
+                    // Ctrl+1-9: Assign selected units to group
+                    e.preventDefault();
+                    onAssignGroup(groupNum);
+                    return;
+                } else if (e.shiftKey && onAddToGroup) {
+                    // Shift+1-9: Add selected units to group
+                    e.preventDefault();
+                    onAddToGroup(groupNum);
+                    return;
+                } else if (e.altKey && onRemoveFromGroup) {
+                    // Alt+1-9: Remove selected units from group
+                    e.preventDefault();
+                    onRemoveFromGroup(groupNum);
+                    return;
+                } else if (!e.ctrlKey && !e.shiftKey && !e.altKey && onRecallGroup) {
+                    // Plain 1-9: Recall/select group
+                    e.preventDefault();
+                    onRecallGroup(groupNum);
+                    return;
+                }
+            }
+        }
 
         // Production Hotkeys
         if (PRODUCTION_HOTKEYS[key]) {
@@ -78,7 +117,8 @@ export const useHotkeys = ({
             onDeselectAll();
             return;
         }
-    }, [enabled, onBuyUnit, onSelectAll, onDeselectAll, onToggleAutoTarget, onCycleAutoMode]);
+    }, [enabled, onBuyUnit, onSelectAll, onDeselectAll, onToggleAutoTarget, onCycleAutoMode,
+        onAssignGroup, onRecallGroup, onAddToGroup, onRemoveFromGroup]);
 
     useEffect(() => {
         window.addEventListener('keydown', handleKeyDown);

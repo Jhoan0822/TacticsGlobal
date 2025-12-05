@@ -38,6 +38,7 @@ export const useGameLoop = () => {
 
     const [center, setCenter] = useState<{ lat: number; lng: number }>({ lat: 20, lng: 0 });
     const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
+    const lastRightClickTime = useRef<number>(0);
 
     // Game loop control
     const animationFrameId = useRef<number>(0);
@@ -752,20 +753,219 @@ export const useGameLoop = () => {
             AudioService.playUnitSpawn();
         }
         else if (gameState.gameMode === 'PLAYING') {
-            // Move Units
-            if (selectedUnitIds.length > 0) {
+            // LEFT CLICK: Only deselect units (movement is handled by RIGHT click)
+            setSelectedUnitIds([]);
+        }
+    };
+
+    // ============================================
+    // RIGHT-CLICK MOVEMENT (Terrain-Aware)
+    // ============================================
+    const handleMapRightClick = (lat: number, lng: number) => {
+        if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
+            // Detect double-click for boosting
+            const now = Date.now();
+            const timeDiff = now - lastRightClickTime.current;
+            lastRightClickTime.current = now;
+            const isBoosting = timeDiff < 300; // Double right-click = boost
+
+            // Filter units that CAN reach the target terrain
+            const validUnitIds: string[] = [];
+            const invalidUnitIds: string[] = [];
+
+            selectedUnitIds.forEach(id => {
+                const unit = gameState.units.find(u => u.id === id);
+                if (!unit) return;
+                if (unit.factionId !== gameState.localPlayerId) return; // Only control own units
+
+                // Check if unit can move to target terrain
+                if (TerrainService.isValidMove(unit.unitClass, lat, lng, gameState.pois)) {
+                    validUnitIds.push(id);
+                } else {
+                    invalidUnitIds.push(id);
+                }
+            });
+
+            // Issue move command for valid units
+            if (validUnitIds.length > 0) {
                 const payload: MoveUnitsPayload = {
-                    unitIds: selectedUnitIds,
+                    unitIds: validUnitIds,
                     targetLat: lat,
                     targetLng: lng,
-                    isBoosting: false
+                    isBoosting
                 };
                 const action = createAction(gameState.localPlayerId, 'MOVE_UNITS', payload);
-                setGameState(prev => applyAction(prev, action)); // Optimistic
+                setGameState(prev => applyAction(prev, action));
                 NetworkService.broadcastAction(action);
                 AudioService.playMoveCommand();
             }
+
+            // Alert for units that can't follow due to terrain
+            if (invalidUnitIds.length > 0 && validUnitIds.length > 0) {
+                AudioService.playAlert();
+                console.log(`[GROUP] ${invalidUnitIds.length} units cannot reach target terrain`);
+            } else if (invalidUnitIds.length > 0 && validUnitIds.length === 0) {
+                // All selected units can't move there
+                AudioService.playError();
+            }
+        } else if (gameState.gameMode === 'PLACING_STRUCTURE') {
+            // Cancel placement mode on right-click
+            setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
         }
+    };
+
+    // ============================================
+    // CONTROL GROUP MANAGEMENT
+    // ============================================
+    const handleAssignGroup = (groupNum: number) => {
+        if (selectedUnitIds.length === 0) return;
+
+        // Only include player's own units
+        const ownUnitIds = selectedUnitIds.filter(id => {
+            const unit = gameState.units.find(u => u.id === id);
+            return unit && unit.factionId === gameState.localPlayerId;
+        });
+
+        if (ownUnitIds.length === 0) return;
+
+        setGameState(prev => ({
+            ...prev,
+            controlGroups: {
+                ...prev.controlGroups,
+                [groupNum]: ownUnitIds
+            }
+        }));
+        AudioService.playSuccess();
+        console.log(`[GROUP] Assigned ${ownUnitIds.length} units to group ${groupNum}`);
+    };
+
+    const handleRecallGroup = (groupNum: number) => {
+        const group = gameState.controlGroups[groupNum];
+        if (!group || group.length === 0) {
+            AudioService.playAlert();
+            return;
+        }
+
+        // Filter out dead units (units that no longer exist)
+        const aliveUnitIds = group.filter(id =>
+            gameState.units.some(u => u.id === id)
+        );
+
+        if (aliveUnitIds.length === 0) {
+            // Clear the empty group
+            setGameState(prev => {
+                const newGroups = { ...prev.controlGroups };
+                delete newGroups[groupNum];
+                return { ...prev, controlGroups: newGroups };
+            });
+            AudioService.playAlert();
+            return;
+        }
+
+        // Update group with alive units only
+        if (aliveUnitIds.length !== group.length) {
+            setGameState(prev => ({
+                ...prev,
+                controlGroups: {
+                    ...prev.controlGroups,
+                    [groupNum]: aliveUnitIds
+                }
+            }));
+        }
+
+        setSelectedUnitIds(aliveUnitIds);
+        AudioService.playUnitSelect();
+    };
+
+    const handleAddToGroup = (groupNum: number) => {
+        if (selectedUnitIds.length === 0) return;
+
+        const ownUnitIds = selectedUnitIds.filter(id => {
+            const unit = gameState.units.find(u => u.id === id);
+            return unit && unit.factionId === gameState.localPlayerId;
+        });
+
+        if (ownUnitIds.length === 0) return;
+
+        setGameState(prev => {
+            const existing = prev.controlGroups[groupNum] || [];
+            const merged = [...new Set([...existing, ...ownUnitIds])];
+            return {
+                ...prev,
+                controlGroups: {
+                    ...prev.controlGroups,
+                    [groupNum]: merged
+                }
+            };
+        });
+        AudioService.playSuccess();
+        console.log(`[GROUP] Added units to group ${groupNum}`);
+    };
+
+    const handleRemoveFromGroup = (groupNum: number) => {
+        if (selectedUnitIds.length === 0) return;
+
+        const group = gameState.controlGroups[groupNum];
+        if (!group) return;
+
+        setGameState(prev => {
+            const existing = prev.controlGroups[groupNum] || [];
+            const filtered = existing.filter(id => !selectedUnitIds.includes(id));
+
+            if (filtered.length === 0) {
+                const newGroups = { ...prev.controlGroups };
+                delete newGroups[groupNum];
+                return { ...prev, controlGroups: newGroups };
+            }
+
+            return {
+                ...prev,
+                controlGroups: {
+                    ...prev.controlGroups,
+                    [groupNum]: filtered
+                }
+            };
+        });
+        AudioService.playUiClick();
+        console.log(`[GROUP] Removed units from group ${groupNum}`);
+    };
+
+    // Group Orders: Apply command to all units in a group
+    const handleGroupOrder = (groupNum: number, order: 'DEFEND' | 'ATTACK' | 'MOVE') => {
+        const group = gameState.controlGroups[groupNum];
+        if (!group || group.length === 0) return;
+
+        setGameState(prev => ({
+            ...prev,
+            units: prev.units.map(u => {
+                if (!group.includes(u.id)) return u;
+                if (u.factionId !== prev.localPlayerId) return u;
+
+                switch (order) {
+                    case 'DEFEND':
+                        return {
+                            ...u,
+                            autoMode: 'DEFEND' as const,
+                            homePosition: { ...u.position },
+                            targetId: null,
+                            destination: null
+                        };
+                    case 'ATTACK':
+                        return {
+                            ...u,
+                            autoMode: 'ATTACK' as const,
+                            targetId: null
+                        };
+                    case 'MOVE':
+                    default:
+                        return {
+                            ...u,
+                            autoMode: 'NONE' as const
+                        };
+                }
+            })
+        }));
+        AudioService.playSuccess();
     };
 
     const handleBuyUnit = (type: UnitClass) => {
@@ -875,7 +1075,13 @@ export const useGameLoop = () => {
         handleAllianceRequest,
         handlePoiClick,
         handleMapClick,
+        handleMapRightClick,
         handleTargetCommand,
+        handleAssignGroup,
+        handleRecallGroup,
+        handleAddToGroup,
+        handleRemoveFromGroup,
+        handleGroupOrder,
         setDifficulty,
         startGame
     };

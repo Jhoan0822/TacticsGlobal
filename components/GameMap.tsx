@@ -358,7 +358,7 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
                 <div className="bg-black/70 backdrop-blur text-xs text-white px-4 py-2 rounded-full border border-slate-600 flex gap-4 shadow-xl">
                     {gameMode === 'SELECTION' ? <span>CLICK A <span className="text-yellow-400 font-bold">CITY MARKER</span> TO START</span> :
                         gameMode === 'COUNTDOWN' ? <span className="text-yellow-400 font-bold animate-pulse">PREPARING WARZONE...</span> :
-                            <><span><span className="text-yellow-400 font-bold">L-CLICK/DRAG</span> SELECT</span><span><span className="text-blue-400 font-bold">R-CLICK MAP</span> MOVE</span><span><span className="text-red-400 font-bold">R-CLICK ENEMY</span> ATTACK</span></>}
+                            <><span><span className="text-yellow-400 font-bold">L-CLICK</span> SELECT</span><span><span className="text-cyan-400 font-bold">SHIFT+DRAG</span> BOX</span><span><span className="text-blue-400 font-bold">R-CLICK</span> MOVE</span><span><span className="text-red-400 font-bold">R-CLICK ENEMY</span> ATTACK</span><span><span className="text-green-400 font-bold">CTRL+1-9</span> GROUPS</span></>}
                 </div>
             </div>
 

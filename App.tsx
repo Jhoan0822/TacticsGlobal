@@ -40,7 +40,13 @@ const App: React.FC = () => {
         handleAllianceRequest,
         handlePoiClick,
         handleMapClick,
+        handleMapRightClick,
         handleTargetCommand,
+        handleAssignGroup,
+        handleRecallGroup,
+        handleAddToGroup,
+        handleRemoveFromGroup,
+        handleGroupOrder,
         setDifficulty,
         startGame
     } = useGameLoop();
@@ -179,15 +185,8 @@ const App: React.FC = () => {
         }
     };
 
-    const handleMapRightClick = (lat: number, lng: number) => {
-        if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
-            // Move Command
-            handleMapClick(lat, lng);
-        } else if (gameState.gameMode === 'PLACING_STRUCTURE') {
-            // Cancel placement? Or just ignore right click
-            setGameState(prev => ({ ...prev, gameMode: 'PLAYING', placementType: null }));
-        }
-    };
+    // NOTE: handleMapRightClick is now provided by useGameLoop with terrain-aware logic
+
 
     const handleMultiSelect = (ids: string[]) => {
         // Filter out non-actionable structures from multi-select
@@ -253,6 +252,11 @@ const App: React.FC = () => {
         onDeselectAll: handleDeselectAll,
         onToggleAutoTarget: handleToggleAutoTarget,
         onCycleAutoMode: handleCycleAutoMode,
+        // Control group management
+        onAssignGroup: handleAssignGroup,
+        onRecallGroup: handleRecallGroup,
+        onAddToGroup: handleAddToGroup,
+        onRemoveFromGroup: handleRemoveFromGroup,
         enabled: !isInMenu && gameState.gameMode === 'PLAYING'
     });
 
