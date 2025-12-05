@@ -10,6 +10,7 @@ import { GameAction, createAction, SpawnUnitPayload, MoveUnitsPayload, AttackTar
 import { applyAction } from '../services/applyAction';
 import { Scenario } from '../types';
 import { getMockCities, generateRandomResources } from '../services/mockDataService';
+import { PhantomHostService } from '../services/phantomHostService';
 
 const GAME_TICK_MS = 40; // 25 FPS
 
@@ -740,6 +741,20 @@ export const useGameLoop = () => {
         animationFrameId.current = requestAnimationFrame(gameLoop);
         return () => cancelAnimationFrame(animationFrameId.current);
     }, [gameLoop]);
+
+    // ============================================
+    // BATTLE ROYALE STATE SYNC (Persist changes back to PhantomHost)
+    // ============================================
+    useEffect(() => {
+        // Only sync when in PLAYING mode and PhantomHost is running
+        if (gameState.gameMode !== 'PLAYING') return;
+        if (!PhantomHostService.isRunning()) return;
+
+        // Sync every 10 ticks (~400ms)
+        if (gameState.gameTick % 10 === 0 && gameState.gameTick > 0) {
+            PhantomHostService.syncPlayerState(gameState);
+        }
+    }, [gameState.gameTick, gameState.gameMode]);
 
     // ============================================
     // COMBAT AUDIO EFFECTS (Triggered by state changes)

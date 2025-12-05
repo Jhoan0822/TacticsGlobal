@@ -755,6 +755,33 @@ class PhantomHostServiceImpl {
         return this.gameState;
     }
 
+    /**
+     * Sync player's game state back to PhantomHost
+     * This ensures buildings, damage, and other changes persist
+     */
+    syncPlayerState(playerState: GameState): void {
+        if (!this.gameState || !playerState) return;
+
+        // Merge player's changes back to PhantomHost state
+        // Update units (includes new buildings, damaged units, destroyed units)
+        this.gameState.units = [...playerState.units];
+
+        // Update POIs (city ownership, tier changes)
+        this.gameState.pois = [...playerState.pois];
+
+        // Update factions (gold, oil, relations)
+        this.gameState.factions = [...playerState.factions];
+
+        // Sync game tick
+        this.gameState.gameTick = playerState.gameTick;
+
+        // Keep localPlayerId as the player's ID
+        this.gameState.localPlayerId = playerState.localPlayerId;
+
+        // Save immediately to persist changes
+        this.saveState();
+    }
+
     shutdown(): void {
         if (this.gameLoopInterval) {
             clearInterval(this.gameLoopInterval);
