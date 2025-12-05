@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { GameState, UnitClass, Faction, POIType, Difficulty } from '../types';
 import { UNIT_CONFIG, POI_CONFIG, DIPLOMACY } from '../constants';
-import { getTacticalAdvice } from '../services/geminiService';
+
 import { evaluateAllianceRequest } from '../services/gameLogic';
 import { useTooltip } from './Tooltip';
 import { HOTKEY_LABELS, AUTO_MODE_LABELS } from '../hooks/useHotkeys';
@@ -18,8 +18,7 @@ interface Props {
 }
 
 const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, selectedUnitIds, onUnitAction, onSetDifficulty, onSetAutoMode, onToggleAutoTarget }) => {
-    const [advice, setAdvice] = useState<string | null>(null);
-    const [loadingAi, setLoadingAi] = useState(false);
+
     const [activeTab, setActiveTab] = useState<'UNITS' | 'BUILD' | 'DIPLOMACY'>('BUILD');
 
     // ============================================
@@ -118,12 +117,7 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
     const goldPerSec = Math.floor((baseIncomeGold + poiGold) * 0.83);
     const oilPerSec = Math.floor((baseIncomeOil + poiOil) * 0.83);
 
-    const handleAiAdvice = async () => {
-        setLoadingAi(true);
-        const result = await getTacticalAdvice(gameState);
-        setAdvice(result);
-        setLoadingAi(false);
-    };
+
 
     const structures = [UnitClass.AIRBASE, UnitClass.PORT, UnitClass.MILITARY_BASE];
     const seaUnits = [UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.SUBMARINE, UnitClass.AIRCRAFT_CARRIER, UnitClass.BATTLESHIP, UnitClass.PATROL_BOAT, UnitClass.MINELAYER];
@@ -416,22 +410,7 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                 </div>
             )}
 
-            {/* AI Advisor */}
-            <div className="p-4 bg-gradient-to-r from-purple-900/20 to-transparent border-t border-purple-500/20">
-                <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-purple-400 tracking-wider">GEMINI AI</span>
-                    <button
-                        onClick={handleAiAdvice}
-                        disabled={loadingAi}
-                        className="text-[10px] bg-purple-900/40 border border-purple-500/30 text-purple-200 px-3 py-1.5 rounded-lg hover:bg-purple-800/50 disabled:opacity-50 transition-all"
-                    >
-                        {loadingAi ? 'ANALYZING...' : 'GET ADVICE'}
-                    </button>
-                </div>
-                <p className="text-xs text-slate-400 italic leading-relaxed min-h-[20px]">
-                    {advice ? `"${advice}"` : "Ready for tactical analysis."}
-                </p>
-            </div>
+
         </div>
     );
 };
