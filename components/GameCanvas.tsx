@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { GameUnit, Faction, UnitClass, Projectile, Explosion, WeaponType, POI, POIType } from '../types';
+import { GameUnit, Faction, UnitClass, Projectile, Explosion, WeaponType, POI, POIType, NuclearMissile } from '../types';
 import { globalParticleSystem, ParticleType } from '../services/ParticleSystem';
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
     projectiles: Projectile[];
     explosions: Explosion[];
     pois: POI[];
+    nukesInFlight?: NuclearMissile[];
 }
 
 const UNIT_COLORS: Record<string, string> = {
@@ -246,6 +247,34 @@ const getUnitSprite = (type: UnitClass, color: string): HTMLCanvasElement => {
             ctx.fillRect(-6, -6, 12, 12);
             ctx.strokeRect(-6, -6, 12, 12);
             break;
+        case UnitClass.MISSILE_SILO:
+            // Nuclear silo - distinctive hazard icon
+            ctx.fillStyle = '#7c2d12';  // Dark brown base
+            ctx.beginPath();
+            ctx.arc(0, 0, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fbbf24';  // Yellow warning border
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            // Draw radiation wedges
+            ctx.fillStyle = '#fbbf24';
+            for (let i = 0; i < 3; i++) {
+                ctx.save();
+                ctx.rotate((i * 2 * Math.PI) / 3);
+                ctx.beginPath();
+                ctx.moveTo(0, -3);
+                ctx.lineTo(4, -8);
+                ctx.lineTo(-4, -8);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+            // Center dot
+            ctx.beginPath();
+            ctx.arc(0, 0, 3, 0, Math.PI * 2);
+            ctx.fillStyle = '#fbbf24';
+            ctx.fill();
+            break;
         case UnitClass.DESTROYER:
         case UnitClass.FRIGATE:
         case UnitClass.PATROL_BOAT:
@@ -305,7 +334,7 @@ const getUnitSprite = (type: UnitClass, color: string): HTMLCanvasElement => {
     return canvas;
 };
 
-const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, projectiles, explosions, pois }) => {
+const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, projectiles, explosions, pois, nukesInFlight = [] }) => {
     const map = useMap();
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const animationFrameId = useRef<number | null>(null);
@@ -317,6 +346,7 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
     const projectilesRef = useRef(projectiles);
     const explosionsRef = useRef(explosions);
     const poisRef = useRef(pois);
+    const nukesRef = useRef(nukesInFlight);
 
     useEffect(() => {
         unitsRef.current = units;
@@ -325,7 +355,8 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
         projectilesRef.current = projectiles;
         explosionsRef.current = explosions;
         poisRef.current = pois;
-    }, [units, factions, selectedUnitIds, projectiles, explosions, pois]);
+        nukesRef.current = nukesInFlight;
+    }, [units, factions, selectedUnitIds, projectiles, explosions, pois, nukesInFlight]);
 
     useEffect(() => {
         const canvas = L.DomUtil.create('canvas', 'leaflet-zoom-animated') as HTMLCanvasElement;
@@ -528,28 +559,128 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
                 ctx.restore();
             });
 
-            // Explosions
+            // Explosions - with NUCLEAR support
             currentExplosions.forEach(exp => {
                 const age = Date.now() - exp.timestamp;
-                if (age > 500) return;
+                const isNuclear = exp.size === 'NUCLEAR';
+                const duration = isNuclear ? 4000 : 500; // Nuclear explosions last longer
+                if (age > duration) return;
 
                 const pos = map.latLngToContainerPoint([exp.position.lat, exp.position.lng]);
                 if (pos.x < -buffer || pos.y < -buffer || pos.x > mapSize.x + buffer || pos.y > mapSize.y + buffer) return;
 
-                const progress = age / 500;
-                const radius = (exp.size === 'MEDIUM' ? 20 : 10) * Math.sin(progress * Math.PI);
-                const alpha = 1 - progress;
+                const progress = age / duration;
 
                 ctx.save();
                 ctx.translate(pos.x, pos.y);
+
+                if (isNuclear) {
+                    // NUCLEAR MUSHROOM CLOUD EXPLOSION
+                    const baseRadius = 60;
+                    const scale = 0.3 + progress * 2.5;
+                    const alpha = Math.max(0, 1 - progress * 0.8);
+
+                    // Outer shockwave ring
+                    ctx.beginPath();
+                    ctx.arc(0, 0, baseRadius * scale * 1.8, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.4})`;
+                    ctx.lineWidth = 6;
+                    ctx.stroke();
+
+                    // Main fireball (gradient)
+                    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, baseRadius * scale);
+                    gradient.addColorStop(0, `rgba(255, 255, 200, ${alpha})`);
+                    gradient.addColorStop(0.2, `rgba(255, 200, 50, ${alpha})`);
+                    gradient.addColorStop(0.5, `rgba(255, 100, 0, ${alpha * 0.9})`);
+                    gradient.addColorStop(0.75, `rgba(200, 50, 50, ${alpha * 0.6})`);
+                    gradient.addColorStop(1, `rgba(100, 20, 50, 0)`);
+
+                    ctx.beginPath();
+                    ctx.arc(0, 0, baseRadius * scale, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+
+                    // Mushroom stem
+                    if (progress < 0.7) {
+                        ctx.beginPath();
+                        ctx.moveTo(-10, 0);
+                        ctx.lineTo(-15, baseRadius * scale * 0.5);
+                        ctx.lineTo(15, baseRadius * scale * 0.5);
+                        ctx.lineTo(10, 0);
+                        ctx.closePath();
+                        ctx.fillStyle = `rgba(200, 100, 50, ${alpha * 0.7})`;
+                        ctx.fill();
+                    }
+
+                    // Inner core glow
+                    ctx.beginPath();
+                    ctx.arc(0, 0, baseRadius * scale * 0.25, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                    ctx.fill();
+                } else {
+                    // Standard explosion
+                    const radius = (exp.size === 'MEDIUM' ? 20 : (exp.size === 'LARGE' ? 30 : 10)) * Math.sin(progress * Math.PI);
+                    const alpha = 1 - progress;
+
+                    ctx.beginPath();
+                    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 100, 0, ${alpha})`;
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(0, 0, radius * 0.7, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            // NUCLEAR MISSILES IN FLIGHT
+            const currentNukes = nukesRef.current;
+            currentNukes.forEach(nuke => {
+                // Calculate current position based on progress
+                const lat = nuke.fromPos.lat + (nuke.toPos.lat - nuke.fromPos.lat) * nuke.progress;
+                const lng = nuke.fromPos.lng + (nuke.toPos.lng - nuke.fromPos.lng) * nuke.progress;
+                const pos = map.latLngToContainerPoint([lat, lng]);
+
+                if (pos.x < -buffer || pos.y < -buffer || pos.x > mapSize.x + buffer || pos.y > mapSize.y + buffer) return;
+
+                ctx.save();
+                ctx.translate(pos.x, pos.y);
+
+                // Calculate heading
+                const dx = nuke.toPos.lng - nuke.fromPos.lng;
+                const dy = nuke.toPos.lat - nuke.fromPos.lat;
+                const heading = Math.atan2(dx, dy);
+                ctx.rotate(heading);
+
+                // Draw missile body (larger than normal projectiles)
+                ctx.fillStyle = '#dc2626'; // Red missile
                 ctx.beginPath();
-                ctx.arc(0, 0, radius, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 100, 0, ${alpha})`;
+                ctx.moveTo(0, -15);
+                ctx.lineTo(-5, 5);
+                ctx.lineTo(0, 0);
+                ctx.lineTo(5, 5);
+                ctx.closePath();
                 ctx.fill();
+                ctx.strokeStyle = '#fbbf24';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Flame trail
                 ctx.beginPath();
-                ctx.arc(0, 0, radius * 0.7, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
+                ctx.moveTo(-3, 5);
+                ctx.lineTo(0, 20 + Math.random() * 5);
+                ctx.lineTo(3, 5);
+                ctx.fillStyle = `rgba(255, ${150 + Math.random() * 100}, 0, 0.9)`;
                 ctx.fill();
+
+                // Radiation symbol
+                ctx.fillStyle = '#fbbf24';
+                ctx.font = 'bold 8px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('☢', 0, -5);
+
                 ctx.restore();
             });
 

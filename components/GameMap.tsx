@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { MapContainer, useMap, useMapEvents, Marker } from 'react-leaflet';
 import L from 'leaflet';
-import { GameUnit, Projectile, Faction, POI, POIType, Explosion, UnitClass, GameMode } from '../types';
+import { GameUnit, Projectile, Faction, POI, POIType, Explosion, UnitClass, GameMode, NuclearMissile } from '../types';
 import { getNearbyUnits } from '../services/gameLogic';
 import TerritoryLayer from './TerritoryLayer';
 import PlacementOverlay from './PlacementOverlay';
@@ -29,6 +29,7 @@ interface Props {
     gameMode: GameMode;
     placementType?: UnitClass | null;
     localPlayerId: string;
+    nukesInFlight?: NuclearMissile[];
 }
 
 // DRAG SELECTION OVERLAY
@@ -301,7 +302,7 @@ const MapController: React.FC<{ center: { lat: number; lng: number }, gameMode: 
 
 const MemoizedMapController = React.memo(MapController);
 
-const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, explosions, center, selectedUnitIds, onUnitClick, onUnitRightClick, onUnitAction, onMapClick, onMapRightClick, onPoiClick, onPoiRightClick, onMultiSelect, gameMode, placementType, localPlayerId }) => {
+const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, explosions, center, selectedUnitIds, onUnitClick, onUnitRightClick, onUnitAction, onMapClick, onMapRightClick, onPoiClick, onPoiRightClick, onMultiSelect, gameMode, placementType, localPlayerId, nukesInFlight = [] }) => {
     return (
         <div className="w-full h-screen relative z-0">
             <MapContainer
@@ -332,6 +333,7 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
                     projectiles={projectiles}
                     explosions={explosions}
                     pois={pois}
+                    nukesInFlight={nukesInFlight}
                 />
 
                 <MapInteraction

@@ -314,6 +314,7 @@ const App: React.FC = () => {
                         gameMode={gameState.gameMode}
                         placementType={gameState.placementType}
                         localPlayerId={gameState.localPlayerId}
+                        nukesInFlight={gameState.nukesInFlight}
                     />
                     <EventLog messages={gameState.messages} />
                     <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>
