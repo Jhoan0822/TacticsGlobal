@@ -46,6 +46,54 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
         return () => clearInterval(checkId);
     }, []);
 
+    // Battle Royale: Initialize room when entering BR mode
+    useEffect(() => {
+        if (networkMode !== 'BATTLE_ROYALE') return;
+        if (brConnected || brLoading) return;
+
+        setBrLoading(true);
+        setConnectionStatus('Initializing Battle Royale...');
+
+        PhantomHostService.initialize()
+            .then((roomId) => {
+                setBrConnected(true);
+                setBrLoading(false);
+                setConnectionStatus(`Connected to room: ${roomId}`);
+
+                const brState = PhantomHostService.getBRState();
+                const gameState = PhantomHostService.getGameState();
+
+                if (brState && gameState) {
+                    setBrBots(gameState.factions.filter(f => f.type === 'BOT'));
+                    setBrCities(gameState.pois.filter(p =>
+                        p.type === POIType.CITY &&
+                        (p.ownerFactionId === 'NEUTRAL' ||
+                            gameState.factions.some(f => f.id === p.ownerFactionId && f.type === 'BOT'))
+                    ));
+                    setBrScenario(brState.config.scenarioRotation[brState.currentScenarioIndex]);
+                    setBrRoundTime(brState.config.roundDurationMs - (Date.now() - brState.roundStartTime));
+                }
+            })
+            .catch((err) => {
+                setBrLoading(false);
+                setConnectionStatus(`Error: ${err.message}`);
+            });
+    }, [networkMode, brConnected, brLoading]);
+
+    // Battle Royale: Update round timer
+    useEffect(() => {
+        if (networkMode !== 'BATTLE_ROYALE' || !brConnected) return;
+
+        const timer = setInterval(() => {
+            const brState = PhantomHostService.getBRState();
+            if (brState) {
+                const remaining = brState.config.roundDurationMs - (Date.now() - brState.roundStartTime);
+                setBrRoundTime(Math.max(0, remaining));
+            }
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [networkMode, brConnected]);
+
     const handleSinglePlayerStart = () => {
         const scenario = Object.values(SCENARIOS).find(s => s.id === lobbyState.scenarioId) || SCENARIOS.WORLD;
         const playerFaction = {
@@ -312,53 +360,6 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
     // BATTLE ROYALE JOIN SCREEN
     // ============================================
     if (networkMode === 'BATTLE_ROYALE') {
-        // Connect to phantom host on mount
-        useEffect(() => {
-            if (!brConnected && !brLoading) {
-                setBrLoading(true);
-                setConnectionStatus('Initializing Battle Royale...');
-
-                // Initialize or connect to Battle Royale room
-                PhantomHostService.initialize()
-                    .then((roomId) => {
-                        setBrConnected(true);
-                        setBrLoading(false);
-                        setConnectionStatus(`Connected to room: ${roomId}`);
-
-                        // Get initial state
-                        const brState = PhantomHostService.getBRState();
-                        const gameState = PhantomHostService.getGameState();
-
-                        if (brState && gameState) {
-                            setBrBots(gameState.factions.filter(f => f.type === 'BOT'));
-                            setBrCities(gameState.pois.filter(p =>
-                                p.type === POIType.CITY &&
-                                (p.ownerFactionId === 'NEUTRAL' ||
-                                    gameState.factions.some(f => f.id === p.ownerFactionId && f.type === 'BOT'))
-                            ));
-                            setBrScenario(brState.config.scenarioRotation[brState.currentScenarioIndex]);
-                            setBrRoundTime(brState.config.roundDurationMs - (Date.now() - brState.roundStartTime));
-                        }
-                    })
-                    .catch((err) => {
-                        setBrLoading(false);
-                        setConnectionStatus(`Error: ${err.message}`);
-                    });
-            }
-        }, [networkMode]);
-
-        // Update round timer
-        useEffect(() => {
-            const timer = setInterval(() => {
-                const brState = PhantomHostService.getBRState();
-                if (brState) {
-                    const remaining = brState.config.roundDurationMs - (Date.now() - brState.roundStartTime);
-                    setBrRoundTime(Math.max(0, remaining));
-                }
-            }, 1000);
-            return () => clearInterval(timer);
-        }, [brConnected]);
-
         const formatTime = (ms: number) => {
             const secs = Math.floor(ms / 1000);
             const mins = Math.floor(secs / 60);
@@ -413,8 +414,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                 <button
                                     onClick={() => setBrJoinOption('TAKEOVER_BOT')}
                                     className={`p-4 rounded-xl text-center transition-all border ${brJoinOption === 'TAKEOVER_BOT'
-                                            ? 'bg-orange-500/20 border-orange-500/50 text-orange-300'
-                                            : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
+                                        ? 'bg-orange-500/20 border-orange-500/50 text-orange-300'
+                                        : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
                                         }`}
                                 >
                                     <span className="text-2xl block mb-1">🤖</span>
@@ -424,8 +425,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                 <button
                                     onClick={() => setBrJoinOption('NEW_FACTION')}
                                     className={`p-4 rounded-xl text-center transition-all border ${brJoinOption === 'NEW_FACTION'
-                                            ? 'bg-orange-500/20 border-orange-500/50 text-orange-300'
-                                            : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
+                                        ? 'bg-orange-500/20 border-orange-500/50 text-orange-300'
+                                        : 'bg-slate-800/50 border-slate-600/30 text-slate-400 hover:bg-slate-700/50'
                                         }`}
                                 >
                                     <span className="text-2xl block mb-1">🏰</span>
@@ -448,8 +449,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                                 key={bot.id}
                                                 onClick={() => setBrSelectedBot(bot.id)}
                                                 className={`w-full p-3 rounded-lg flex items-center gap-3 transition-all border ${brSelectedBot === bot.id
-                                                        ? 'bg-orange-500/20 border-orange-500/50'
-                                                        : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-700/40'
+                                                    ? 'bg-orange-500/20 border-orange-500/50'
+                                                    : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-700/40'
                                                     }`}
                                             >
                                                 <div className="w-4 h-8 rounded" style={{ backgroundColor: bot.color }}></div>
@@ -475,8 +476,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                                 key={city.id}
                                                 onClick={() => setBrSelectedCity(city.id)}
                                                 className={`w-full p-3 rounded-lg flex items-center gap-3 transition-all border ${brSelectedCity === city.id
-                                                        ? 'bg-orange-500/20 border-orange-500/50'
-                                                        : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-700/40'
+                                                    ? 'bg-orange-500/20 border-orange-500/50'
+                                                    : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-700/40'
                                                     }`}
                                             >
                                                 <span className="text-xl">🏙️</span>
