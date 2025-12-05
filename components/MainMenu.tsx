@@ -48,11 +48,30 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onJoinBattleRoyale, lo
         return () => clearInterval(checkId);
     }, []);
 
-    // Start menu music on mount
+    // Start menu music on first user interaction (bypasses autoplay block)
     useEffect(() => {
+        let musicStarted = false;
+
+        const startMusic = () => {
+            if (!musicStarted) {
+                musicStarted = true;
+                AudioService.startMenuMusic();
+                document.removeEventListener('click', startMusic);
+                document.removeEventListener('keydown', startMusic);
+            }
+        };
+
+        // Try to start immediately (works if user already interacted)
         AudioService.startMenuMusic();
+
+        // Also add listeners for first interaction
+        document.addEventListener('click', startMusic);
+        document.addEventListener('keydown', startMusic);
+
         return () => {
             AudioService.stopBackgroundMusic();
+            document.removeEventListener('click', startMusic);
+            document.removeEventListener('keydown', startMusic);
         };
     }, []);
 
