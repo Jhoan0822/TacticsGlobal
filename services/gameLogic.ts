@@ -638,7 +638,18 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
             } else if (targetPos) {
                 const dist = getDistanceKm(unit.position.lat, unit.position.lng, targetPos.lat, targetPos.lng);
                 if (dist > unit.range * 0.8) {
-                    currentDestination = targetPos;
+                    // FORMATION PRESERVATION: If unit has a formation offset, calculate destination
+                    // relative to target position instead of going directly to target
+                    if (unit.formationOffset) {
+                        // Stay in formation around the target
+                        currentDestination = {
+                            lat: targetPos.lat + unit.formationOffset.lat,
+                            lng: targetPos.lng + unit.formationOffset.lng
+                        };
+                    } else {
+                        // No formation - go directly to target
+                        currentDestination = targetPos;
+                    }
                 } else {
                     currentDestination = null;
                     newHeading = getBearing(unit.position.lat, unit.position.lng, targetPos.lat, targetPos.lng);
