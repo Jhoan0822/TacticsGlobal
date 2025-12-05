@@ -196,7 +196,7 @@ export const useGameLoop = () => {
                     // =============================================
                     let nextUnits = [...prev.units];
 
-                    // Command Center (HQ)
+                    // Command Center (HQ) - ONLY unit for players
                     nextUnits.push({
                         id: `HQ-${req.playerId}-${Date.now()}`,
                         unitClass: UnitClass.COMMAND_CENTER,
@@ -211,49 +211,7 @@ export const useGameLoop = () => {
                         vision: UNIT_CONFIG[UnitClass.COMMAND_CENTER].vision
                     });
 
-                    // THREE INFANTRY (needed for capture!)
-                    for (let inf = 0; inf < 3; inf++) {
-                        nextUnits.push({
-                            id: `INF-${req.playerId}-${inf}-${Date.now()}`,
-                            unitClass: UnitClass.INFANTRY,
-                            factionId: req.playerId,
-                            position: {
-                                lat: poi.position.lat + (Math.random() - 0.5) * 0.03,
-                                lng: poi.position.lng + (Math.random() - 0.5) * 0.03
-                            },
-                            heading: Math.random() * 360,
-                            hp: UNIT_CONFIG[UnitClass.INFANTRY].hp,
-                            maxHp: UNIT_CONFIG[UnitClass.INFANTRY].maxHp,
-                            attack: UNIT_CONFIG[UnitClass.INFANTRY].attack,
-                            range: UNIT_CONFIG[UnitClass.INFANTRY].range,
-                            speed: UNIT_CONFIG[UnitClass.INFANTRY].speed,
-                            vision: UNIT_CONFIG[UnitClass.INFANTRY].vision,
-                            canCapture: true
-                        });
-                    }
-
-                    // TWO TANKS (escorts)
-                    for (let tank = 0; tank < 2; tank++) {
-                        nextUnits.push({
-                            id: `TANK-${req.playerId}-${tank}-${Date.now()}`,
-                            unitClass: UnitClass.GROUND_TANK,
-                            factionId: req.playerId,
-                            position: {
-                                lat: poi.position.lat + (Math.random() - 0.5) * 0.04,
-                                lng: poi.position.lng + (Math.random() - 0.5) * 0.04
-                            },
-                            heading: Math.random() * 360,
-                            hp: UNIT_CONFIG[UnitClass.GROUND_TANK].hp,
-                            maxHp: UNIT_CONFIG[UnitClass.GROUND_TANK].maxHp,
-                            attack: UNIT_CONFIG[UnitClass.GROUND_TANK].attack,
-                            range: UNIT_CONFIG[UnitClass.GROUND_TANK].range,
-                            speed: UNIT_CONFIG[UnitClass.GROUND_TANK].speed,
-                            vision: UNIT_CONFIG[UnitClass.GROUND_TANK].vision,
-                            canCapture: true
-                        });
-                    }
-
-                    console.log(`[HOST] Spawned starting army for player ${req.playerId}: 1 HQ + 3 Infantry + 2 Tanks`);
+                    console.log(`[HOST] Spawned HQ for player ${req.playerId}`);
                     console.log(`[HOST] Player units in nextUnits: ${nextUnits.filter(u => u.factionId === req.playerId).length}`);
 
                     // 2. Broadcast Response (Authoritative Update)
