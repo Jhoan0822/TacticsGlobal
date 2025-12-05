@@ -31,10 +31,12 @@ interface AudioConfig {
     isMuted: boolean;
 }
 
+// Volume scaled down: User's comfortable level (3% music, 19% master, 50% effects)
+// is now the baseline. At 100% slider, music = 0.03, master = 0.2, effects = 0.3
 const audioConfig: AudioConfig = {
-    masterVolume: 0.4,
-    effectsVolume: 0.5,
-    musicVolume: 0.08, // Very low for comfortable background - user can increase
+    masterVolume: 0.2,      // 20% max - very comfortable
+    effectsVolume: 0.3,     // 30% max  
+    musicVolume: 0.025,     // 2.5% max - barely audible background
     isMuted: false
 };
 
@@ -47,6 +49,10 @@ let masterCompressor: DynamicsCompressorNode | null = null;
 let bassEQ: BiquadFilterNode | null = null;
 let trebleEQ: BiquadFilterNode | null = null;
 let combatDistortion: WaveShaperNode | null = null;
+
+// Synth melody overlay state
+let synthOverlayTimeout: number | null = null;
+let lastSynthMelodyTime = 0;
 
 // ============================================
 // COMBAT PACK MUSIC FILES
@@ -991,6 +997,182 @@ const playMusicMode = async (mode: MusicMode) => {
                 break;
         }
     }
+
+    // Start synth melody overlay for variety
+    startSynthMelodyOverlay();
+};
+
+// ============================================
+// SYNTH MELODY OVERLAY - Adds variety to background music
+// Random ambient melodies so it never sounds the same twice
+// ============================================
+const startSynthMelodyOverlay = () => {
+    if (synthOverlayTimeout) {
+        clearTimeout(synthOverlayTimeout);
+    }
+
+    const playRandomMelody = () => {
+        if (!isMusicPlaying || audioConfig.isMuted) {
+            synthOverlayTimeout = window.setTimeout(playRandomMelody, 15000 + Math.random() * 20000);
+            return;
+        }
+
+        const audio = getContext();
+        const now = Date.now();
+
+        // Don't play melodies too frequently
+        if (now - lastSynthMelodyTime < 10000) {
+            synthOverlayTimeout = window.setTimeout(playRandomMelody, 10000 + Math.random() * 15000);
+            return;
+        }
+        lastSynthMelodyTime = now;
+
+        // Random melody types for variety
+        const melodyTypes = ['arpeggio', 'pad', 'bell', 'ambient', 'stab'];
+        const melodyType = melodyTypes[Math.floor(Math.random() * melodyTypes.length)];
+
+        // Multiple scales for variety
+        const scales = [
+            [147, 175, 196, 220, 262],  // D minor pentatonic
+            [165, 196, 220, 247, 294],  // E minor pentatonic
+            [131, 165, 175, 196, 247],  // C minor pentatonic
+            [110, 131, 147, 165, 196],  // A minor pentatonic
+        ];
+        const scale = scales[Math.floor(Math.random() * scales.length)];
+
+        // Volume based on music volume (very subtle)
+        const melodyVolume = getMusicVolume() * 0.3;
+
+        switch (melodyType) {
+            case 'arpeggio': {
+                // Rising or falling arpeggio
+                const rising = Math.random() > 0.5;
+                const notes = rising ? [...scale] : [...scale].reverse();
+                const noteLength = 0.15 + Math.random() * 0.1;
+
+                notes.slice(0, 4).forEach((freq, i) => {
+                    setTimeout(() => {
+                        const osc = audio.createOscillator();
+                        const gain = audio.createGain();
+                        osc.type = Math.random() > 0.5 ? 'sine' : 'triangle';
+                        osc.frequency.setValueAtTime(freq * 2, audio.currentTime);
+                        gain.gain.setValueAtTime(melodyVolume * 0.5, audio.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + noteLength);
+                        osc.connect(gain);
+                        gain.connect(audio.destination);
+                        osc.start();
+                        osc.stop(audio.currentTime + noteLength);
+                    }, i * noteLength * 1000);
+                });
+                break;
+            }
+
+            case 'pad': {
+                // Slow evolving pad chord
+                const chord = [scale[0], scale[2], scale[4]];
+                chord.forEach(freq => {
+                    const osc = audio.createOscillator();
+                    const gain = audio.createGain();
+                    const filter = audio.createBiquadFilter();
+
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, audio.currentTime);
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(400 + Math.random() * 300, audio.currentTime);
+
+                    gain.gain.setValueAtTime(0, audio.currentTime);
+                    gain.gain.linearRampToValueAtTime(melodyVolume * 0.3, audio.currentTime + 1);
+                    gain.gain.linearRampToValueAtTime(0, audio.currentTime + 4);
+
+                    osc.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(audio.destination);
+                    osc.start();
+                    osc.stop(audio.currentTime + 4.5);
+                });
+                break;
+            }
+
+            case 'bell': {
+                // Single bell-like tone
+                const freq = scale[Math.floor(Math.random() * scale.length)] * 2;
+                const osc = audio.createOscillator();
+                const osc2 = audio.createOscillator();
+                const gain = audio.createGain();
+
+                osc.type = 'sine';
+                osc2.type = 'sine';
+                osc.frequency.value = freq;
+                osc2.frequency.value = freq * 2.5; // Bell harmonic
+
+                gain.gain.setValueAtTime(melodyVolume * 0.4, audio.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 2);
+
+                osc.connect(gain);
+                osc2.connect(gain);
+                gain.connect(audio.destination);
+                osc.start();
+                osc2.start();
+                osc.stop(audio.currentTime + 2);
+                osc2.stop(audio.currentTime + 2);
+                break;
+            }
+
+            case 'ambient': {
+                // Noise-based ambient texture
+                const bufferSize = audio.sampleRate * 2;
+                const noiseBuffer = audio.createBuffer(1, bufferSize, audio.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = (Math.random() * 2 - 1) * 0.1;
+                }
+
+                const noise = audio.createBufferSource();
+                const filter = audio.createBiquadFilter();
+                const gain = audio.createGain();
+
+                noise.buffer = noiseBuffer;
+                filter.type = 'bandpass';
+                filter.frequency.value = 500 + Math.random() * 1000;
+                filter.Q.value = 5;
+
+                gain.gain.setValueAtTime(0, audio.currentTime);
+                gain.gain.linearRampToValueAtTime(melodyVolume * 0.2, audio.currentTime + 0.5);
+                gain.gain.linearRampToValueAtTime(0, audio.currentTime + 2);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(audio.destination);
+                noise.start();
+                noise.stop(audio.currentTime + 2);
+                break;
+            }
+
+            case 'stab': {
+                // Quick chord stab
+                const chord = [scale[0], scale[2], scale[3]];
+                chord.forEach((freq, i) => {
+                    const osc = audio.createOscillator();
+                    const gain = audio.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(melodyVolume * 0.2, audio.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.3);
+                    osc.connect(gain);
+                    gain.connect(audio.destination);
+                    osc.start();
+                    osc.stop(audio.currentTime + 0.4);
+                });
+                break;
+            }
+        }
+
+        // Schedule next melody (15-35 seconds)
+        synthOverlayTimeout = window.setTimeout(playRandomMelody, 15000 + Math.random() * 20000);
+    };
+
+    // Start after a short delay
+    synthOverlayTimeout = window.setTimeout(playRandomMelody, 5000 + Math.random() * 10000);
 };
 
 // ============================================
