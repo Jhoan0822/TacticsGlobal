@@ -78,7 +78,9 @@ export type NetworkMessageType =
     | 'LOBBY_UPDATE'     // Lobby changes
     | 'START_GAME'       // Game start signal
     | 'REQUEST'          // Client -> Host request
-    | 'RESPONSE';        // Host -> Client response
+    | 'RESPONSE'         // Host -> Client response
+    | 'HEARTBEAT'        // Host alive signal
+    | 'NEW_HOST';        // Host migration announcement
 
 export interface ActionMessage {
     type: 'ACTION';
@@ -115,13 +117,26 @@ export interface ResponseMessage {
     payload: NetworkResponse;
 }
 
+// Host Migration Messages
+export interface HeartbeatMessage {
+    type: 'HEARTBEAT';
+    timestamp: number;
+}
+
+export interface NewHostMessage {
+    type: 'NEW_HOST';
+    hostId: string;
+}
+
 export type NetworkMessage =
     | ActionMessage
     | FullStateMessage
     | LobbyUpdateMessage
     | StartGameMessage
     | RequestMessage
-    | ResponseMessage;
+    | ResponseMessage
+    | HeartbeatMessage
+    | NewHostMessage;
 
 // Helper to create action with unique ID
 export function createAction(

@@ -661,7 +661,28 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         if (currentDestination) {
             const distToDest = getDistanceKm(unit.position.lat, unit.position.lng, currentDestination.lat, currentDestination.lng);
             const boostMultiplier = unit.isBoosting ? 2.0 : 1.0;
-            const speedFactor = 0.008 * unit.speed * boostMultiplier;
+
+            // === FORMATION SPEED SYNC ===
+            // If unit is in formation, move at the speed of the slowest unit in the group
+            let effectiveSpeed = unit.speed;
+            if (unit.formationOffset) {
+                // Find nearby units that are also in formation (likely same group)
+                const nearbyFormationUnits = nextUnits.filter(u =>
+                    u.id !== unit.id &&
+                    u.formationOffset &&
+                    u.factionId === unit.factionId &&
+                    Math.abs(u.position.lat - unit.position.lat) < 0.3 &&
+                    Math.abs(u.position.lng - unit.position.lng) < 0.3
+                );
+
+                if (nearbyFormationUnits.length > 0) {
+                    // Move at speed of slowest unit in formation
+                    const allSpeeds = [unit.speed, ...nearbyFormationUnits.map(u => u.speed)];
+                    effectiveSpeed = Math.min(...allSpeeds);
+                }
+            }
+
+            const speedFactor = 0.008 * effectiveSpeed * boostMultiplier;
             const moveDistKm = speedFactor * 111;
 
             if (distToDest <= moveDistKm || distToDest < 0.5) {
