@@ -749,7 +749,35 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
             if (dist <= u1.range) {
                 const weaponType = WEAPON_MAPPING[u1.unitClass] || WeaponType.TRACER;
                 const isMissile = weaponType === WeaponType.MISSILE;
-                const damage = Math.max(5, u1.attack * 0.5);
+                let damage = Math.max(5, u1.attack * 0.5);
+
+                // ========== TERRAIN COMBAT BONUSES ==========
+                // Units defending in cities get +25% defense (damage reduction)
+                // Units on coast get +10% defense (cover from terrain)
+                if ('unitClass' in target) {
+                    // Check if target unit is defending near a city
+                    const targetUnit = target as GameUnit;
+                    const nearCity = nextPOIs.some(poi =>
+                        poi.type === POIType.CITY &&
+                        poi.ownerFactionId === targetUnit.factionId &&
+                        getDistanceKm(tPos.lat, tPos.lng, poi.position.lat, poi.position.lng) < 30
+                    );
+
+                    if (nearCity) {
+                        damage *= 0.75; // 25% damage reduction in cities
+                    }
+
+                    // Check if target is on coast (partial cover)
+                    const terrain = TerrainService.getTerrainType(tPos.lat, tPos.lng, nextPOIs);
+                    if (terrain === 'COAST') {
+                        damage *= 0.90; // 10% damage reduction on coast
+                    }
+
+                    // Fortified structures take less damage
+                    if ([UnitClass.COMMAND_CENTER, UnitClass.MILITARY_BASE].includes(targetUnit.unitClass)) {
+                        damage *= 0.60; // 40% damage reduction for fortified structures
+                    }
+                }
 
                 // Apply Damage
                 target.hp -= damage;

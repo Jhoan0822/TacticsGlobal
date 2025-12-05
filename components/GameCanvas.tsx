@@ -20,6 +20,16 @@ const UNIT_COLORS: Record<string, string> = {
     'NEUTRAL_DEFENDER': '#6b7280', // Gray for neutral city defenders
 };
 
+// --- SCREEN SHAKE SYSTEM ---
+let shakeIntensity = 0;
+let shakeDecay = 0.9; // How fast shake fades (0.9 = 10% reduction per frame)
+const MAX_SHAKE = 15; // Maximum pixel offset
+
+// Screen shake trigger - call this from outside
+export const shakeScreen = (intensity: number) => {
+    shakeIntensity = Math.min(MAX_SHAKE, shakeIntensity + intensity);
+};
+
 // --- SPRITE CACHE ---
 const spriteCache: Record<string, HTMLCanvasElement> = {};
 
@@ -390,6 +400,16 @@ const GameCanvas: React.FC<Props> = ({ units, factions, selectedUnitIds, project
             ctx.resetTransform();
             ctx.scale(pixelRatio, pixelRatio);
             ctx.clearRect(0, 0, size.x, size.y);
+
+            // --- SCREEN SHAKE EFFECT ---
+            if (shakeIntensity > 0.1) {
+                const shakeX = (Math.random() - 0.5) * shakeIntensity * 2;
+                const shakeY = (Math.random() - 0.5) * shakeIntensity * 2;
+                ctx.translate(shakeX, shakeY);
+                shakeIntensity *= shakeDecay; // Decay shake over time
+            } else {
+                shakeIntensity = 0;
+            }
 
             // --- 1. DRAW POIS (CITIES) ---
             const currentPois = poisRef.current;

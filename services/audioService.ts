@@ -50,6 +50,41 @@ let bassEQ: BiquadFilterNode | null = null;
 let trebleEQ: BiquadFilterNode | null = null;
 let combatDistortion: WaveShaperNode | null = null;
 
+// AUDIO LIMITER - Prevents clipping and overlap chaos
+let audioLimiter: DynamicsCompressorNode | null = null;
+let masterGainNode: GainNode | null = null;
+
+// Active sound count for limiting
+let activeSoundCount = 0;
+const MAX_CONCURRENT_SOUNDS = 16; // Limit simultaneous sounds
+
+// Initialize audio limiter
+const initAudioLimiter = () => {
+    if (audioLimiter) return;
+    const audio = getContext();
+
+    // Master gain for global volume control
+    masterGainNode = audio.createGain();
+    masterGainNode.gain.value = 1.0;
+
+    // Limiter/Compressor to prevent clipping
+    audioLimiter = audio.createDynamicsCompressor();
+    audioLimiter.threshold.value = -6;    // Start compressing at -6dB
+    audioLimiter.knee.value = 3;          // Soft knee
+    audioLimiter.ratio.value = 12;        // Strong compression ratio
+    audioLimiter.attack.value = 0.003;    // Fast attack
+    audioLimiter.release.value = 0.25;    // Medium release
+
+    masterGainNode.connect(audioLimiter);
+    audioLimiter.connect(audio.destination);
+};
+
+// Get the limiter output node for connecting sounds
+const getLimiterOutput = (): AudioNode => {
+    initAudioLimiter();
+    return masterGainNode || getContext().destination;
+};
+
 // Synth melody overlay state
 let synthOverlayTimeout: number | null = null;
 let lastSynthMelodyTime = 0;
@@ -114,7 +149,7 @@ const playTone = (freq: number, type: OscillatorType, duration: number, vol: num
     gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duration);
 
     osc.connect(gain);
-    gain.connect(audio.destination);
+    gain.connect(getLimiterOutput());
 
     osc.start();
     osc.stop(audio.currentTime + duration);
@@ -158,7 +193,7 @@ const playNoise = (duration: number, vol: number = 0.1, lowpass?: number, highpa
     }
 
     lastNode.connect(gain);
-    gain.connect(audio.destination);
+    gain.connect(getLimiterOutput());
     noise.start();
 };
 
@@ -178,7 +213,7 @@ const playFrequencySweep = (startFreq: number, endFreq: number, duration: number
     gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duration);
 
     osc.connect(gain);
-    gain.connect(audio.destination);
+    gain.connect(getLimiterOutput());
 
     osc.start();
     osc.stop(audio.currentTime + duration);
@@ -1963,6 +1998,50 @@ const playError = () => {
 };
 
 // ============================================
+// SPATIAL AUDIO SYSTEM
+// ============================================
+
+// Player position for spatial audio (updated by game loop)
+let listenerPosition = { lat: 0, lng: 0 };
+
+const setListenerPosition = (lat: number, lng: number) => {
+    listenerPosition = { lat, lng };
+};
+
+// Play sound with spatial positioning (distance attenuation + panning)
+const playSpatialSound = (
+    lat: number,
+    lng: number,
+    soundFn: () => void,
+    maxDistKm: number = 300
+) => {
+    // Calculate distance from listener
+    const dLat = lat - listenerPosition.lat;
+    const dLng = lng - listenerPosition.lng;
+    const distDeg = Math.sqrt(dLat * dLat + dLng * dLng);
+    const distKm = distDeg * 111; // Approximate km per degree
+
+    // Outside audible range
+    if (distKm > maxDistKm) return;
+
+    // Calculate volume attenuation (inverse distance)
+    const attenuation = Math.max(0, 1 - (distKm / maxDistKm));
+
+    // Calculate stereo pan (-1 = left, 1 = right)
+    const pan = Math.max(-1, Math.min(1, dLng / 10));
+
+    // Temporarily modify master volume for attenuation
+    const originalMaster = audioConfig.masterVolume;
+    audioConfig.masterVolume *= attenuation;
+
+    // Play the sound
+    soundFn();
+
+    // Restore volume
+    audioConfig.masterVolume = originalMaster;
+};
+
+// ============================================
 // EXPORT
 // ============================================
 
@@ -2024,4 +2103,8 @@ export const AudioService = {
     playSuccess,
     playAlert,
     playError,
+
+    // Spatial audio system
+    setListenerPosition,
+    playSpatialSound,
 };

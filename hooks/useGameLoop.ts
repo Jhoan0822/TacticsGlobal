@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GameState, GameUnit, POI, UnitClass, POIType, Faction, Difficulty, NetworkRequest, NetworkResponse, GameMode } from '../types';
-import { UNIT_CONFIG, NUKE_CONFIG } from '../constants';
+import { UNIT_CONFIG, NUKE_CONFIG, GAME_TICK_MS } from '../constants';
 import { processGameTick, spawnUnit } from '../services/gameLogic';
 import { NetworkService } from '../services/networkService';
 import { AudioService } from '../services/audioService';
@@ -11,8 +11,9 @@ import { applyAction } from '../services/applyAction';
 import { Scenario } from '../types';
 import { getMockCities, generateRandomResources } from '../services/mockDataService';
 import { PhantomHostService } from '../services/phantomHostService';
+import { shakeScreen } from '../components/GameCanvas';
 
-const GAME_TICK_MS = 40; // 25 FPS
+// GAME_TICK_MS now imported from constants.ts for consistency
 
 export const useGameLoop = () => {
     const [gameState, setGameState] = useState<GameState>({
@@ -786,6 +787,17 @@ export const useGameLoop = () => {
                 if (isNearPlayer) {
                     AudioService.playExplosion(explosion.size);
                     AudioService.increaseCombatIntensity(explosion.size === 'LARGE' ? 0.15 : 0.08);
+
+                    // SCREEN SHAKE - intensity based on explosion size
+                    if (explosion.size === 'NUCLEAR') {
+                        shakeScreen(15); // Maximum shake for nukes
+                    } else if (explosion.size === 'LARGE') {
+                        shakeScreen(8);
+                    } else if (explosion.size === 'MEDIUM') {
+                        shakeScreen(4);
+                    } else {
+                        shakeScreen(2);
+                    }
                 }
             }
         });

@@ -853,27 +853,47 @@ function executeCommands(brain: BotBrain, analysis: GameAnalysis, faction: Facti
                         };
                     }
                 }
-                // Combat units: escort and attack defenders
+                // Combat units: escort and attack defenders WITH FLANKING
                 else {
                     if (distToTarget > CITY_ATTACK_RANGE) {
-                        // Move towards city
-                        newUnits[unitIdx] = {
-                            ...newUnits[unitIdx],
-                            destination: {
-                                lat: targetCity.position.lat + (Math.random() - 0.5) * 0.05,
-                                lng: targetCity.position.lng + (Math.random() - 0.5) * 0.05
-                            },
+                        // Get unit's index in the task force for flanking angle
+                        const combatUnits = tfUnits.filter(u =>
+                            u.unitClass !== UnitClass.INFANTRY &&
+                            u.unitClass !== UnitClass.SPECIAL_FORCES
+                        );
+                        const unitIdx = combatUnits.findIndex(u => u.id === unit.id);
+                        const flankIdx = newUnits.findIndex(u => u.id === unit.id);
+                        if (flankIdx === -1) continue;
+
+                        // Calculate flanking position if unit should flank
+                        let destLat: number, destLng: number;
+                        if (shouldFlank(unit) && combatUnits.length > 1) {
+                            const flankPos = calculateFlankingPosition(
+                                unitIdx,
+                                combatUnits.length,
+                                targetCity.position.lat,
+                                targetCity.position.lng,
+                                20 // 20km flank distance
+                            );
+                            destLat = flankPos.lat;
+                            destLng = flankPos.lng;
+                        } else {
+                            // Direct approach with slight randomization
+                            destLat = targetCity.position.lat + (Math.random() - 0.5) * 0.05;
+                            destLng = targetCity.position.lng + (Math.random() - 0.5) * 0.05;
+                        }
+
+                        newUnits[flankIdx] = {
+                            ...newUnits[flankIdx],
+                            destination: clampToScenarioBounds(destLat, destLng, state),
                             targetId: null
                         };
-                        // Clamp destination to scenario bounds
-                        newUnits[unitIdx].destination = clampToScenarioBounds(
-                            newUnits[unitIdx].destination!.lat,
-                            newUnits[unitIdx].destination!.lng,
-                            state
-                        );
                     } else {
-                        // Attack the city or nearby enemies
+                        // In attack range - engage enemies or attack city
                         const nearbyEnemy = findNearbyEnemy(unit, analysis.enemyUnits);
+                        const unitIdx = newUnits.findIndex(u => u.id === unit.id);
+                        if (unitIdx === -1) continue;
+
                         if (nearbyEnemy) {
                             newUnits[unitIdx] = {
                                 ...newUnits[unitIdx],
@@ -1043,6 +1063,58 @@ function findNearbyEnemy(unit: GameUnit, enemies: GameUnit[]): GameUnit | null {
 }
 
 // =============================================================================
+// FLANKING MANEUVER CALCULATION
+// =============================================================================
+
+/**
+ * Calculate a flanking position around a target.
+ * Units will approach from different angles based on their index in the group.
+ * @param unitIndex Index of this unit in the attacking group (0-based)
+ * @param totalUnits Total units in the attacking group
+ * @param targetLat Target latitude
+ * @param targetLng Target longitude
+ * @param flankDistance Distance from target to set up flanking position (km)
+ * @returns Flanking position coordinates
+ */
+function calculateFlankingPosition(
+    unitIndex: number,
+    totalUnits: number,
+    targetLat: number,
+    targetLng: number,
+    flankDistance: number = 25
+): { lat: number; lng: number } {
+    // Distribute units around the target in a semi-circle
+    // Index 0 attacks from front, others spread out on flanks
+    const baseAngle = unitIndex === 0 ? 0 : Math.PI + (unitIndex / totalUnits) * Math.PI * 2;
+
+    // Add some randomness to prevent predictable patterns
+    const angleVariation = (Math.random() - 0.5) * 0.3;
+    const finalAngle = baseAngle + angleVariation;
+
+    // Convert distance to degrees (approximate: 1 degree ≈ 111km)
+    const distDeg = flankDistance / 111;
+
+    return {
+        lat: targetLat + Math.sin(finalAngle) * distDeg,
+        lng: targetLng + Math.cos(finalAngle) * distDeg
+    };
+}
+
+/**
+ * Determine if a unit should attempt a flanking maneuver.
+ * Tanks and helicopters are best for flanking.
+ */
+function shouldFlank(unit: GameUnit): boolean {
+    const flankingUnits = [
+        UnitClass.GROUND_TANK,
+        UnitClass.HELICOPTER,
+        UnitClass.FIGHTER_JET,
+        UnitClass.SPECIAL_FORCES
+    ];
+    return flankingUnits.includes(unit.unitClass);
+}
+
+// =============================================================================
 // BATTLE ASSESSMENT (for future expansion)
 // =============================================================================
 
@@ -1056,3 +1128,4 @@ export const assessBattle = (
 
     return { canWin: forceRatio >= 0.8, forceRatio };
 };
+
