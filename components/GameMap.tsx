@@ -7,6 +7,7 @@ import TerritoryLayer from './TerritoryLayer';
 import PlacementOverlay from './PlacementOverlay';
 import GameCanvas from './GameCanvas';
 import TerrainLayer from './TerrainLayer';
+import SmoothZoom from './SmoothZoom';
 
 interface Props {
     units: GameUnit[];
@@ -301,7 +302,11 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
                 zoomControl={false}
                 preferCanvas={true}
                 worldCopyJump={true}
+                zoomSnap={0} // Allow fractional zoom
+                zoomDelta={0.1} // Smaller steps for buttons (if any)
+                wheelPxPerZoomLevel={120} // Standard sensitivity
             >
+                <SmoothZoom />
                 <MapController center={center} gameMode={gameMode} />
 
                 {/* LAYER 1: STATIC TERRAIN (Z: 200) */}
