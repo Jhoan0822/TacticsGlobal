@@ -405,7 +405,7 @@ export const useGameLoop = () => {
                             }
                         });
 
-                        finalUnits = [...prev.units, ...newUnits];
+                        finalUnits = [...finalUnits, ...newUnits]; // CRITICAL: Keep player+bot units, add defenders
 
                         // Broadcast Updates
                         NetworkService.broadcastResponse({
