@@ -124,6 +124,24 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         case 'SELECT_BASE': {
             const payload = action.payload as SelectBasePayload;
 
+            // CRITICAL: Ensure player faction exists in factions array for resource generation
+            const existingFaction = nextState.factions.find(f => f.id === action.playerId);
+            if (!existingFaction) {
+                // Create new faction for this player
+                const newFaction = {
+                    id: action.playerId,
+                    name: action.playerId.startsWith('BOT_') ? `Bot ${action.playerId.slice(4)}` : 'Player',
+                    color: action.playerId.startsWith('BOT_') ? '#666666' : '#3b82f6', // Blue for player
+                    gold: 10000, // Starting gold
+                    oil: 1000,   // Starting oil
+                    relations: {},
+                    isPlayer: !action.playerId.startsWith('BOT_'),
+                    isBot: action.playerId.startsWith('BOT_')
+                };
+                nextState.factions = [...nextState.factions, newFaction];
+                console.log('[APPLY ACTION] Created new faction for player:', action.playerId);
+            }
+
             // Spawn HQ
             const hq = spawnUnit(
                 UnitClass.COMMAND_CENTER,
@@ -137,10 +155,22 @@ export function applyAction(state: GameState, action: GameAction): GameState {
             if (poi) {
                 hq.position = { lat: poi.position.lat, lng: poi.position.lng };
                 poi.ownerFactionId = action.playerId;
-                poi.tier = 1;
+                poi.tier = 1; // Upgrade to capital
 
                 nextState.units = [...nextState.units, hq];
                 nextState.pois = nextState.pois.map(p => p.id === poi.id ? poi : p);
+
+                // Also update playerResources if this is the local player
+                if (action.playerId === nextState.localPlayerId) {
+                    const faction = nextState.factions.find(f => f.id === action.playerId);
+                    if (faction) {
+                        nextState.playerResources = {
+                            gold: faction.gold,
+                            oil: faction.oil || 0,
+                            intel: nextState.playerResources.intel
+                        };
+                    }
+                }
 
                 const message = {
                     id: Math.random().toString(36),
@@ -149,7 +179,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
                     timestamp: Date.now()
                 };
                 nextState.messages = [...nextState.messages, message];
-                console.log('[APPLY ACTION] Base selected at', poi.name);
+                console.log('[APPLY ACTION] Base selected at', poi.name, 'by', action.playerId);
             }
             break;
         }
