@@ -986,9 +986,13 @@ export const useGameLoop = () => {
                     destLng = lng + unit.formationOffset.lng;
                 }
 
-                // Check if unit can move to its destination terrain
+                // Check if unit can move to its formation destination
                 if (TerrainService.isValidMove(unit.unitClass, destLat, destLng, gameState.pois)) {
                     validUnits.push({ id: unit.id, destLat, destLng });
+                } else if (hasFormation && TerrainService.isValidMove(unit.unitClass, lat, lng, gameState.pois)) {
+                    // FLEXIBLE: Formation position blocked - fallback to click position
+                    validUnits.push({ id: unit.id, destLat: lat, destLng: lng });
+                    console.log(`[FORMATION] Unit ${unit.id} can't reach formation spot, moving to click position`);
                 } else {
                     invalidUnitIds.push(unit.id);
                 }
@@ -1333,15 +1337,78 @@ export const useGameLoop = () => {
 
     const handleTargetCommand = (targetId: string, isPoi: boolean) => {
         if (gameState.gameMode === 'PLAYING' && selectedUnitIds.length > 0) {
-            const payload: AttackTargetPayload = {
-                attackerIds: selectedUnitIds,
-                targetId,
-                isPoi
-            };
-            const action = createAction(gameState.localPlayerId, 'ATTACK_TARGET', payload);
-            setGameState(prev => applyAction(prev, action));
-            NetworkService.broadcastAction(action);
-            AudioService.playAttackCommand();
+            // Get selected units for formation check
+            const selectedUnits = gameState.units.filter(u =>
+                selectedUnitIds.includes(u.id) && u.factionId === gameState.localPlayerId
+            );
+
+            // Check if units have formation offsets
+            const hasFormation = selectedUnits.some(u => u.formationOffset);
+
+            // Get target position
+            let targetPos: { lat: number; lng: number } | null = null;
+            if (isPoi) {
+                const poi = gameState.pois.find(p => p.id === targetId);
+                if (poi) targetPos = poi.position;
+            } else {
+                const targetUnit = gameState.units.find(u => u.id === targetId);
+                if (targetUnit) targetPos = targetUnit.position;
+            }
+
+            // If units have formation AND we have target position, move in formation around target
+            if (hasFormation && targetPos && selectedUnits.length > 1) {
+                // Move units to formation positions centered on target
+                setGameState(prev => ({
+                    ...prev,
+                    units: prev.units.map(u => {
+                        if (!selectedUnitIds.includes(u.id)) return u;
+                        if (u.factionId !== prev.localPlayerId) return u;
+
+                        // Calculate destination: target + formation offset
+                        let destLat = targetPos!.lat;
+                        let destLng = targetPos!.lng;
+
+                        if (u.formationOffset) {
+                            destLat = targetPos!.lat + u.formationOffset.lat;
+                            destLng = targetPos!.lng + u.formationOffset.lng;
+                        }
+
+                        // Check terrain - if can't reach, try original target
+                        if (!TerrainService.isValidMove(u.unitClass, destLat, destLng, prev.pois)) {
+                            // Fallback: just move toward target directly
+                            destLat = targetPos!.lat;
+                            destLng = targetPos!.lng;
+                        }
+
+                        return {
+                            ...u,
+                            destination: { lat: destLat, lng: destLng },
+                            targetId: targetId
+                        };
+                    })
+                }));
+
+                // Broadcast attack intent
+                const payload: AttackTargetPayload = {
+                    attackerIds: selectedUnitIds,
+                    targetId,
+                    isPoi
+                };
+                const action = createAction(gameState.localPlayerId, 'ATTACK_TARGET', payload);
+                NetworkService.broadcastAction(action);
+                AudioService.playAttackCommand();
+            } else {
+                // Standard attack - use action system
+                const payload: AttackTargetPayload = {
+                    attackerIds: selectedUnitIds,
+                    targetId,
+                    isPoi
+                };
+                const action = createAction(gameState.localPlayerId, 'ATTACK_TARGET', payload);
+                setGameState(prev => applyAction(prev, action));
+                NetworkService.broadcastAction(action);
+                AudioService.playAttackCommand();
+            }
         }
     };
 
