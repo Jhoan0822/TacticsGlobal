@@ -43,15 +43,32 @@ let combatIntensity = 0;
 let combatDecayInterval: number | null = null;
 
 // ============================================
-// SYNTH MUSIC STATE
+// COMBAT PACK MUSIC FILES
 // ============================================
+const COMBAT_PACK = {
+    // Menu/Lobby - slower, atmospheric
+    menu: '/audio/2. One Last Day on Earth - 110bpm - LOOP 52s.wav',
+    lobby: '/audio/1. For Better Tomorrow - 120bpm - LOOP 56s.wav',
+    // Gameplay - moderate intensity
+    gameplay: '/audio/5. Only One Can Survive - 140bpm - 45s.wav',
+    // Combat - high intensity tracks
+    combat: [
+        '/audio/3. Time For a Revenge - 157bpm - LOOP 33s.wav',
+        '/audio/4. Ready As Can Be - 208bpm - LOOP 25s.wav',
+    ],
+    // Long loops for extended play
+    longMenu: '/audio/2. One Last Day on Earth - 110bpm - LONG LOOP 1min44s.wav',
+    longGameplay: '/audio/1. For Better Tomorrow - 120bpm - LONG METAL LOOP 2min2s.wav',
+};
 
 // Music state
 type MusicMode = 'menu' | 'lobby' | 'gameplay' | 'combat' | 'none';
 let currentMode: MusicMode = 'none';
 let isMusicPlaying = false;
+let currentAudio: HTMLAudioElement | null = null;
+let secondaryAudio: HTMLAudioElement | null = null;
 
-// Synth music state
+// Synth fallback state (if audio files fail)
 let useFallbackSynth = false;
 let musicGain: GainNode | null = null;
 let musicLoopTimeouts: number[] = [];
@@ -835,10 +852,68 @@ const playDefeat = () => {
 const stopAllMusic = () => {
     isMusicPlaying = false;
     currentMode = 'none';
+
+    // Stop audio files
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+        currentAudio = null;
+    }
+    if (secondaryAudio) {
+        secondaryAudio.pause();
+        secondaryAudio.currentTime = 0;
+        secondaryAudio = null;
+    }
+
     stopFallbackSynth();
 };
 
-// Map music modes to synth modes
+// Helper to create and play audio
+const createAudioElement = (src: string, volume: number): HTMLAudioElement => {
+    const audio = new Audio(src);
+    audio.loop = true;
+    audio.volume = Math.min(1, Math.max(0, volume));
+    return audio;
+};
+
+// Crossfade between tracks
+const crossfadeToTrack = (newSrc: string, duration: number = 1000) => {
+    const targetVol = getMusicVolume();
+
+    // Fade out current
+    if (currentAudio) {
+        const fadeOutAudio = currentAudio;
+        const startVol = fadeOutAudio.volume;
+        const fadeOut = () => {
+            fadeOutAudio.volume = Math.max(0, fadeOutAudio.volume - startVol / 20);
+            if (fadeOutAudio.volume > 0.01) {
+                setTimeout(fadeOut, duration / 20);
+            } else {
+                fadeOutAudio.pause();
+            }
+        };
+        fadeOut();
+    }
+
+    // Create and fade in new
+    currentAudio = createAudioElement(newSrc, 0);
+    const fadeInAudio = currentAudio;
+
+    fadeInAudio.play().then(() => {
+        const fadeIn = () => {
+            fadeInAudio.volume = Math.min(targetVol, fadeInAudio.volume + targetVol / 20);
+            if (fadeInAudio.volume < targetVol - 0.01) {
+                setTimeout(fadeIn, duration / 20);
+            }
+        };
+        fadeIn();
+    }).catch((err) => {
+        console.log('Audio playback requires user interaction, using synth fallback');
+        useFallbackSynth = true;
+    });
+};
+
+// Play music mode with Combat Pack audio
 const playMusicMode = async (mode: MusicMode) => {
     if (mode === 'none') {
         stopAllMusic();
@@ -849,27 +924,67 @@ const playMusicMode = async (mode: MusicMode) => {
     if (mode === currentMode && isMusicPlaying) return;
 
     currentMode = mode;
+    isMusicPlaying = true;
 
-    // Always use synth - no streaming
+    // Get the appropriate track from Combat Pack
+    let trackSrc: string;
     switch (mode) {
         case 'menu':
-            startFallbackSynthMode('menu');
+            trackSrc = COMBAT_PACK.menu;
             break;
         case 'lobby':
-            startFallbackSynthMode('lobby');
+            trackSrc = COMBAT_PACK.lobby;
             break;
         case 'gameplay':
-            startFallbackSynthMode('peace');
+            trackSrc = COMBAT_PACK.gameplay;
             // Start combat decay interval
             if (combatDecayInterval) clearInterval(combatDecayInterval);
             combatDecayInterval = window.setInterval(() => {
                 combatIntensity = Math.max(0, combatIntensity - 0.008);
-                checkPeaceTransition();
+                // Switch to combat track if intensity is high
+                if (combatIntensity > 0.5 && currentAudio && !currentAudio.src.includes('Revenge')) {
+                    const combatTrack = COMBAT_PACK.combat[Math.floor(Math.random() * COMBAT_PACK.combat.length)];
+                    crossfadeToTrack(combatTrack, 500);
+                } else if (combatIntensity < 0.2 && currentAudio && currentAudio.src.includes('Revenge')) {
+                    crossfadeToTrack(COMBAT_PACK.gameplay, 1500);
+                }
             }, 500);
             break;
         case 'combat':
-            startFallbackSynthMode('combat');
+            trackSrc = COMBAT_PACK.combat[Math.floor(Math.random() * COMBAT_PACK.combat.length)];
             break;
+        default:
+            trackSrc = COMBAT_PACK.menu;
+    }
+
+    // Try to play Combat Pack audio
+    try {
+        if (currentAudio) {
+            crossfadeToTrack(trackSrc);
+        } else {
+            currentAudio = createAudioElement(trackSrc, getMusicVolume());
+            await currentAudio.play();
+        }
+        useFallbackSynth = false;
+    } catch (error) {
+        // If audio fails (autoplay blocked), use synth fallback
+        console.log('Using synth fallback for music');
+        useFallbackSynth = true;
+
+        switch (mode) {
+            case 'menu':
+                startFallbackSynthMode('menu');
+                break;
+            case 'lobby':
+                startFallbackSynthMode('lobby');
+                break;
+            case 'gameplay':
+                startFallbackSynthMode('peace');
+                break;
+            case 'combat':
+                startFallbackSynthMode('combat');
+                break;
+        }
     }
 };
 
