@@ -46,9 +46,25 @@ const isHostile = (f1: Faction, f2Id: string): boolean => {
     if (f1.id === f2Id) return false;
     // Only skip pure NEUTRAL (cities without defenders), not NEUTRAL_DEFENDER units
     if (f2Id === 'NEUTRAL') return false;
-    // NEUTRAL_DEFENDER is always hostile to everyone (city guards)
+    // NEUTRAL_DEFENDER is always hostile to everyone EXCEPT NEUTRAL
     if (f2Id === 'NEUTRAL_DEFENDER') return true;
+    // NEUTRAL_DEFENDER should NOT be hostile to NEUTRAL cities/units
+    if (f1.id === 'NEUTRAL_DEFENDER' && f2Id === 'NEUTRAL') return false;
     return getRelation(f1, f2Id) <= DIPLOMACY.WAR_THRESHOLD;
+};
+
+// Helper: Check if a unit should NOT attack a specific POI
+// NEUTRAL_DEFENDER units must not attack NEUTRAL cities
+const shouldNotAttackPOI = (unit: GameUnit, poi: POI): boolean => {
+    // NEUTRAL_DEFENDER should never attack NEUTRAL cities (their own cities)
+    if (unit.factionId === 'NEUTRAL_DEFENDER' && poi.ownerFactionId === 'NEUTRAL') {
+        return true;
+    }
+    // Also check guardingCityId - if this unit is guarding this specific city
+    if (unit.guardingCityId === poi.id) {
+        return true;
+    }
+    return false;
 };
 
 const canAttack = (attacker: GameUnit, defenderClass: UnitClass | 'CITY'): boolean => {
@@ -769,6 +785,9 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
             // Then Cities (Siege Logic)
             if (!hasFired && canAttack(u1, 'CITY')) {
                 for (const poi of nextPOIs) {
+                    // CRITICAL: Check if this unit should NOT attack this POI (e.g., NEUTRAL_DEFENDER guarding NEUTRAL city)
+                    if (shouldNotAttackPOI(u1, poi)) continue;
+
                     if (poi.ownerFactionId !== u1.factionId && isHostile(u1Faction, poi.ownerFactionId)) {
                         if (tryFire(poi)) {
                             hasFired = true;
@@ -786,9 +805,12 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
 
     nextPOIs = nextPOIs.map(poi => {
         // Find infantry near this POI from OTHER factions
+        // CRITICAL: Exclude NEUTRAL_DEFENDER from capturing NEUTRAL cities (they're defenders, not attackers!)
         const nearbyInfantry = nextUnits.filter(u =>
             u.factionId !== poi.ownerFactionId &&
             u.factionId !== 'NEUTRAL' &&
+            // NEUTRAL_DEFENDER should NOT capture NEUTRAL cities
+            !(u.factionId === 'NEUTRAL_DEFENDER' && poi.ownerFactionId === 'NEUTRAL') &&
             (u.unitClass === UnitClass.INFANTRY || u.unitClass === UnitClass.SPECIAL_FORCES) &&
             getDistanceKm(u.position.lat, u.position.lng, poi.position.lat, poi.position.lng) < CAPTURE_RANGE_KM
         );
