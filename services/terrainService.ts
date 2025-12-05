@@ -131,6 +131,15 @@ export const TerrainService = {
 
     clearCache: () => terrainTypeCache.clear(),
 
+    // Limit cache size to prevent memory leaks during long sessions
+    _limitCacheSize: () => {
+        if (terrainTypeCache.size > 10000) {
+            // Clear oldest half of entries
+            const entriesToDelete = Array.from(terrainTypeCache.keys()).slice(0, 5000);
+            entriesToDelete.forEach(key => terrainTypeCache.delete(key));
+        }
+    },
+
     // Check if point is near coastline (within ~30km)
     isNearCoast: (lat: number, lng: number): boolean => {
         const offset = 0.27;

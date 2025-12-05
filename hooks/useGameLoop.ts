@@ -211,15 +211,21 @@ export const useGameLoop = () => {
                         // Shuffle cities
                         const shuffledCities = [...availableCities].sort(() => Math.random() - 0.5);
 
-                        // Assign to Bots
+                        // Assign to Bots - IMMUTABLE UPDATES
                         botFactions.forEach((bot, index) => {
                             if (index < shuffledCities.length) {
                                 const city = shuffledCities[index];
-                                city.ownerFactionId = bot.id;
-                                city.tier = 1;
-                                // Mark bot as ready
-                                const botIndex = finalFactions.findIndex(f => f.id === bot.id);
-                                if (botIndex !== -1) finalFactions[botIndex].ready = true;
+                                // Update POI immutably
+                                const cityIndex = finalPois.findIndex(p => p.id === city.id);
+                                if (cityIndex !== -1) {
+                                    finalPois = finalPois.map((p, i) =>
+                                        i === cityIndex ? { ...p, ownerFactionId: bot.id, tier: 1 } : p
+                                    );
+                                }
+                                // Update faction immutably
+                                finalFactions = finalFactions.map(f =>
+                                    f.id === bot.id ? { ...f, ready: true } : f
+                                );
                             }
                         });
 

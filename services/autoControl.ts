@@ -240,7 +240,7 @@ export const toggleAutoTarget = (gameState: GameState, unitIds: string[]): GameS
 export const setAutoMode = (
     gameState: GameState,
     unitIds: string[],
-    mode: 'NONE' | 'DEFEND' | 'ATTACK'
+    mode: 'NONE' | 'DEFEND' | 'ATTACK' | 'PATROL'
 ): GameState => {
     const updatedUnits = gameState.units.map(u => {
         if (unitIds.includes(u.id) && u.factionId === gameState.localPlayerId) {
