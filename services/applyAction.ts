@@ -85,10 +85,13 @@ export function applyAction(state: GameState, action: GameAction): GameState {
             const payload = action.payload as AttackTargetPayload;
             nextState.units = nextState.units.map(u => {
                 if (payload.attackerIds.includes(u.id) && u.factionId === action.playerId) {
+                    // Preserve formation destination if unit has formation offset
+                    // Only null destination for units without formation
                     return {
                         ...u,
                         targetId: payload.targetId,
-                        destination: null,
+                        // Keep destination if unit has formation - it was set by handleTargetCommand
+                        destination: u.formationOffset ? u.destination : null,
                         autoMode: 'NONE', // Reset to manual on player command
                         autoTarget: false
                     };
