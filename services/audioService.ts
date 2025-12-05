@@ -32,9 +32,9 @@ interface AudioConfig {
 }
 
 const audioConfig: AudioConfig = {
-    masterVolume: 0.5,
+    masterVolume: 0.6,
     effectsVolume: 0.7,
-    musicVolume: 0.15, // Music volume - lower for comfortable background
+    musicVolume: 0.4, // Music volume - raised for audibility
     isMuted: false
 };
 
@@ -917,7 +917,7 @@ const startMenuSynth = () => {
     beatCount = 0;
 
     musicGain = audio.createGain();
-    musicGain.gain.setValueAtTime(getMusicVolume() * 0.2, audio.currentTime);
+    musicGain.gain.setValueAtTime(getMusicVolume() * 0.6, audio.currentTime); // Boosted for audibility
     musicGain.connect(audio.destination);
 
     // Ambient pad - slow evolving drone
@@ -1029,7 +1029,7 @@ const startLobbySynth = () => {
     synthMeasure = 0;
 
     musicGain = audio.createGain();
-    musicGain.gain.setValueAtTime(getMusicVolume() * 0.22, audio.currentTime);
+    musicGain.gain.setValueAtTime(getMusicVolume() * 0.6, audio.currentTime); // Boosted for audibility
     musicGain.connect(audio.destination);
 
     const bpm = 75; // Slower, building tension
@@ -1117,7 +1117,7 @@ const startGameplaySynth = () => {
     synthMeasure = 0;
 
     musicGain = audio.createGain();
-    musicGain.gain.setValueAtTime(getMusicVolume() * 0.2, audio.currentTime);
+    musicGain.gain.setValueAtTime(getMusicVolume() * 0.5, audio.currentTime); // Boosted for audibility
     musicGain.connect(audio.destination);
 
     // Dynamic BPM based on combat state
