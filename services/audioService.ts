@@ -52,19 +52,18 @@ let combatDistortion: WaveShaperNode | null = null;
 // COMBAT PACK MUSIC FILES
 // ============================================
 const COMBAT_PACK = {
-    // Menu/Lobby - slower, atmospheric
-    menu: '/audio/2. One Last Day on Earth - 110bpm - LOOP 52s.wav',
-    lobby: '/audio/1. For Better Tomorrow - 120bpm - LOOP 56s.wav',
-    // Gameplay - moderate intensity
-    gameplay: '/audio/5. Only One Can Survive - 140bpm - 45s.wav',
-    // Combat - high intensity tracks
+    // Menu - using LONG loop (1min44s)
+    menu: '/audio/2. One Last Day on Earth - 110bpm - LONG LOOP 1min44s.wav',
+    // Lobby - using LONG loop (2min2s)
+    lobby: '/audio/1. For Better Tomorrow - 120bpm - LONG METAL LOOP 2min2s.wav',
+    // Gameplay - using LONG loop for extended sessions
+    gameplay: '/audio/1. For Better Tomorrow - 120bpm - LONG METAL LOOP 2min2s.wav',
+    // Combat - high intensity tracks (shorter is fine for combat bursts)
     combat: [
         '/audio/3. Time For a Revenge - 157bpm - LOOP 33s.wav',
         '/audio/4. Ready As Can Be - 208bpm - LOOP 25s.wav',
+        '/audio/5. Only One Can Survive - 140bpm - 45s.wav',
     ],
-    // Long loops for extended play
-    longMenu: '/audio/2. One Last Day on Earth - 110bpm - LONG LOOP 1min44s.wav',
-    longGameplay: '/audio/1. For Better Tomorrow - 120bpm - LONG METAL LOOP 2min2s.wav',
 };
 
 // Music state
