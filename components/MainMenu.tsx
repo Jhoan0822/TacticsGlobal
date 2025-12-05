@@ -399,13 +399,30 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
         };
 
         const handleBRJoin = () => {
+            let success = false;
+
             if (brJoinOption === 'TAKEOVER_BOT' && brSelectedBot) {
-                BattleRoyaleService.requestTakeoverBot(brSelectedBot);
+                success = BattleRoyaleService.requestTakeoverBot(brSelectedBot);
             } else if (brJoinOption === 'NEW_FACTION' && brSelectedCity) {
-                BattleRoyaleService.requestNewFaction(brSelectedCity);
+                success = BattleRoyaleService.requestNewFaction(brSelectedCity);
             }
-            // The PhantomHost will handle the request and send full state
-            // We'll transition to game view when we receive confirmation
+
+            if (success) {
+                // Get the updated game state from PhantomHost
+                const gameState = PhantomHostService.getGameState();
+                const brState = PhantomHostService.getBRState();
+
+                if (gameState && brState) {
+                    const scenario = SCENARIOS[brState.config.scenarioRotation[brState.currentScenarioIndex] as keyof typeof SCENARIOS] || SCENARIOS.WORLD;
+                    const playerFaction = gameState.factions.find(f => f.id === gameState.localPlayerId);
+
+                    if (playerFaction) {
+                        console.log('[BR] Starting game with faction:', playerFaction.name);
+                        // Start game directly - player joins as "host" since PhantomHost runs locally
+                        onStartGame(scenario, gameState.localPlayerId, gameState.factions, false, true);
+                    }
+                }
+            }
         };
 
         return (

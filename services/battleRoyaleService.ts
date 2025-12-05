@@ -5,9 +5,12 @@
  * and tracking round state on the client side.
  */
 
-import { GameState, Faction, POI, POIType, BattleRoyaleState, Scenario } from '../types';
-import { SCENARIOS } from '../constants';
-import { NetworkService } from './networkService';
+import { GameState, Faction, POI, POIType, BattleRoyaleState, Scenario, UnitClass } from '../types';
+import { SCENARIOS, FACTION_PRESETS, UNIT_CONFIG } from '../constants';
+import { PhantomHostService } from './phantomHostService';
+
+// Callback for when player successfully joins
+type OnJoinSuccessCallback = (gameState: GameState, factionId: string) => void;
 
 class BattleRoyaleServiceImpl {
     private state: BattleRoyaleState | null = null;
@@ -15,6 +18,7 @@ class BattleRoyaleServiceImpl {
     private onJoinOptionsReceived: ((options: { bots: Faction[]; cities: POI[] }) => void) | null = null;
     private onRoundEnd: ((winnerId: string, reason: string) => void) | null = null;
     private onNewRound: ((scenarioId: string) => void) | null = null;
+    private onJoinSuccess: OnJoinSuccessCallback | null = null;
 
     // ============================================
     // STATE MANAGEMENT
@@ -80,31 +84,155 @@ class BattleRoyaleServiceImpl {
     }
 
     // ============================================
-    // JOIN ACTIONS
+    // JOIN ACTIONS (Local - same browser as PhantomHost)
     // ============================================
 
     /**
-     * Request to join Battle Royale by taking over a bot faction
+     * Set callback for when join succeeds
      */
-    requestTakeoverBot(botFactionId: string): void {
-        NetworkService.sendRequest({
-            type: 'BR_JOIN_REQUEST',
-            peerId: NetworkService.myPeerId,
-            option: 'TAKEOVER_BOT',
-            botFactionId
-        });
+    onJoinSuccessCallback(callback: OnJoinSuccessCallback): void {
+        this.onJoinSuccess = callback;
     }
 
     /**
-     * Request to join Battle Royale with a new faction at a specific city
+     * Join Battle Royale by taking over a bot faction (LOCAL)
      */
-    requestNewFaction(targetCityId: string): void {
-        NetworkService.sendRequest({
-            type: 'BR_JOIN_REQUEST',
-            peerId: NetworkService.myPeerId,
-            option: 'NEW_FACTION',
-            targetCityId
+    requestTakeoverBot(botFactionId: string): boolean {
+        const gameState = PhantomHostService.getGameState();
+        const brState = PhantomHostService.getBRState();
+
+        if (!gameState || !brState) {
+            console.error('[BR] Cannot join - no game state');
+            return false;
+        }
+
+        // Find the bot faction
+        const botFaction = gameState.factions.find(f => f.id === botFactionId && f.type === 'BOT');
+        if (!botFaction) {
+            console.error('[BR] Bot faction not found:', botFactionId);
+            return false;
+        }
+
+        // Generate player ID
+        const playerId = 'PLAYER_' + Date.now().toString(36);
+
+        // Convert bot to player
+        botFaction.type = 'PLAYER';
+        const oldId = botFaction.id;
+        botFaction.id = playerId;
+
+        // Update all units owned by bot
+        gameState.units.forEach(u => {
+            if (u.factionId === oldId) {
+                u.factionId = playerId;
+            }
         });
+
+        // Update cities owned by bot
+        gameState.pois.forEach(p => {
+            if (p.ownerFactionId === oldId) {
+                p.ownerFactionId = playerId;
+            }
+        });
+
+        // Update BR state
+        const botPlayer = brState.players.find(p => p.factionId === oldId);
+        if (botPlayer) {
+            botPlayer.peerId = playerId;
+            botPlayer.factionId = playerId;
+            botPlayer.isBot = false;
+            botPlayer.replacedBotId = oldId;
+        }
+
+        console.log('[BR] Player took over bot:', oldId, '-> new ID:', playerId);
+
+        // Update local player ID in game state
+        gameState.localPlayerId = playerId;
+
+        // Trigger callback
+        if (this.onJoinSuccess) {
+            this.onJoinSuccess(gameState, playerId);
+        }
+
+        return true;
+    }
+
+    /**
+     * Join Battle Royale with a new faction at a specific city (LOCAL)
+     */
+    requestNewFaction(targetCityId: string): boolean {
+        const gameState = PhantomHostService.getGameState();
+        const brState = PhantomHostService.getBRState();
+
+        if (!gameState || !brState) {
+            console.error('[BR] Cannot join - no game state');
+            return false;
+        }
+
+        // Find target city
+        const city = gameState.pois.find(p => p.id === targetCityId);
+        if (!city) {
+            console.error('[BR] City not found:', targetCityId);
+            return false;
+        }
+
+        // Generate player ID and create faction
+        const playerId = 'PLAYER_' + Date.now().toString(36);
+        const playerCount = brState.players.filter(p => !p.isBot && !p.isPhantomHost).length;
+        const preset = FACTION_PRESETS[playerCount % FACTION_PRESETS.length];
+
+        const newFaction: Faction = {
+            id: playerId,
+            name: preset.name,
+            color: preset.color,
+            type: 'PLAYER',
+            gold: 10000,
+            oil: 1000,
+            relations: {},
+            aggression: 0
+        };
+
+        gameState.factions.push(newFaction);
+
+        // Claim city
+        city.ownerFactionId = playerId;
+        city.tier = 1;
+
+        // Spawn HQ
+        gameState.units.push({
+            id: `HQ-${playerId}-${Date.now()}`,
+            unitClass: UnitClass.COMMAND_CENTER,
+            factionId: playerId,
+            position: { lat: city.position.lat, lng: city.position.lng },
+            heading: 0,
+            hp: UNIT_CONFIG[UnitClass.COMMAND_CENTER].hp,
+            maxHp: UNIT_CONFIG[UnitClass.COMMAND_CENTER].maxHp,
+            attack: UNIT_CONFIG[UnitClass.COMMAND_CENTER].attack,
+            range: UNIT_CONFIG[UnitClass.COMMAND_CENTER].range,
+            speed: 0,
+            vision: UNIT_CONFIG[UnitClass.COMMAND_CENTER].vision
+        } as any);
+
+        // Add to BR players
+        brState.players.push({
+            peerId: playerId,
+            factionId: playerId,
+            joinTime: Date.now(),
+            isBot: false,
+            isPhantomHost: false
+        });
+
+        console.log('[BR] Player started new faction at:', city.name, 'ID:', playerId);
+
+        // Update local player ID
+        gameState.localPlayerId = playerId;
+
+        // Trigger callback
+        if (this.onJoinSuccess) {
+            this.onJoinSuccess(gameState, playerId);
+        }
+
+        return true;
     }
 
     // ============================================
