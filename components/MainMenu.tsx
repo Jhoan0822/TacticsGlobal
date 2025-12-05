@@ -310,49 +310,41 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, lobbyState, setLobbySt
                                 </span>
                             </button>
 
-                            {/* BATTLE ROYALE - Preview Tab */}
+                            {/* QUICK JOIN - Join ongoing match */}
                             <button
                                 onClick={() => setNetworkMode('BATTLE_ROYALE')}
-                                className="group relative rounded-2xl bg-gradient-to-r from-orange-900/40 to-red-900/40 border border-orange-500/40 transition-all duration-300 hover:border-orange-400/80 hover:shadow-[0_0_40px_rgba(249,115,22,0.5)] hover:scale-[1.02] overflow-hidden backdrop-blur-sm"
+                                className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(59,130,246,0.4)]"
                             >
-                                <span className="absolute inset-0 bg-gradient-to-r from-orange-500/0 via-orange-500/20 to-orange-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
+                                {/* Background with map preview */}
+                                <div className="absolute inset-0 bg-gradient-to-r from-blue-600/90 to-cyan-600/80"></div>
+                                <div className="absolute left-0 top-0 bottom-0 w-28 bg-gradient-to-r from-blue-500/60 to-transparent flex items-center justify-center">
+                                    <span className="text-4xl opacity-80">🌍</span>
+                                </div>
 
-                                {/* Content Grid */}
-                                <div className="relative p-4">
-                                    {/* Header */}
-                                    <div className="flex items-center justify-between mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xl">⚔️</span>
-                                            <span className="text-sm font-bold tracking-wider text-orange-300">BATTLE ROYALE</span>
-                                        </div>
-                                        <span className="px-2 py-0.5 text-[9px] bg-red-500/80 text-white rounded-full font-bold tracking-wider animate-pulse">LIVE</span>
+                                {/* Content */}
+                                <div className="relative p-4 pl-32">
+                                    {/* Title */}
+                                    <h3 className="text-lg font-bold text-white italic mb-1">
+                                        Unirse a la partida en curso
+                                    </h3>
+
+                                    {/* Mode tag and Map name */}
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className="px-2 py-0.5 bg-white/90 text-blue-700 text-[10px] font-bold rounded">
+                                            Todos contra todos
+                                        </span>
+                                        <span className="text-white/90 text-sm font-medium">World</span>
                                     </div>
 
-                                    {/* Preview Row */}
-                                    <div className="flex items-center gap-3">
-                                        {/* Mini Map Icon */}
-                                        <div className="w-16 h-10 rounded-lg bg-slate-800/80 border border-slate-600/50 flex items-center justify-center overflow-hidden">
-                                            <span className="text-2xl">🌍</span>
-                                        </div>
-
-                                        {/* Info */}
-                                        <div className="flex-1 text-left">
-                                            <p className="text-xs text-slate-400">Current Scenario</p>
-                                            <p className="text-sm font-bold text-cyan-400">WORLD</p>
-                                        </div>
-
-                                        {/* Timer */}
-                                        <div className="text-right">
-                                            <p className="text-xs text-slate-400">Time Left</p>
-                                            <p className="text-lg font-mono font-bold text-orange-400">5:00</p>
-                                        </div>
-                                    </div>
-
-                                    {/* Join prompt */}
-                                    <div className="mt-3 text-center text-xs text-slate-500 group-hover:text-slate-300 transition-colors">
-                                        Click to join match →
+                                    {/* Stats */}
+                                    <div className="flex items-center gap-4 text-white/90 text-sm">
+                                        <span className="font-bold">2 / 20</span>
+                                        <span className="font-mono">5:00</span>
                                     </div>
                                 </div>
+
+                                {/* Hover shimmer effect */}
+                                <span className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></span>
                             </button>
 
                             <button

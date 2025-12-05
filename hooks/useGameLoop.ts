@@ -701,6 +701,31 @@ export const useGameLoop = () => {
         AudioService.playSuccess();
     };
 
+    // ============================================
+    // JOIN BATTLE ROYALE (Injects existing state directly)
+    // ============================================
+    const joinBattleRoyale = (existingGameState: GameState): void => {
+        console.log('[JOIN BR] Joining Battle Royale with existing state');
+        console.log('[JOIN BR] Local player:', existingGameState.localPlayerId);
+        console.log('[JOIN BR] Game mode:', existingGameState.gameMode);
+        console.log('[JOIN BR] Factions:', existingGameState.factions.map(f => f.name));
+
+        // Copy the game state and ensure it's in PLAYING mode
+        const gameStateForPlayer: GameState = {
+            ...existingGameState,
+            gameMode: 'PLAYING', // Ensure we're in playing mode
+            pendingBotFactions: [], // No pending bots for BR - they're already active
+        };
+
+        setGameState(gameStateForPlayer);
+
+        NetworkService.isHost = true; // BR runs locally
+        AudioService.startBackgroundMusic();
+        AudioService.playSuccess();
+
+        console.log('[JOIN BR] Successfully joined Battle Royale');
+    };
+
     // Start loop
     useEffect(() => {
         animationFrameId.current = requestAnimationFrame(gameLoop);
@@ -1263,6 +1288,7 @@ export const useGameLoop = () => {
         handleGroupOrder,
         setDifficulty,
         startGame,
+        joinBattleRoyale,
         nukeLaunchMode,
         setNukeLaunchMode
     };

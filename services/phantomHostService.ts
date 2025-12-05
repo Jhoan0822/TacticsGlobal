@@ -12,6 +12,10 @@ import { FACTION_PRESETS, SCENARIOS, UNIT_CONFIG } from '../constants';
 import { processGameTick } from './gameLogic';
 import { getMockCities } from './mockDataService';
 
+// Fixed room ID for global Battle Royale - everyone joins the same room
+const FIXED_ROOM_ID = 'TACTIC-OPS-BR-GLOBAL';
+const STORAGE_KEY = 'TACTIC_OPS_BR_STATE';
+
 const DEFAULT_BR_CONFIG: BattleRoyaleConfig = {
     maxPlayers: 20,
     minBots: 2,
@@ -27,16 +31,16 @@ class PhantomHostServiceImpl {
     private brState: BattleRoyaleState | null = null;
     private gameLoopInterval: NodeJS.Timeout | null = null;
     private isActive: boolean = false;
-    private roomId: string = '';
+    private roomId: string = FIXED_ROOM_ID;
+    private saveInterval: NodeJS.Timeout | null = null;
 
     // ============================================
     // INITIALIZATION
     // ============================================
 
     /**
-     * Initialize the phantom host with a specific room ID
-     * The phantom host will create a PeerJS connection with a predictable ID
-     * so players can easily connect to Battle Royale rooms.
+     * Initialize the phantom host with a fixed room ID
+     * Uses localStorage to persist state across page loads
      */
     async initialize(roomId?: string): Promise<string> {
         if (this.isActive) {
@@ -44,17 +48,28 @@ class PhantomHostServiceImpl {
             return this.roomId;
         }
 
-        this.roomId = roomId || `BR-${Date.now().toString(36)}`;
+        this.roomId = FIXED_ROOM_ID; // Always use fixed room ID
+
+        // Try to restore state from localStorage
+        const restored = this.restoreState();
 
         return new Promise((resolve, reject) => {
-            // Create phantom peer with predictable ID
+            // Create phantom peer with fixed ID
             this.phantomPeer = new Peer(this.roomId, { debug: 0 });
 
             this.phantomPeer.on('open', (id) => {
                 console.log('[PHANTOM] Phantom host initialized with ID:', id);
                 this.isActive = true;
-                this.initializeBattleRoyaleState();
+
+                if (!restored) {
+                    // Only create new state if we couldn't restore
+                    this.initializeBattleRoyaleState();
+                } else {
+                    console.log('[PHANTOM] Restored existing game state from storage');
+                }
+
                 this.startGameLoop();
+                this.startAutoSave();
                 resolve(id);
             });
 
@@ -65,15 +80,88 @@ class PhantomHostServiceImpl {
 
             this.phantomPeer.on('error', (err) => {
                 console.error('[PHANTOM] Peer error:', err);
-                // If ID is taken, try with a random suffix
+                // If ID is taken, another tab is hosting - we just use local state
                 if ((err as any).type === 'unavailable-id') {
-                    this.roomId = `BR-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`;
-                    this.phantomPeer = new Peer(this.roomId, { debug: 0 });
-                    // Re-attach handlers...
+                    console.log('[PHANTOM] Room already exists, using local state');
+                    this.isActive = true;
+                    if (!restored) {
+                        this.initializeBattleRoyaleState();
+                    }
+                    this.startGameLoop();
+                    this.startAutoSave();
+                    resolve(this.roomId);
+                } else {
+                    reject(err);
                 }
-                reject(err);
             });
         });
+    }
+
+    /**
+     * Save state to localStorage for persistence
+     */
+    private saveState(): void {
+        if (!this.gameState || !this.brState) return;
+
+        try {
+            const state = {
+                gameState: this.gameState,
+                brState: this.brState,
+                savedAt: Date.now()
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (e) {
+            console.warn('[PHANTOM] Failed to save state:', e);
+        }
+    }
+
+    /**
+     * Restore state from localStorage
+     */
+    private restoreState(): boolean {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (!saved) return false;
+
+            const state = JSON.parse(saved);
+
+            // Check if state is too old (more than 10 minutes)
+            const age = Date.now() - state.savedAt;
+            if (age > 10 * 60 * 1000) {
+                console.log('[PHANTOM] Saved state too old, starting fresh');
+                localStorage.removeItem(STORAGE_KEY);
+                return false;
+            }
+
+            this.gameState = state.gameState;
+            this.brState = state.brState;
+
+            // Update round time based on elapsed time
+            if (this.brState) {
+                const elapsed = Date.now() - this.brState.roundStartTime;
+                if (elapsed >= this.brState.config.roundDurationMs) {
+                    // Round should have ended, start a new one
+                    this.brState.roundNumber++;
+                    this.brState.currentScenarioIndex =
+                        (this.brState.currentScenarioIndex + 1) % this.brState.config.scenarioRotation.length;
+                    this.brState.roundStartTime = Date.now();
+                }
+            }
+
+            console.log('[PHANTOM] Restored state from', Math.round(age / 1000), 'seconds ago');
+            return true;
+        } catch (e) {
+            console.warn('[PHANTOM] Failed to restore state:', e);
+            return false;
+        }
+    }
+
+    /**
+     * Start auto-saving state every 5 seconds
+     */
+    private startAutoSave(): void {
+        if (this.saveInterval) clearInterval(this.saveInterval);
+        this.saveInterval = setInterval(() => this.saveState(), 5000);
     }
 
     /**

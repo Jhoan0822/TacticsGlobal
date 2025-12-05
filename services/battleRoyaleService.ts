@@ -176,10 +176,18 @@ class BattleRoyaleServiceImpl {
             return false;
         }
 
-        // Generate player ID and create faction
+        // Generate player ID and create faction with UNUSED color
         const playerId = 'PLAYER_' + Date.now().toString(36);
-        const playerCount = brState.players.filter(p => !p.isBot && !p.isPhantomHost).length;
-        const preset = FACTION_PRESETS[playerCount % FACTION_PRESETS.length];
+
+        // Find a faction preset that's not already used
+        const usedColors = gameState.factions.map(f => f.color);
+        let preset = FACTION_PRESETS.find(p => !usedColors.includes(p.color));
+
+        // If all colors used, cycle through
+        if (!preset) {
+            const idx = gameState.factions.length % FACTION_PRESETS.length;
+            preset = FACTION_PRESETS[idx];
+        }
 
         const newFaction: Faction = {
             id: playerId,
