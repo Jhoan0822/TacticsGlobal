@@ -1,8 +1,8 @@
 
 // ============================================
 // TACTICSGLOBAL AUDIO SERVICE
-// Professional tactical/war game audio system
-// Designed for extended gameplay without fatigue
+// Professional tactical/war game audio system  
+// Inspired by C&C Red Alert, Bastion, Soul Reaver
 // ============================================
 
 import { WeaponType, UnitClass } from '../types';
@@ -34,7 +34,7 @@ interface AudioConfig {
 const audioConfig: AudioConfig = {
     masterVolume: 0.5,
     effectsVolume: 0.7,
-    musicVolume: 0.4,
+    musicVolume: 0.15, // LOWERED - background music should be subtle
     isMuted: false
 };
 
@@ -47,6 +47,7 @@ let musicOscillators: OscillatorNode[] = [];
 let musicGain: GainNode | null = null;
 let isMusicPlaying = false;
 let musicLoopTimeouts: number[] = [];
+let beatCount = 0; // For musical variation
 
 // ============================================
 // CORE SYNTHESIS HELPERS
@@ -149,40 +150,25 @@ const playFrequencySweep = (startFreq: number, endFreq: number, duration: number
 
 // ============================================
 // TACTICAL WEAPON SOUNDS
-// Punchy, realistic, military-grade feel
 // ============================================
 
 const playTracerFire = () => {
-    const audio = getContext();
-
-    // Layer 1: Sharp transient crack (high freq click)
     playNoise(0.02, 0.08, 8000, 2000);
-
-    // Layer 2: Mid-frequency punch (the "body" of the shot)
     setTimeout(() => {
         playTone(200, 'triangle', 0.05, 0.06);
         playNoise(0.04, 0.05, 1500, 400);
     }, 5);
-
-    // Layer 3: Subtle tail/reverb simulation
     setTimeout(() => {
         playNoise(0.08, 0.02, 800, 200);
     }, 30);
 };
 
 const playMissileLaunch = () => {
-    const audio = getContext();
-
-    // Ignition crack
     playNoise(0.03, 0.06, 3000, 500);
-
-    // Whoosh buildup
     setTimeout(() => {
         playFrequencySweep(150, 600, 0.25, 'sawtooth', 0.05);
         playNoise(0.3, 0.04, 2000, 300);
     }, 20);
-
-    // Sustained rocket burn
     setTimeout(() => {
         playTone(180, 'triangle', 0.15, 0.03);
         playNoise(0.2, 0.025, 1200, 200);
@@ -190,56 +176,38 @@ const playMissileLaunch = () => {
 };
 
 const playLaserFire = () => {
-    const audio = getContext();
-
-    // Electronic charge-up
     playFrequencySweep(1500, 800, 0.08, 'sine', 0.04);
-
-    // Main beam
     setTimeout(() => {
         playTone(900, 'sine', 0.12, 0.05);
         playTone(1800, 'sine', 0.1, 0.02);
     }, 30);
-
-    // Discharge crackle
     setTimeout(() => {
         playNoise(0.05, 0.02, 4000, 1000);
     }, 100);
 };
 
 // ============================================
-// TACTICAL EXPLOSIONS
-// Powerful but not jarring, no sub-bass fatigue
+// TACTICAL EXPLOSIONS  
 // ============================================
 
 const playExplosionSmall = () => {
-    // Initial crack
     playNoise(0.02, 0.1, 3000, 400);
-
-    // Body (no sub-bass below 80Hz)
     setTimeout(() => {
         playTone(100, 'triangle', 0.12, 0.08);
         playNoise(0.1, 0.06, 600, 80);
     }, 10);
-
-    // Debris scatter
     setTimeout(() => {
         playNoise(0.15, 0.03, 2000, 300);
     }, 60);
 };
 
 const playExplosionMedium = () => {
-    // Sharp crack
     playNoise(0.025, 0.12, 4000, 500);
-
-    // Main body - powerful but comfortable
     setTimeout(() => {
         playTone(90, 'triangle', 0.2, 0.1);
         playTone(140, 'sawtooth', 0.15, 0.06);
         playNoise(0.18, 0.08, 800, 80);
     }, 15);
-
-    // Rumble tail
     setTimeout(() => {
         playTone(110, 'sine', 0.25, 0.04);
         playNoise(0.2, 0.04, 400, 100);
@@ -247,23 +215,16 @@ const playExplosionMedium = () => {
 };
 
 const playExplosionLarge = () => {
-    // Initial shockwave crack
     playNoise(0.03, 0.15, 5000, 600);
-
-    // Massive body (kept above 80Hz for comfort)
     setTimeout(() => {
         playTone(85, 'triangle', 0.35, 0.12);
         playTone(120, 'sawtooth', 0.3, 0.08);
         playNoise(0.25, 0.1, 1000, 80);
     }, 20);
-
-    // Secondary rumble
     setTimeout(() => {
         playTone(100, 'triangle', 0.3, 0.06);
         playNoise(0.25, 0.05, 500, 100);
     }, 150);
-
-    // Debris and echo
     setTimeout(() => {
         playNoise(0.4, 0.03, 2500, 200);
         playTone(130, 'sine', 0.2, 0.02);
@@ -272,16 +233,10 @@ const playExplosionLarge = () => {
 
 // ============================================
 // TACTICAL UI SOUNDS
-// Military radio / command center feel
 // ============================================
 
 const playUnitSelect = () => {
-    const audio = getContext();
-
-    // Radio squelch simulation
     playNoise(0.02, 0.03, 6000, 2000);
-
-    // Tactical confirmation click
     setTimeout(() => {
         playTone(1200, 'sine', 0.03, 0.05);
         playTone(900, 'sine', 0.02, 0.03);
@@ -289,26 +244,20 @@ const playUnitSelect = () => {
 };
 
 const playMoveCommand = () => {
-    // Military acknowledgment - two-tone beep
     playTone(800, 'sine', 0.04, 0.04);
     setTimeout(() => {
         playTone(1000, 'sine', 0.06, 0.05);
     }, 40);
-
-    // Subtle static tail
     setTimeout(() => {
         playNoise(0.03, 0.015, 4000, 1500);
     }, 80);
 };
 
 const playAttackCommand = () => {
-    // Targeting lock sound - more aggressive
     playTone(600, 'sawtooth', 0.04, 0.05);
-
     setTimeout(() => {
         playTone(800, 'sawtooth', 0.04, 0.05);
     }, 50);
-
     setTimeout(() => {
         playTone(1000, 'square', 0.08, 0.06);
         playNoise(0.02, 0.02, 3000, 800);
@@ -320,41 +269,24 @@ const playAttackCommand = () => {
 // ============================================
 
 const playUnitSpawn = () => {
-    // Radio confirmation - tactical deployment acknowledgment
-    playNoise(0.02, 0.02, 5000, 2000); // Static burst
-
-    setTimeout(() => {
-        playTone(700, 'sine', 0.06, 0.05);
-    }, 25);
-
-    setTimeout(() => {
-        playTone(900, 'sine', 0.06, 0.05);
-    }, 90);
-
-    setTimeout(() => {
-        playTone(1100, 'sine', 0.1, 0.06);
-    }, 155);
+    playNoise(0.02, 0.02, 5000, 2000);
+    setTimeout(() => playTone(700, 'sine', 0.06, 0.05), 25);
+    setTimeout(() => playTone(900, 'sine', 0.06, 0.05), 90);
+    setTimeout(() => playTone(1100, 'sine', 0.1, 0.06), 155);
 };
 
 const playUnitDeath = () => {
-    // System failure / destruction sound
     playFrequencySweep(500, 120, 0.2, 'sawtooth', 0.06);
     playNoise(0.18, 0.05, 1500, 200);
-
-    setTimeout(() => {
-        playNoise(0.15, 0.03, 800, 100);
-    }, 100);
+    setTimeout(() => playNoise(0.15, 0.03, 800, 100), 100);
 };
 
 const playUnitPromotion = () => {
-    // Achievement / rank up - triumphant but subtle
-    const notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
+    const notes = [523, 659, 784, 1047];
     notes.forEach((freq, i) => {
         setTimeout(() => {
             playTone(freq, 'sine', 0.12, 0.05);
-            if (i === 3) {
-                playTone(freq / 2, 'triangle', 0.2, 0.03);
-            }
+            if (i === 3) playTone(freq / 2, 'triangle', 0.2, 0.03);
         }, i * 80);
     });
 };
@@ -364,24 +296,19 @@ const playUnitPromotion = () => {
 // ============================================
 
 const playCityCapture = () => {
-    // Victory horn - tactical triumph
-    playTone(392, 'triangle', 0.15, 0.07); // G4
-
+    playTone(392, 'triangle', 0.15, 0.07);
     setTimeout(() => {
-        playTone(494, 'triangle', 0.15, 0.07); // B4
-        playTone(587, 'triangle', 0.15, 0.05); // D5
+        playTone(494, 'triangle', 0.15, 0.07);
+        playTone(587, 'triangle', 0.15, 0.05);
     }, 120);
-
     setTimeout(() => {
-        playTone(784, 'triangle', 0.25, 0.08); // G5
+        playTone(784, 'triangle', 0.25, 0.08);
         playNoise(0.02, 0.02, 4000, 1500);
     }, 240);
 };
 
 const playCityUnderAttack = () => {
     const audio = getContext();
-
-    // Warning klaxon - urgent but not painful
     const osc = audio.createOscillator();
     const gain = audio.createGain();
 
@@ -401,7 +328,6 @@ const playCityUnderAttack = () => {
 };
 
 const playIncomeReceived = () => {
-    // Subtle resource notification
     playTone(1400, 'sine', 0.04, 0.025);
     setTimeout(() => playTone(1800, 'sine', 0.06, 0.03), 35);
 };
@@ -411,20 +337,16 @@ const playIncomeReceived = () => {
 // ============================================
 
 const playVictory = () => {
-    // Triumphant fanfare - heroic but not overwhelming
     const fanfare = [
-        { freq: 523, delay: 0 },     // C5
-        { freq: 659, delay: 120 },   // E5
-        { freq: 784, delay: 240 },   // G5
-        { freq: 880, delay: 360 },   // A5
-        { freq: 1047, delay: 480 },  // C6
+        { freq: 523, delay: 0 },
+        { freq: 659, delay: 120 },
+        { freq: 784, delay: 240 },
+        { freq: 880, delay: 360 },
+        { freq: 1047, delay: 480 },
     ];
-
     fanfare.forEach(({ freq, delay }) => {
         setTimeout(() => playTone(freq, 'triangle', 0.25, 0.08), delay);
     });
-
-    // Triumphant chord
     setTimeout(() => {
         playTone(1047, 'triangle', 0.6, 0.08);
         playTone(1319, 'triangle', 0.6, 0.06);
@@ -434,19 +356,15 @@ const playVictory = () => {
 };
 
 const playDefeat = () => {
-    // Somber - respectful, not depressing
     const notes = [
-        { freq: 392, delay: 0 },    // G4
-        { freq: 349, delay: 250 },  // F4
-        { freq: 330, delay: 500 },  // E4
-        { freq: 294, delay: 750 },  // D4
+        { freq: 392, delay: 0 },
+        { freq: 349, delay: 250 },
+        { freq: 330, delay: 500 },
+        { freq: 294, delay: 750 },
     ];
-
     notes.forEach(({ freq, delay }) => {
         setTimeout(() => playTone(freq, 'sine', 0.4, 0.06), delay);
     });
-
-    // Final minor chord
     setTimeout(() => {
         playTone(294, 'sine', 1.0, 0.05);
         playTone(349, 'sine', 1.0, 0.04);
@@ -455,8 +373,9 @@ const playDefeat = () => {
 
 // ============================================
 // TACTICAL BACKGROUND MUSIC SYSTEM
-// Layered ambient - engaging yet comfortable for hours
-// NO sub-bass below 80Hz to prevent fatigue
+// Inspired by C&C Red Alert, Hell March style
+// Industrial, driving, military rhythms
+// QUIET - sits in background without overwhelming
 // ============================================
 
 const startBackgroundMusic = () => {
@@ -464,145 +383,199 @@ const startBackgroundMusic = () => {
 
     const audio = getContext();
     isMusicPlaying = true;
+    beatCount = 0;
 
-    // Create master gain for music
+    // Create master gain for music - QUIET level
     musicGain = audio.createGain();
-    musicGain.gain.setValueAtTime(getMusicVolume() * 0.5, audio.currentTime);
+    musicGain.gain.setValueAtTime(getMusicVolume() * 0.3, audio.currentTime);
     musicGain.connect(audio.destination);
 
+    // BPM: 110-130 (Hell March territory)
+    const baseBPM = 115;
+
     // ========================================
-    // LAYER 1: Atmospheric Pad (comfortable frequencies 150-400Hz)
+    // LAYER 1: Industrial Kick Drum Pattern
+    // Hell March inspired driving beat
+    // ========================================
+    const createKickLayer = () => {
+        if (!isMusicPlaying) return;
+
+        const intensity = Math.max(0.2, combatIntensity);
+        const bpm = baseBPM + intensity * 15;
+        const beatInterval = 60000 / bpm;
+
+        // Create punchy kick
+        const osc = audio.createOscillator();
+        const oscGain = audio.createGain();
+
+        osc.type = 'sine';
+        // Pitch envelope for punch
+        osc.frequency.setValueAtTime(150, audio.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(55, audio.currentTime + 0.08);
+
+        oscGain.gain.setValueAtTime(0.15, audio.currentTime);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.2);
+
+        osc.connect(oscGain);
+        if (musicGain) oscGain.connect(musicGain);
+
+        osc.start();
+        osc.stop(audio.currentTime + 0.2);
+
+        beatCount++;
+
+        const timeoutId = window.setTimeout(createKickLayer, beatInterval);
+        musicLoopTimeouts.push(timeoutId);
+    };
+
+    // ========================================
+    // LAYER 2: Snare/Industrial Hit on 2 and 4
+    // ========================================
+    const createSnareLayer = () => {
+        if (!isMusicPlaying) return;
+
+        const intensity = Math.max(0.2, combatIntensity);
+        const bpm = baseBPM + intensity * 15;
+        const beatInterval = 60000 / bpm;
+
+        // Only on beats 2 and 4
+        if (beatCount % 2 === 1) {
+            // Industrial snare - noise burst
+            const bufferSize = Math.floor(audio.sampleRate * 0.08);
+            const buffer = audio.createBuffer(1, bufferSize, audio.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+            }
+
+            const noise = audio.createBufferSource();
+            noise.buffer = buffer;
+
+            const hpFilter = audio.createBiquadFilter();
+            hpFilter.type = 'highpass';
+            hpFilter.frequency.value = 200;
+
+            const lpFilter = audio.createBiquadFilter();
+            lpFilter.type = 'lowpass';
+            lpFilter.frequency.value = 8000;
+
+            const noiseGain = audio.createGain();
+            noiseGain.gain.setValueAtTime(0.08, audio.currentTime);
+
+            noise.connect(hpFilter);
+            hpFilter.connect(lpFilter);
+            lpFilter.connect(noiseGain);
+            if (musicGain) noiseGain.connect(musicGain);
+            noise.start();
+
+            // Add body tone
+            const bodyOsc = audio.createOscillator();
+            const bodyGain = audio.createGain();
+            bodyOsc.type = 'triangle';
+            bodyOsc.frequency.value = 180;
+            bodyGain.gain.setValueAtTime(0.05, audio.currentTime);
+            bodyGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.1);
+            bodyOsc.connect(bodyGain);
+            if (musicGain) bodyGain.connect(musicGain);
+            bodyOsc.start();
+            bodyOsc.stop(audio.currentTime + 0.1);
+        }
+
+        const timeoutId = window.setTimeout(createSnareLayer, beatInterval);
+        musicLoopTimeouts.push(timeoutId);
+    };
+
+    // ========================================
+    // LAYER 3: Hi-hat pattern (8th notes during combat)
+    // ========================================
+    const createHiHatLayer = () => {
+        if (!isMusicPlaying) return;
+
+        const intensity = combatIntensity;
+        const bpm = baseBPM + intensity * 15;
+        const beatInterval = 60000 / bpm / 2; // 8th notes
+
+        if (intensity > 0.25) {
+            const bufferSize = Math.floor(audio.sampleRate * 0.02);
+            const buffer = audio.createBuffer(1, bufferSize, audio.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+            }
+
+            const noise = audio.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = audio.createBiquadFilter();
+            filter.type = 'highpass';
+            filter.frequency.value = 7000;
+
+            const noiseGain = audio.createGain();
+            noiseGain.gain.setValueAtTime(intensity * 0.04, audio.currentTime);
+
+            noise.connect(filter);
+            filter.connect(noiseGain);
+            if (musicGain) noiseGain.connect(musicGain);
+            noise.start();
+        }
+
+        const timeoutId = window.setTimeout(createHiHatLayer, beatInterval);
+        musicLoopTimeouts.push(timeoutId);
+    };
+
+    // ========================================
+    // LAYER 4: Bass Line (E minor power chord feel)
+    // C&C style driving bass
+    // ========================================
+    const createBassLayer = () => {
+        if (!isMusicPlaying) return;
+
+        const intensity = Math.max(0.15, combatIntensity);
+        const bpm = baseBPM + intensity * 15;
+        const beatInterval = 60000 / bpm;
+
+        // E minor bass pattern
+        const bassNotes = [82.4, 82.4, 98, 82.4]; // E2, E2, G2, E2
+        const noteIndex = beatCount % 4;
+        const freq = bassNotes[noteIndex];
+
+        const osc = audio.createOscillator();
+        const oscGain = audio.createGain();
+        const filter = audio.createBiquadFilter();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, audio.currentTime);
+
+        filter.type = 'lowpass';
+        filter.frequency.value = 400;
+        filter.Q.value = 2;
+
+        oscGain.gain.setValueAtTime(0.12, audio.currentTime);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.25);
+
+        osc.connect(filter);
+        filter.connect(oscGain);
+        if (musicGain) oscGain.connect(musicGain);
+
+        osc.start();
+        osc.stop(audio.currentTime + 0.25);
+
+        const timeoutId = window.setTimeout(createBassLayer, beatInterval);
+        musicLoopTimeouts.push(timeoutId);
+    };
+
+    // ========================================
+    // LAYER 5: Atmospheric Synth Pad (sparse)
+    // Adds tension without overwhelming
     // ========================================
     const createPadLayer = () => {
         if (!isMusicPlaying) return;
 
-        const padFreqs = [165, 220, 330]; // E3, A3, E4 - open fifth, military feel
+        // Only play occasionally (every 8 beats)
+        if (beatCount % 8 === 0) {
+            const padFreqs = [164.8, 246.9, 329.6]; // E3, B3, E4
 
-        padFreqs.forEach((freq, i) => {
-            const osc = audio.createOscillator();
-            const oscGain = audio.createGain();
-            const filter = audio.createBiquadFilter();
-
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq, audio.currentTime);
-
-            // Subtle vibrato for warmth
-            const lfo = audio.createOscillator();
-            const lfoGain = audio.createGain();
-            lfo.frequency.value = 0.3 + Math.random() * 0.2;
-            lfoGain.gain.value = 2;
-            lfo.connect(lfoGain);
-            lfoGain.connect(osc.frequency);
-            lfo.start();
-
-            filter.type = 'lowpass';
-            filter.frequency.value = 600;
-            filter.Q.value = 0.5;
-
-            oscGain.gain.setValueAtTime(0, audio.currentTime);
-            oscGain.gain.linearRampToValueAtTime(0.08 - i * 0.02, audio.currentTime + 2);
-            oscGain.gain.setValueAtTime(0.08 - i * 0.02, audio.currentTime + 6);
-            oscGain.gain.linearRampToValueAtTime(0, audio.currentTime + 8);
-
-            osc.connect(filter);
-            filter.connect(oscGain);
-            if (musicGain) oscGain.connect(musicGain);
-
-            osc.start();
-            osc.stop(audio.currentTime + 8);
-
-            musicOscillators.push(osc);
-        });
-
-        const timeoutId = window.setTimeout(createPadLayer, 7000);
-        musicLoopTimeouts.push(timeoutId);
-    };
-
-    // ========================================
-    // LAYER 2: Tactical Rhythmic Pulse
-    // ========================================
-    const createRhythmLayer = () => {
-        if (!isMusicPlaying) return;
-
-        const intensity = Math.max(0.1, combatIntensity);
-        const bpm = 80 + intensity * 40; // 80-120 BPM based on combat
-        const beatInterval = 60000 / bpm;
-
-        // Main beat
-        const playBeat = () => {
-            if (!isMusicPlaying) return;
-
-            const osc = audio.createOscillator();
-            const oscGain = audio.createGain();
-
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(110, audio.currentTime);
-
-            oscGain.gain.setValueAtTime(intensity * 0.12, audio.currentTime);
-            oscGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.15);
-
-            osc.connect(oscGain);
-            if (musicGain) oscGain.connect(musicGain);
-
-            osc.start();
-            osc.stop(audio.currentTime + 0.15);
-        };
-
-        playBeat();
-
-        // Off-beat hi-hat (only during higher intensity)
-        if (intensity > 0.3) {
-            setTimeout(() => {
-                if (!isMusicPlaying) return;
-                const bufferSize = Math.floor(audio.sampleRate * 0.03);
-                const buffer = audio.createBuffer(1, bufferSize, audio.sampleRate);
-                const data = buffer.getChannelData(0);
-                for (let i = 0; i < bufferSize; i++) {
-                    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
-                }
-
-                const noise = audio.createBufferSource();
-                noise.buffer = buffer;
-
-                const filter = audio.createBiquadFilter();
-                filter.type = 'highpass';
-                filter.frequency.value = 8000;
-
-                const noiseGain = audio.createGain();
-                noiseGain.gain.setValueAtTime(intensity * 0.03, audio.currentTime);
-
-                noise.connect(filter);
-                filter.connect(noiseGain);
-                if (musicGain) noiseGain.connect(musicGain);
-                noise.start();
-            }, beatInterval / 2);
-        }
-
-        const timeoutId = window.setTimeout(createRhythmLayer, beatInterval);
-        musicLoopTimeouts.push(timeoutId);
-    };
-
-    // ========================================
-    // LAYER 3: Melodic Phrases (tactical/military feel)
-    // ========================================
-    const createMelodyLayer = () => {
-        if (!isMusicPlaying) return;
-
-        // D dorian mode phrases - military yet engaging
-        const phrases = [
-            [294, 330, 349, 330],        // D E F E
-            [294, 392, 349, 330],        // D G F E  
-            [440, 392, 349, 294],        // A G F D
-            [294, 330, 392, 440, 392],   // D E G A G
-        ];
-
-        const phrase = phrases[Math.floor(Math.random() * phrases.length)];
-        const noteDuration = 0.3;
-
-        phrase.forEach((freq, i) => {
-            setTimeout(() => {
-                if (!isMusicPlaying) return;
-
+            padFreqs.forEach((freq, i) => {
                 const osc = audio.createOscillator();
                 const oscGain = audio.createGain();
                 const filter = audio.createBiquadFilter();
@@ -611,99 +584,96 @@ const startBackgroundMusic = () => {
                 osc.frequency.setValueAtTime(freq, audio.currentTime);
 
                 filter.type = 'lowpass';
-                filter.frequency.value = 1200;
+                filter.frequency.value = 800;
 
-                const vol = 0.04 + combatIntensity * 0.02;
+                const vol = 0.03 - i * 0.008;
                 oscGain.gain.setValueAtTime(0, audio.currentTime);
-                oscGain.gain.linearRampToValueAtTime(vol, audio.currentTime + 0.02);
-                oscGain.gain.setValueAtTime(vol, audio.currentTime + noteDuration - 0.05);
-                oscGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + noteDuration);
+                oscGain.gain.linearRampToValueAtTime(vol, audio.currentTime + 0.5);
+                oscGain.gain.setValueAtTime(vol, audio.currentTime + 1.5);
+                oscGain.gain.linearRampToValueAtTime(0, audio.currentTime + 2);
 
                 osc.connect(filter);
                 filter.connect(oscGain);
                 if (musicGain) oscGain.connect(musicGain);
 
                 osc.start();
-                osc.stop(audio.currentTime + noteDuration);
-            }, i * noteDuration * 1000);
-        });
+                osc.stop(audio.currentTime + 2);
+            });
+        }
 
-        // Random interval between phrases (8-16 seconds)
-        const nextPhrase = 8000 + Math.random() * 8000;
-        const timeoutId = window.setTimeout(createMelodyLayer, nextPhrase);
+        const bpm = baseBPM + combatIntensity * 15;
+        const beatInterval = 60000 / bpm;
+        const timeoutId = window.setTimeout(createPadLayer, beatInterval);
         musicLoopTimeouts.push(timeoutId);
     };
 
     // ========================================
-    // LAYER 4: Tension Texture (responds to combat)
+    // LAYER 6: Combat Riff (only during high intensity)
+    // Power chord stabs
     // ========================================
-    const createTensionLayer = () => {
+    const createRiffLayer = () => {
         if (!isMusicPlaying) return;
 
         const intensity = combatIntensity;
 
-        if (intensity > 0.2) {
-            // Filtered noise texture
-            const bufferSize = Math.floor(audio.sampleRate * 1.5);
-            const buffer = audio.createBuffer(1, bufferSize, audio.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) {
-                data[i] = (Math.random() * 2 - 1) * 0.3;
-            }
+        if (intensity > 0.5 && beatCount % 4 === 0) {
+            // Power chord: E5 (E + B)
+            const chordFreqs = [329.6, 493.9]; // E4, B4
 
-            const noise = audio.createBufferSource();
-            noise.buffer = buffer;
+            chordFreqs.forEach(freq => {
+                const osc = audio.createOscillator();
+                const oscGain = audio.createGain();
+                const filter = audio.createBiquadFilter();
 
-            const lpFilter = audio.createBiquadFilter();
-            lpFilter.type = 'lowpass';
-            lpFilter.frequency.setValueAtTime(200 + intensity * 600, audio.currentTime);
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(freq, audio.currentTime);
 
-            const hpFilter = audio.createBiquadFilter();
-            hpFilter.type = 'highpass';
-            hpFilter.frequency.value = 100;
+                filter.type = 'lowpass';
+                filter.frequency.value = 2000;
+                filter.Q.value = 1;
 
-            const noiseGain = audio.createGain();
-            noiseGain.gain.setValueAtTime(0, audio.currentTime);
-            noiseGain.gain.linearRampToValueAtTime(intensity * 0.08, audio.currentTime + 0.3);
-            noiseGain.gain.setValueAtTime(intensity * 0.08, audio.currentTime + 1.2);
-            noiseGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 1.5);
+                oscGain.gain.setValueAtTime(intensity * 0.06, audio.currentTime);
+                oscGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.15);
 
-            noise.connect(lpFilter);
-            lpFilter.connect(hpFilter);
-            hpFilter.connect(noiseGain);
-            if (musicGain) noiseGain.connect(musicGain);
+                osc.connect(filter);
+                filter.connect(oscGain);
+                if (musicGain) oscGain.connect(musicGain);
 
-            noise.start();
+                osc.start();
+                osc.stop(audio.currentTime + 0.15);
+            });
         }
 
-        const timeoutId = window.setTimeout(createTensionLayer, 1500);
+        const bpm = baseBPM + intensity * 15;
+        const beatInterval = 60000 / bpm;
+        const timeoutId = window.setTimeout(createRiffLayer, beatInterval);
         musicLoopTimeouts.push(timeoutId);
     };
 
-    // Start all layers with staggered timing
-    createPadLayer();
-    setTimeout(createRhythmLayer, 500);
-    setTimeout(createMelodyLayer, 2000);
-    setTimeout(createTensionLayer, 1000);
+    // Start all layers with slight offsets
+    createKickLayer();
+    setTimeout(createSnareLayer, 50);
+    setTimeout(createHiHatLayer, 100);
+    setTimeout(createBassLayer, 25);
+    setTimeout(createPadLayer, 200);
+    setTimeout(createRiffLayer, 150);
 
-    // Start combat decay
+    // Combat decay
     if (combatDecayInterval) clearInterval(combatDecayInterval);
     combatDecayInterval = window.setInterval(() => {
-        combatIntensity = Math.max(0, combatIntensity - 0.015);
+        combatIntensity = Math.max(0, combatIntensity - 0.01);
     }, 500);
 };
 
 const stopBackgroundMusic = () => {
     isMusicPlaying = false;
 
-    // Clear all loop timeouts
     musicLoopTimeouts.forEach(id => clearTimeout(id));
     musicLoopTimeouts = [];
 
-    // Fade out
     const audio = getContext();
     if (musicGain) {
-        musicGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 1);
+        musicGain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.5);
     }
 
     setTimeout(() => {
@@ -712,7 +682,7 @@ const stopBackgroundMusic = () => {
         });
         musicOscillators = [];
         musicGain = null;
-    }, 1100);
+    }, 600);
 
     if (combatDecayInterval) {
         clearInterval(combatDecayInterval);
@@ -725,13 +695,13 @@ const setCombatIntensity = (level: number) => {
 
     if (musicGain) {
         const audio = getContext();
-        const baseVol = getMusicVolume() * 0.5;
-        const intensityBoost = combatIntensity * 0.3;
-        musicGain.gain.setTargetAtTime(baseVol + intensityBoost, audio.currentTime, 0.5);
+        const baseVol = getMusicVolume() * 0.3;
+        const intensityBoost = combatIntensity * 0.15;
+        musicGain.gain.setTargetAtTime(baseVol + intensityBoost, audio.currentTime, 0.3);
     }
 };
 
-const increaseCombatIntensity = (amount: number = 0.08) => {
+const increaseCombatIntensity = (amount: number = 0.06) => {
     setCombatIntensity(combatIntensity + amount);
 };
 
@@ -751,7 +721,7 @@ const setMusicVolume = (vol: number) => {
     audioConfig.musicVolume = Math.min(1, Math.max(0, vol));
     if (musicGain) {
         const audio = getContext();
-        musicGain.gain.setTargetAtTime(getMusicVolume() * 0.5, audio.currentTime, 0.1);
+        musicGain.gain.setTargetAtTime(getMusicVolume() * 0.3, audio.currentTime, 0.1);
     }
 };
 
@@ -799,7 +769,7 @@ const playExplosion = (size: 'SMALL' | 'MEDIUM' | 'LARGE') => {
 };
 
 // ============================================
-// LEGACY API (Backwards Compatibility)
+// LEGACY API
 // ============================================
 const playGunfire = playTracerFire;
 const playUiClick = playUnitSelect;
@@ -818,7 +788,6 @@ const playError = () => {
 // ============================================
 
 export const AudioService = {
-    // Volume Controls
     setMasterVolume,
     setEffectsVolume,
     setMusicVolume,
@@ -826,44 +795,36 @@ export const AudioService = {
     setMuted,
     getConfig: () => ({ ...audioConfig }),
 
-    // Weapon Sounds
     playTracerFire,
     playMissileLaunch,
     playLaserFire,
     playWeaponFire,
 
-    // Explosions
     playExplosionSmall,
     playExplosionMedium,
     playExplosionLarge,
     playExplosion,
 
-    // Unit Lifecycle
     playUnitSpawn,
     playUnitDeath,
     playUnitPromotion,
 
-    // City/POI Events
     playCityCapture,
     playCityUnderAttack,
     playIncomeReceived,
 
-    // Player Commands
     playUnitSelect,
     playMoveCommand,
     playAttackCommand,
 
-    // Game Results
     playVictory,
     playDefeat,
 
-    // Background Music
     startBackgroundMusic,
     stopBackgroundMusic,
     setCombatIntensity,
     increaseCombatIntensity,
 
-    // Legacy API
     playGunfire,
     playUiClick,
     playSuccess,
