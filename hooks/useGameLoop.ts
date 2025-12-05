@@ -381,7 +381,15 @@ export const useGameLoop = () => {
     const handleNetworkResponse = (res: NetworkResponse) => {
         setGameState(prev => {
             if (res.type === 'BASE_SELECTED') {
-                console.log('[NET] Base Selected:', res.poiId, 'by', res.factionId);
+                // CRITICAL FIX: HOST already applies these changes in handleNetworkRequest
+                // If we process them again here, we overwrite the state with stale data!
+                // Only CLIENTS should process BASE_SELECTED responses.
+                if (!prev.isClient) {
+                    console.log('[NET] Host skipping own BASE_SELECTED (already applied)');
+                    return prev; // Host: skip, already handled
+                }
+
+                console.log('[NET] Client processing Base Selected:', res.poiId, 'by', res.factionId);
 
                 // Update POI ownership
                 const nextPois = prev.pois.map(p =>
@@ -403,7 +411,13 @@ export const useGameLoop = () => {
                 return { ...prev, pois: nextPois, factions: nextFactions };
             }
             else if (res.type === 'GAME_MODE_UPDATE') {
-                console.log('[NET] Game Mode Update:', res.mode);
+                // CRITICAL FIX: HOST already applies game mode changes
+                if (!prev.isClient) {
+                    console.log('[NET] Host skipping own GAME_MODE_UPDATE (already applied)');
+                    return prev;
+                }
+
+                console.log('[NET] Client processing Game Mode Update:', res.mode);
                 return {
                     ...prev,
                     gameMode: res.mode,
