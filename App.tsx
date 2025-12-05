@@ -48,7 +48,9 @@ const App: React.FC = () => {
         handleRemoveFromGroup,
         handleGroupOrder,
         setDifficulty,
-        startGame
+        startGame,
+        nukeLaunchMode,
+        setNukeLaunchMode
     } = useGameLoop();
 
     // --- NETWORK INITIALIZATION ---
@@ -315,6 +317,22 @@ const App: React.FC = () => {
                     />
                     <EventLog messages={gameState.messages} />
                     <div className="absolute inset-0 pointer-events-none z-[400] hex-overlay"></div>
+
+                    {/* NUCLEAR TARGETING OVERLAY */}
+                    {nukeLaunchMode && (
+                        <div className="absolute inset-0 z-[450] pointer-events-none">
+                            <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-red-900/90 backdrop-blur-sm px-8 py-4 rounded-xl border-2 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.5)] animate-pulse">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-3xl">☢️</span>
+                                    <div>
+                                        <p className="text-red-400 font-bold text-lg">NUCLEAR TARGETING MODE</p>
+                                        <p className="text-red-200 text-sm">Click on map to select target location</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="absolute inset-0 border-4 border-red-500/30 pointer-events-none"></div>
+                        </div>
+                    )}
 
                     {/* Settings Button - Gear Icon */}
                     <button

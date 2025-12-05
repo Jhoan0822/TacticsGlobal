@@ -1089,7 +1089,7 @@ export const useGameLoop = () => {
     };
 
     const handleBuyUnit = (type: UnitClass) => {
-        const structures = [UnitClass.AIRBASE, UnitClass.PORT, UnitClass.MILITARY_BASE];
+        const structures = [UnitClass.AIRBASE, UnitClass.PORT, UnitClass.MILITARY_BASE, UnitClass.MISSILE_SILO];
         if (structures.includes(type)) {
             setGameState(prev => ({ ...prev, gameMode: 'PLACING_STRUCTURE', placementType: type }));
             AudioService.playUiClick();
@@ -1248,6 +1248,8 @@ export const useGameLoop = () => {
         handleRemoveFromGroup,
         handleGroupOrder,
         setDifficulty,
-        startGame
+        startGame,
+        nukeLaunchMode,
+        setNukeLaunchMode
     };
 };
