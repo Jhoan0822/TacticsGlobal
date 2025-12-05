@@ -314,16 +314,28 @@ const App: React.FC = () => {
                     }}
                     onToggleAutoTarget={handleToggleAutoTarget}
                     onSetFormation={(formation) => {
-                        if (selectedUnitIds.length < 2) return;
+                        console.log('[FORMATION] Button clicked:', formation);
+                        console.log('[FORMATION] Selected unit IDs:', selectedUnitIds);
+
+                        if (selectedUnitIds.length < 2) {
+                            console.log('[FORMATION] Not enough units selected');
+                            return;
+                        }
 
                         const selectedUnits = gameState.units.filter(u =>
                             selectedUnitIds.includes(u.id) && u.factionId === gameState.localPlayerId
                         );
 
-                        if (selectedUnits.length < 2) return;
+                        console.log('[FORMATION] Selected units:', selectedUnits.length);
+
+                        if (selectedUnits.length < 2) {
+                            console.log('[FORMATION] Not enough player units');
+                            return;
+                        }
 
                         // Get current center of the group
                         const groupCenter = getGroupCenter(selectedUnits);
+                        console.log('[FORMATION] Group center:', groupCenter);
 
                         // Calculate formation positions (facing north by default)
                         const positions = calculateFormationPositions(
@@ -334,12 +346,15 @@ const App: React.FC = () => {
                             0 // Face north
                         );
 
+                        console.log('[FORMATION] Calculated positions:', positions);
+
                         // Apply formation positions as destinations
                         setGameState(prev => ({
                             ...prev,
                             units: prev.units.map(u => {
                                 const pos = positions.find(p => p.unitId === u.id);
                                 if (pos) {
+                                    console.log(`[FORMATION] Setting destination for ${u.id}:`, pos);
                                     return {
                                         ...u,
                                         destination: { lat: pos.lat, lng: pos.lng },

@@ -15,31 +15,31 @@ export enum FormationType {
     SPREAD = 'SPREAD'        // Maximum spacing to avoid AoE
 }
 
-// Formation configuration
+// Formation configuration - spacing in degrees (~111km per degree)
 const FORMATION_CONFIG = {
     [FormationType.LINE]: {
-        spacing: 0.02,    // 2km between units (in degrees)
+        spacing: 0.2,    // ~22km between units
         description: 'Wide line for maximum firepower'
     },
     [FormationType.COLUMN]: {
-        spacing: 0.015,
+        spacing: 0.15,   // ~17km between units
         description: 'Narrow column for fast movement'
     },
     [FormationType.WEDGE]: {
-        spacing: 0.025,
-        angle: 45,        // Degrees from center axis
+        spacing: 0.25,   // ~28km
+        angle: 45,       // Degrees from center axis
         description: 'Arrow formation for aggressive assault'
     },
     [FormationType.SQUARE]: {
-        spacing: 0.02,
+        spacing: 0.2,    // ~22km
         description: 'Defensive box protecting center'
     },
     [FormationType.CIRCLE]: {
-        radius: 0.03,     // 3km radius
+        radius: 0.3,     // ~33km radius
         description: 'Circular defense pattern'
     },
     [FormationType.SPREAD]: {
-        spacing: 0.05,    // Maximum spacing to avoid nukes
+        spacing: 0.5,    // ~55km - maximum spacing to avoid nukes
         description: 'Wide spread to minimize AoE damage'
     }
 };
