@@ -394,23 +394,37 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onJoinBattleRoyale, lo
         const handleBRJoin = () => {
             let success = false;
 
+            console.log('[BR] handleBRJoin called, option:', brJoinOption, 'bot:', brSelectedBot, 'city:', brSelectedCity);
+
             if (brJoinOption === 'TAKEOVER_BOT' && brSelectedBot) {
                 success = BattleRoyaleService.requestTakeoverBot(brSelectedBot);
             } else if (brJoinOption === 'NEW_FACTION' && brSelectedCity) {
                 success = BattleRoyaleService.requestNewFaction(brSelectedCity);
             }
 
+            console.log('[BR] Join success:', success);
+
             if (success) {
                 // Get the updated game state from PhantomHost
                 const gameState = PhantomHostService.getGameState();
 
+                console.log('[BR] Game state:', !!gameState, 'onJoinBattleRoyale:', !!onJoinBattleRoyale);
+                console.log('[BR] localPlayerId:', gameState?.localPlayerId);
+                console.log('[BR] Factions:', gameState?.factions.map(f => f.id));
+
                 if (gameState && onJoinBattleRoyale) {
                     const playerFaction = gameState.factions.find(f => f.id === gameState.localPlayerId);
+                    console.log('[BR] Found player faction:', playerFaction?.name, playerFaction?.id);
+
                     if (playerFaction) {
                         console.log('[BR] Joining game directly with faction:', playerFaction.name);
                         // Use joinBattleRoyale to skip SELECTION mode - inject state directly in PLAYING mode
                         onJoinBattleRoyale(gameState);
+                    } else {
+                        console.error('[BR] Player faction not found in game state!');
                     }
+                } else {
+                    console.error('[BR] Missing gameState or onJoinBattleRoyale callback!');
                 }
             }
         };

@@ -274,6 +274,7 @@ const App: React.FC = () => {
         return (
             <MainMenu
                 onStartGame={handleStartGame}
+                onJoinBattleRoyale={handleJoinBattleRoyale}
                 lobbyState={lobbyState}
                 setLobbyState={setLobbyState}
                 networkMode={networkMode}
