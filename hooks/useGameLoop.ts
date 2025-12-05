@@ -423,7 +423,10 @@ export const useGameLoop = () => {
                             gameMode: nextMode,
                             startTime: nextStartTime
                         };
-                        console.log(`[HOST] Broadcasting full state. Total units: ${fullState.units.length}, Player units: ${fullState.units.filter(u => u.factionId === prev.localPlayerId).length}`);
+                        console.log(`[HOST] Broadcasting full state. Total units: ${fullState.units.length}`);
+                        console.log(`[HOST] Player ID check: req.playerId=${req.playerId}, prev.localPlayerId=${prev.localPlayerId}`);
+                        console.log(`[HOST] Units with req.playerId: ${fullState.units.filter(u => u.factionId === req.playerId).length}`);
+                        console.log(`[HOST] finalUnits has player units: ${finalUnits.filter(u => u.factionId === req.playerId).length}`);
                         NetworkService.broadcastFullState(fullState);
                     }
 
