@@ -188,6 +188,8 @@ export const useGameLoop = () => {
                     const nextFactions = prev.factions.map(f =>
                         f.id === req.playerId ? { ...f, ready: true } : f
                     );
+                    console.log(`[HOST] Factions in state: ${prev.factions.map(f => f.id).join(', ')}`);
+                    console.log(`[HOST] Player ID: ${req.playerId}, Found: ${prev.factions.some(f => f.id === req.playerId)}`);
 
                     // =============================================
                     // SPAWN STARTING ARMY FOR PLAYER!
