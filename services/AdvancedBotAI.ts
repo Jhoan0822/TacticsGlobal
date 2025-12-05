@@ -63,6 +63,19 @@ interface TaskForce {
     requiredInfantry: number;
     requiredCombat: number;
     createdAt: number;
+    priority?: number; // Dynamic priority based on threat assessment
+}
+
+// =============================================================================
+// THREAT ASSESSMENT SYSTEM
+// =============================================================================
+interface ThreatAssessment {
+    targetId: string;           // POI or unit being threatened
+    urgency: number;            // 0-100, how fast we must respond
+    magnitude: number;          // 0-100, how dangerous
+    enemyPower: number;         // Total attack power of incoming enemies
+    incomingEnemies: string[];  // IDs of threatening units
+    estimatedTimeToImpact: number; // Seconds until enemies reach target
 }
 
 interface BotBrain {
@@ -73,6 +86,9 @@ interface BotBrain {
     economyScore: number;
     militaryScore: number;
     threatLevel: number;
+    // NEW: Threat tracking
+    threatMap: Map<string, ThreatAssessment>;
+    lastThreatCheck: number;
 }
 
 // Global bot brains cache (persists across ticks)
@@ -110,6 +126,11 @@ export const updateAdvancedBotAI = (gameState: GameState): GameState => {
         const analysis = analyzeGameState(faction, newState, brain);
 
         // ================================================================
+        // PHASE 1.5: THREAT EVALUATION (NEW!)
+        // ================================================================
+        evaluateThreats(brain, analysis, faction, newState);
+
+        // ================================================================
         // PHASE 2: STRATEGIC PLANNING
         // ================================================================
         updateStrategicPlan(brain, analysis, faction, newState);
@@ -140,7 +161,9 @@ function createBotBrain(factionId: string): BotBrain {
         expansionPhase: 'EARLY',
         economyScore: 0,
         militaryScore: 0,
-        threatLevel: 0
+        threatLevel: 0,
+        threatMap: new Map(),
+        lastThreatCheck: 0
     };
 }
 
@@ -397,6 +420,14 @@ function updateStrategicPlan(brain: BotBrain, analysis: GameAnalysis, faction: F
             tf.status = 'FAILED';
         }
         tf.unitIds = aliveUnits;
+
+        // ================================================================
+        // DYNAMIC RETARGETING: Abort task forces if home is under threat
+        // ================================================================
+        if (tf.status === 'MOVING' && shouldAbortTaskForce(tf, brain, analysis)) {
+            tf.status = 'FAILED'; // Mark as failed so units become available
+            console.log(`[BOT AI] ${faction.name}: ABORTING ${tf.type} mission - home under attack!`);
+        }
     }
 
     // ================================================================
@@ -464,6 +495,138 @@ function updateStrategicPlan(brain: BotBrain, analysis: GameAnalysis, faction: F
     // ASSIGN IDLE UNITS TO TASK FORCES
     // ================================================================
     assignUnitsToTaskForces(brain, analysis, state);
+}
+
+// =============================================================================
+// THREAT EVALUATION SYSTEM
+// =============================================================================
+
+/**
+ * Evaluate all threats to owned cities and populate BotBrain threatMap
+ * This enables dynamic retargeting when the base is under attack
+ */
+function evaluateThreats(brain: BotBrain, analysis: GameAnalysis, faction: Faction, state: GameState): void {
+    brain.threatMap.clear();
+    const now = Date.now();
+
+    // Only re-evaluate every 2 seconds to reduce CPU load
+    if (now - brain.lastThreatCheck < 2000) return;
+    brain.lastThreatCheck = now;
+
+    for (const city of analysis.myCities) {
+        // Find enemies approaching this city
+        const incomingEnemies = analysis.enemyUnits.filter(enemy => {
+            const dist = getDistanceKm(
+                enemy.position.lat, enemy.position.lng,
+                city.position.lat, city.position.lng
+            );
+
+            if (dist > THREAT_DETECTION_RANGE) return false;
+
+            // Check if enemy is moving toward this city
+            if (enemy.destination) {
+                const destDist = getDistanceKm(
+                    enemy.destination.lat, enemy.destination.lng,
+                    city.position.lat, city.position.lng
+                );
+                // Enemy is heading toward city if destination is closer than current position
+                return destDist < dist;
+            }
+
+            // Enemy has this city as target
+            if (enemy.targetId === city.id) return true;
+
+            // Static enemy nearby is still a threat
+            return dist < DEFENSE_PERIMETER;
+        });
+
+        if (incomingEnemies.length > 0) {
+            // Calculate threat metrics
+            const enemyPower = incomingEnemies.reduce((sum, e) => sum + e.attack + e.hp, 0);
+            const closestDist = Math.min(...incomingEnemies.map(e =>
+                getDistanceKm(e.position.lat, e.position.lng, city.position.lat, city.position.lng)
+            ));
+
+            // Estimate time to impact based on average speed
+            const avgSpeed = 5; // km per game tick (approximate)
+            const estimatedTicks = closestDist / avgSpeed;
+
+            // Urgency: higher when enemies are closer (exponential)
+            const urgency = Math.min(100, Math.pow(1 - closestDist / THREAT_DETECTION_RANGE, 2) * 100);
+
+            // Magnitude: based on enemy power vs our local defense
+            const localDefenders = analysis.myUnits.filter(u =>
+                getDistanceKm(u.position.lat, u.position.lng, city.position.lat, city.position.lng) < DEFENSE_PERIMETER
+            );
+            const defenderPower = localDefenders.reduce((sum, u) => sum + u.attack + u.hp, 0);
+            const magnitude = Math.min(100, (enemyPower / Math.max(1, defenderPower)) * 50);
+
+            brain.threatMap.set(city.id, {
+                targetId: city.id,
+                urgency,
+                magnitude,
+                enemyPower,
+                incomingEnemies: incomingEnemies.map(e => e.id),
+                estimatedTimeToImpact: estimatedTicks * 40 / 1000 // Convert to seconds
+            });
+
+            // Update global threat level
+            brain.threatLevel = Math.max(brain.threatLevel, urgency * magnitude / 100);
+        }
+    }
+}
+
+/**
+ * Decide whether a task force should abort its current mission to defend
+ */
+function shouldAbortTaskForce(tf: TaskForce, brain: BotBrain, analysis: GameAnalysis): boolean {
+    // Defense task forces never abort
+    if (tf.type === 'DEFENSE') return false;
+
+    // Check if any home city is under serious threat
+    const criticalThreats = [...brain.threatMap.entries()]
+        .filter(([_, threat]) => threat.urgency > 60 && threat.magnitude > 40);
+
+    if (criticalThreats.length === 0) return false;
+
+    // Calculate current objective value
+    const objectiveValue = calculateObjectiveValue(tf, brain, analysis);
+
+    // Calculate defense priority (weighted combination of urgency and magnitude)
+    const highestThreat = criticalThreats.sort((a, b) =>
+        (b[1].urgency * b[1].magnitude) - (a[1].urgency * a[1].magnitude)
+    )[0][1];
+    const defensePriority = (highestThreat.urgency * 2 + highestThreat.magnitude) / 3;
+
+    // Abort if defense is more important than current objective
+    return defensePriority > objectiveValue;
+}
+
+/**
+ * Calculate the strategic value of a task force's current objective
+ */
+function calculateObjectiveValue(tf: TaskForce, brain: BotBrain, analysis: GameAnalysis): number {
+    // Capture targets are high value
+    if (tf.type === 'CAPTURE') {
+        const distFromHome = analysis.myCities.length > 0
+            ? getDistanceKm(
+                analysis.myCities[0].position.lat, analysis.myCities[0].position.lng,
+                tf.targetPosition.lat, tf.targetPosition.lng
+            ) : 100;
+        // Closer targets are more valuable (already invested time/resources)
+        return 70 - (distFromHome / 10);
+    }
+
+    // Assault targets
+    if (tf.type === 'ASSAULT') return 60;
+
+    // Raids (resource capture)
+    if (tf.type === 'RAID') return 40;
+
+    // Escort missions
+    if (tf.type === 'ESCORT') return 30;
+
+    return 20;
 }
 
 function findThreatenedCities(analysis: GameAnalysis, state: GameState): POI[] {
