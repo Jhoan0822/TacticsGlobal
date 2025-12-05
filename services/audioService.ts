@@ -884,43 +884,79 @@ const createAudioElement = (src: string, volume: number): HTMLAudioElement => {
     const audio = new Audio(src);
     audio.loop = true;
     audio.volume = Math.min(1, Math.max(0, volume));
+
+    // Auto-restart if audio ends unexpectedly
+    audio.addEventListener('ended', () => {
+        if (isMusicPlaying && !audio.loop) {
+            audio.currentTime = 0;
+            audio.play().catch(() => { });
+        }
+    });
+
+    // Auto-restart if audio errors
+    audio.addEventListener('error', () => {
+        console.log('Audio error, using synth fallback');
+        useFallbackSynth = true;
+        if (currentMode !== 'none') {
+            startFallbackSynthMode(currentMode === 'gameplay' ? 'peace' : currentMode as any);
+        }
+    });
+
     return audio;
 };
 
-// Crossfade between tracks
-const crossfadeToTrack = (newSrc: string, duration: number = 1000) => {
+// Crossfade between tracks - ensures no silence gap
+const crossfadeToTrack = (newSrc: string, duration: number = 1500) => {
     const targetVol = getMusicVolume();
 
-    // Fade out current
-    if (currentAudio) {
-        const fadeOutAudio = currentAudio;
-        const startVol = fadeOutAudio.volume;
-        const fadeOut = () => {
-            fadeOutAudio.volume = Math.max(0, fadeOutAudio.volume - startVol / 20);
-            if (fadeOutAudio.volume > 0.01) {
-                setTimeout(fadeOut, duration / 20);
-            } else {
-                fadeOutAudio.pause();
-            }
-        };
-        fadeOut();
-    }
+    // Start new track FIRST at minimum volume before fading out old
+    const newAudio = createAudioElement(newSrc, 0.001);
 
-    // Create and fade in new
-    currentAudio = createAudioElement(newSrc, 0);
-    const fadeInAudio = currentAudio;
+    newAudio.play().then(() => {
+        // Only fade out old track AFTER new one is playing
+        if (currentAudio && currentAudio !== newAudio) {
+            const oldAudio = currentAudio;
+            const startVol = oldAudio.volume;
+            let fadeStep = 0;
 
-    fadeInAudio.play().then(() => {
+            const fadeOut = () => {
+                fadeStep++;
+                const progress = fadeStep / 30; // 30 steps
+                oldAudio.volume = Math.max(0, startVol * (1 - progress));
+
+                if (fadeStep < 30) {
+                    setTimeout(fadeOut, duration / 30);
+                } else {
+                    oldAudio.pause();
+                    oldAudio.src = ''; // Release resource
+                }
+            };
+            fadeOut();
+        }
+
+        // Fade in new track smoothly
+        currentAudio = newAudio;
+        let fadeInStep = 0;
+
         const fadeIn = () => {
-            fadeInAudio.volume = Math.min(targetVol, fadeInAudio.volume + targetVol / 20);
-            if (fadeInAudio.volume < targetVol - 0.01) {
-                setTimeout(fadeIn, duration / 20);
+            fadeInStep++;
+            const progress = fadeInStep / 30;
+            newAudio.volume = Math.min(targetVol, targetVol * progress);
+
+            if (fadeInStep < 30) {
+                setTimeout(fadeIn, duration / 30);
+            } else {
+                newAudio.volume = targetVol;
             }
         };
         fadeIn();
+
     }).catch((err) => {
         console.log('Audio playback requires user interaction, using synth fallback');
         useFallbackSynth = true;
+        if (currentMode !== 'none') {
+            startFallbackSynthMode(currentMode === 'gameplay' ? 'peace' : currentMode as any);
+        }
     });
 };
 
