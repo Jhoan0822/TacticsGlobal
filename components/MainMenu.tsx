@@ -3,6 +3,7 @@ import { SCENARIOS, FACTION_PRESETS, DIFFICULTY_CONFIG, PERSONALITY_CONFIG } fro
 import { NetworkService } from '../services/networkService';
 import { PhantomHostService } from '../services/phantomHostService';
 import { BattleRoyaleService } from '../services/battleRoyaleService';
+import { AudioService } from '../services/audioService';
 import { Scenario, Faction, LobbyState, LobbyPlayer, Difficulty, BotPersonality, POI, POIType } from '../types';
 
 // Helper to assign random personality to bots
@@ -45,6 +46,14 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onJoinBattleRoyale, lo
             }
         }, 1000);
         return () => clearInterval(checkId);
+    }, []);
+
+    // Start menu music on mount
+    useEffect(() => {
+        AudioService.startMenuMusic();
+        return () => {
+            AudioService.stopBackgroundMusic();
+        };
     }, []);
 
     // Battle Royale: Initialize room when entering BR mode
@@ -323,10 +332,10 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onJoinBattleRoyale, lo
                                 <div
                                     className="absolute left-0 top-0 bottom-0 w-32 overflow-hidden"
                                     style={{
-                                        backgroundImage: 'url(https://tile.openstreetmap.org/2/1/1.png), url(https://tile.openstreetmap.org/2/2/1.png)',
-                                        backgroundSize: '100% 200%',
+                                        backgroundImage: 'url(https://tile.openstreetmap.org/1/0/0.png)',
+                                        backgroundSize: 'cover',
                                         backgroundPosition: 'center',
-                                        filter: 'blur(1px) saturate(1.3)',
+                                        filter: 'blur(1px) saturate(1.5) brightness(1.1)',
                                     }}
                                 >
                                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-600/40 to-blue-600/90"></div>
