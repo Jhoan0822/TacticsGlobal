@@ -359,7 +359,9 @@ export const useGameLoop = () => {
 
         if (timestamp - lastTickTime.current >= GAME_TICK_MS) {
             setGameState(prevState => {
-                if (prevState.gameMode !== 'PLAYING') return prevState;
+                // PLACING_STRUCTURE is a LOCAL UI MODE - should not stop game simulation!
+                // Only skip if in actual non-playing modes (LOBBY, SELECTION, COUNTDOWN)
+                if (prevState.gameMode !== 'PLAYING' && prevState.gameMode !== 'PLACING_STRUCTURE') return prevState;
 
                 // ============================================
                 // CRITICAL: HOST-ONLY SIMULATION
@@ -444,11 +446,15 @@ export const useGameLoop = () => {
                 // Every 5 ticks (~200ms) for smoother sync
                 if (nextState.gameTick % 5 === 0) {
                     NetworkService.incrementStateVersion();
-                    NetworkService.broadcastFullState({
+                    // IMPORTANT: Never broadcast PLACING_STRUCTURE - it's a local UI mode
+                    // Always send PLAYING to clients so the game continues for them
+                    const broadcastState = {
                         ...nextState,
+                        gameMode: nextState.gameMode === 'PLACING_STRUCTURE' ? 'PLAYING' : nextState.gameMode,
                         stateVersion: NetworkService.stateVersion,
                         hostTick: nextState.gameTick
-                    });
+                    };
+                    NetworkService.broadcastFullState(broadcastState);
                 }
 
                 return {
