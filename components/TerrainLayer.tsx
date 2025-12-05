@@ -84,9 +84,8 @@ const TerrainLayer: React.FC = () => {
                 });
 
                 if (visibleFeatures.length > 0) {
-                    ctx.fillStyle = '#1e293b'; // Slate-800
-                    ctx.strokeStyle = '#334155'; // Slate-700
-                    ctx.lineWidth = 1;
+                    // Fill land only - no borders between countries
+                    ctx.fillStyle = '#1e293b'; // Slate-800 (land color)
 
                     const transform = d3.geoTransform({
                         point: function (x, y) {
@@ -100,7 +99,7 @@ const TerrainLayer: React.FC = () => {
                     ctx.beginPath();
                     visibleFeatures.forEach(cf => path(cf.feature));
                     ctx.fill();
-                    ctx.stroke();
+                    // NOTE: Removed ctx.stroke() to eliminate country borders
                 }
             }
         };

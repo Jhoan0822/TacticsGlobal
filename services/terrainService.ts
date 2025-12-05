@@ -6,7 +6,7 @@ import { isPointInFactionTerritory } from './territoryService';
 let worldGeoJson: any = null;
 let isLoading = false;
 
-// CACHE & OPTIMIZATION - HIGHER RESOLUTION for better terrain precision
+// CACHE & OPTIMIZATION - HIGHER RESOLUTION
 const TERRAIN_WIDTH = 4096;
 const TERRAIN_HEIGHT = 2048;
 let terrainCtx: CanvasRenderingContext2D | null = null;
@@ -14,7 +14,6 @@ let terrainCtx: CanvasRenderingContext2D | null = null;
 // Spatial Cache
 const terrainTypeCache = new Map<string, 'LAND' | 'OCEAN' | 'COAST'>();
 
-// Round coordinates to ~1km precision for caching
 const CACHE_PRECISION = 100;
 const getCacheKey = (lat: number, lng: number) => {
     return `${Math.round(lat * CACHE_PRECISION)},${Math.round(lng * CACHE_PRECISION)}`;
@@ -29,7 +28,6 @@ const loadGeoJson = async () => {
         if (response.ok) {
             const rawData = await response.json();
 
-            // Filter out features that contain [0,0] (Null Island - Ocean)
             if (rawData.type === 'FeatureCollection' && Array.isArray(rawData.features)) {
                 rawData.features = rawData.features.filter((feature: any) => {
                     return !d3.geoContains(feature, [0, 0]);
@@ -38,16 +36,15 @@ const loadGeoJson = async () => {
 
             worldGeoJson = rawData;
 
-            // RASTERIZE TO CANVAS
             const canvas = document.createElement('canvas');
             canvas.width = TERRAIN_WIDTH;
             canvas.height = TERRAIN_HEIGHT;
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
             if (ctx) {
-                ctx.fillStyle = '#000000'; // Ocean
+                ctx.fillStyle = '#000000';
                 ctx.fillRect(0, 0, TERRAIN_WIDTH, TERRAIN_HEIGHT);
-                ctx.fillStyle = '#FFFFFF'; // Land
+                ctx.fillStyle = '#FFFFFF';
 
                 const projection = d3.geoEquirectangular()
                     .fitSize([TERRAIN_WIDTH, TERRAIN_HEIGHT], worldGeoJson);
@@ -58,12 +55,8 @@ const loadGeoJson = async () => {
                 ctx.fill();
 
                 terrainCtx = ctx;
-                console.log("Terrain Rasterized @ 4096x2048 for high precision lookup");
+                console.log("Terrain Rasterized @ 4096x2048");
             }
-
-            console.log("Terrain Data Loaded & Filtered");
-        } else {
-            console.error("Failed to load terrain data");
         }
     } catch (e) {
         console.error("Error loading terrain data", e);
@@ -121,11 +114,7 @@ export const TerrainService = {
             TerrainService.isPointLand(lat + offset, lng),
             TerrainService.isPointLand(lat - offset, lng),
             TerrainService.isPointLand(lat, lng + offset),
-            TerrainService.isPointLand(lat, lng - offset),
-            TerrainService.isPointLand(lat + offset, lng + offset),
-            TerrainService.isPointLand(lat + offset, lng - offset),
-            TerrainService.isPointLand(lat - offset, lng + offset),
-            TerrainService.isPointLand(lat - offset, lng - offset)
+            TerrainService.isPointLand(lat, lng - offset)
         ];
 
         const hasLandNeighbor = neighbors.some(n => n);
@@ -140,54 +129,51 @@ export const TerrainService = {
         return result;
     },
 
-    clearCache: () => {
-        terrainTypeCache.clear();
-    },
+    clearCache: () => terrainTypeCache.clear(),
 
-    // Check if point is near coastline (within ~20km of land/ocean boundary)
+    // Check if point is near coastline (within ~30km)
     isNearCoast: (lat: number, lng: number): boolean => {
-        const offset = 0.18; // ~20km
+        const offset = 0.27;
+        const centerIsLand = TerrainService.isPointLand(lat, lng);
+
         const samples = [
             TerrainService.isPointLand(lat + offset, lng),
             TerrainService.isPointLand(lat - offset, lng),
             TerrainService.isPointLand(lat, lng + offset),
             TerrainService.isPointLand(lat, lng - offset),
-            TerrainService.isPointLand(lat + offset, lng + offset),
-            TerrainService.isPointLand(lat + offset, lng - offset),
-            TerrainService.isPointLand(lat - offset, lng + offset),
-            TerrainService.isPointLand(lat - offset, lng - offset)
+            TerrainService.isPointLand(lat + offset * 0.7, lng + offset * 0.7),
+            TerrainService.isPointLand(lat - offset * 0.7, lng + offset * 0.7),
+            TerrainService.isPointLand(lat + offset * 0.7, lng - offset * 0.7),
+            TerrainService.isPointLand(lat - offset * 0.7, lng - offset * 0.7)
         ];
 
-        const hasLand = samples.some(s => s);
-        const hasOcean = samples.some(s => !s);
-        return hasLand && hasOcean;
+        if (centerIsLand) {
+            return samples.some(s => !s);
+        } else {
+            return samples.some(s => s);
+        }
     },
 
     isValidPlacement: (unitClass: UnitClass, lat: number, lng: number, pois: POI[],
         playerUnits?: GameUnit[],
         playerId?: string): boolean => {
-        const terrain = TerrainService.getTerrainType(lat, lng, pois);
 
-        // TERRAIN CHECK
         if (unitClass === UnitClass.PORT) {
-            // Ports can be on COAST or anywhere within ~20km of coast
-            if (terrain !== 'COAST') {
-                const nearCoast = TerrainService.isNearCoast(lat, lng);
-                if (!nearCoast) {
-                    console.log('[PLACEMENT] Port rejected - not near coast');
-                    return false;
-                }
+            const nearCoast = TerrainService.isNearCoast(lat, lng);
+            if (!nearCoast) {
+                console.log('[PLACEMENT] Port rejected - not within 30km of coastline');
+                return false;
             }
         }
 
         if (unitClass === UnitClass.AIRBASE || unitClass === UnitClass.MILITARY_BASE) {
+            const terrain = TerrainService.getTerrainType(lat, lng, pois);
             if (terrain === 'OCEAN') {
                 console.log('[PLACEMENT] Structure rejected - terrain: OCEAN');
                 return false;
             }
         }
 
-        // CONTROL AREA CHECK - Must be inside Voronoi polygon territory
         if (playerId && playerUnits) {
             const inTerritory = isPointInFactionTerritory(lat, lng, playerId, pois, playerUnits);
             if (!inTerritory) {
@@ -202,12 +188,10 @@ export const TerrainService = {
     isValidMove: (unitClass: UnitClass, lat: number, lng: number, pois: POI[]): boolean => {
         const terrain = TerrainService.getTerrainType(lat, lng, pois);
 
-        // Sea Units - can move on OCEAN or COAST
         if ([UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.BATTLESHIP, UnitClass.AIRCRAFT_CARRIER, UnitClass.SUBMARINE, UnitClass.PATROL_BOAT, UnitClass.MINELAYER].includes(unitClass)) {
             return terrain === 'OCEAN' || terrain === 'COAST';
         }
 
-        // Land Units - can move on LAND or COAST
         if ([UnitClass.GROUND_TANK, UnitClass.INFANTRY, UnitClass.MISSILE_LAUNCHER, UnitClass.SAM_LAUNCHER, UnitClass.MOBILE_COMMAND_CENTER].includes(unitClass)) {
             return terrain === 'LAND' || terrain === 'COAST';
         }
@@ -215,11 +199,35 @@ export const TerrainService = {
         return true;
     },
 
+    // Find nearest water point for naval unit spawning
+    findNearestWater: (lat: number, lng: number): { lat: number, lng: number } => {
+        if (!TerrainService.isPointLand(lat, lng)) {
+            return { lat, lng };
+        }
+
+        const steps = [0.05, 0.1, 0.15, 0.2, 0.3];
+        const angles = [0, 45, 90, 135, 180, 225, 270, 315];
+
+        for (const step of steps) {
+            for (const angle of angles) {
+                const radians = angle * Math.PI / 180;
+                const testLat = lat + step * Math.cos(radians);
+                const testLng = lng + step * Math.sin(radians);
+
+                if (!TerrainService.isPointLand(testLat, testLng)) {
+                    return { lat: testLat, lng: testLng };
+                }
+            }
+        }
+
+        return { lat, lng };
+    },
+
     debugTerrain: (lat: number, lng: number, pois: POI[]) => {
         const isLand = TerrainService.isPointLand(lat, lng);
         const terrain = TerrainService.getTerrainType(lat, lng, pois);
         const nearCoast = TerrainService.isNearCoast(lat, lng);
-        console.log(`[TERRAIN] lat=${lat.toFixed(4)}, lng=${lng.toFixed(4)} | isLand=${isLand} | type=${terrain} | nearCoast=${nearCoast}`);
+        console.log(`[TERRAIN] lat=${lat.toFixed(4)}, lng=${lng.toFixed(4)} | land=${isLand} | type=${terrain} | nearCoast=${nearCoast}`);
         return { isLand, terrain, nearCoast };
     }
 };
