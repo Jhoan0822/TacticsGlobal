@@ -44,6 +44,11 @@ export const useGameLoop = () => {
     // NUCLEAR TARGETING MODE
     const [nukeLaunchMode, setNukeLaunchMode] = useState<boolean>(false);
     const [selectedSiloId, setSelectedSiloId] = useState<string | null>(null);
+    // Refs to fix stale closure issue in handleMapClick
+    const nukeLaunchModeRef = useRef(nukeLaunchMode);
+    const selectedSiloIdRef = useRef(selectedSiloId);
+    nukeLaunchModeRef.current = nukeLaunchMode;
+    selectedSiloIdRef.current = selectedSiloId;
 
     // Game loop control
     const animationFrameId = useRef<number>(0);
@@ -790,9 +795,10 @@ export const useGameLoop = () => {
     };
 
     const handleMapClick = (lat: number, lng: number) => {
-        // NUCLEAR TARGETING MODE
-        if (nukeLaunchMode && selectedSiloId) {
-            const silo = gameState.units.find(u => u.id === selectedSiloId && u.unitClass === UnitClass.MISSILE_SILO);
+        // NUCLEAR TARGETING MODE - use refs to avoid stale closure
+        if (nukeLaunchModeRef.current && selectedSiloIdRef.current) {
+            const currentSiloId = selectedSiloIdRef.current;
+            const silo = gameState.units.find(u => u.id === currentSiloId && u.unitClass === UnitClass.MISSILE_SILO);
             if (silo) {
                 // Check range
                 const distKm = Math.sqrt(
@@ -810,7 +816,7 @@ export const useGameLoop = () => {
 
                 // Launch nuke!
                 const payload: LaunchNukePayload = {
-                    siloId: selectedSiloId,
+                    siloId: currentSiloId,
                     targetLat: lat,
                     targetLng: lng,
                     nukeId: `NUKE-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`

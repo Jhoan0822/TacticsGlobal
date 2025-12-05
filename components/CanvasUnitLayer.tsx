@@ -118,20 +118,33 @@ const getUnitSprite = (type: UnitClass, color: string): HTMLCanvasElement => {
             ctx.strokeRect(-6, -6, 12, 12);
             break;
         case UnitClass.MISSILE_SILO:
-            // Nuclear silo - distinctive hazard icon
-            ctx.fillStyle = '#4a044e';  // Dark purple base
+            // Nuclear silo - distinctive hazard icon with radiation triangles
+            ctx.fillStyle = '#7c2d12';  // Dark orange-brown base
             ctx.beginPath();
-            ctx.arc(0, 0, 10, 0, Math.PI * 2);
+            ctx.arc(0, 0, 12, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = '#facc15';  // Yellow warning border
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#fbbf24';  // Yellow warning border
+            ctx.lineWidth = 3;
             ctx.stroke();
-            // Radiation symbol
-            ctx.fillStyle = '#facc15';
-            ctx.font = 'bold 12px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('☢', 0, 0);
+
+            // Draw radiation symbol (3 triangular segments)
+            ctx.fillStyle = '#fbbf24';
+            for (let i = 0; i < 3; i++) {
+                ctx.save();
+                ctx.rotate((i * 2 * Math.PI) / 3);
+                ctx.beginPath();
+                ctx.moveTo(0, -3);
+                ctx.lineTo(4, -9);
+                ctx.lineTo(-4, -9);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+            // Center dot
+            ctx.beginPath();
+            ctx.arc(0, 0, 3, 0, Math.PI * 2);
+            ctx.fillStyle = '#fbbf24';
+            ctx.fill();
             break;
         case UnitClass.DESTROYER:
         case UnitClass.FRIGATE:
