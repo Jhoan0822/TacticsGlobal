@@ -316,14 +316,24 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onJoinBattleRoyale, lo
                                 onClick={() => setNetworkMode('BATTLE_ROYALE')}
                                 className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(59,130,246,0.4)]"
                             >
-                                {/* Background with map preview */}
+                                {/* Background with real map preview */}
                                 <div className="absolute inset-0 bg-gradient-to-r from-blue-600/90 to-cyan-600/80"></div>
-                                <div className="absolute left-0 top-0 bottom-0 w-28 bg-gradient-to-r from-blue-500/60 to-transparent flex items-center justify-center">
-                                    <span className="text-4xl opacity-80">🌍</span>
+
+                                {/* Map image preview on left side */}
+                                <div
+                                    className="absolute left-0 top-0 bottom-0 w-32 overflow-hidden"
+                                    style={{
+                                        backgroundImage: 'url(https://tile.openstreetmap.org/2/1/1.png), url(https://tile.openstreetmap.org/2/2/1.png)',
+                                        backgroundSize: '100% 200%',
+                                        backgroundPosition: 'center',
+                                        filter: 'blur(1px) saturate(1.3)',
+                                    }}
+                                >
+                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-600/40 to-blue-600/90"></div>
                                 </div>
 
                                 {/* Content */}
-                                <div className="relative p-4 pl-32">
+                                <div className="relative p-4 pl-36">
                                     {/* Title */}
                                     <h3 className="text-lg font-bold text-white italic mb-1">
                                         Unirse a la partida en curso
