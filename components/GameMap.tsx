@@ -27,13 +27,15 @@ interface Props {
     onMultiSelect: (ids: string[]) => void;
     gameMode: GameMode;
     placementType?: UnitClass | null;
+    localPlayerId: string;
 }
 
 // DRAG SELECTION OVERLAY
 const DragSelection: React.FC<{
     units: GameUnit[];
+    localPlayerId: string;
     onSelectionComplete: (ids: string[]) => void;
-}> = ({ units, onSelectionComplete }) => {
+}> = ({ units, localPlayerId, onSelectionComplete }) => {
     const map = useMap();
     const [startPoint, setStartPoint] = useState<L.Point | null>(null);
     const [currentPoint, setCurrentPoint] = useState<L.Point | null>(null);
@@ -82,7 +84,7 @@ const DragSelection: React.FC<{
                 const bounds = L.latLngBounds(p1, p2);
 
                 const selectedIds = unitsRef.current.filter(u =>
-                    u.factionId === 'PLAYER' &&
+                    u.factionId === localPlayerId &&
                     bounds.contains({ lat: u.position.lat, lng: u.position.lng })
                 ).map(u => u.id);
 
@@ -298,7 +300,7 @@ const MapController: React.FC<{ center: { lat: number; lng: number }, gameMode: 
 
 const MemoizedMapController = React.memo(MapController);
 
-const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, explosions, center, selectedUnitIds, onUnitClick, onUnitRightClick, onUnitAction, onMapClick, onMapRightClick, onPoiClick, onPoiRightClick, onMultiSelect, gameMode, placementType }) => {
+const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, explosions, center, selectedUnitIds, onUnitClick, onUnitRightClick, onUnitAction, onMapClick, onMapRightClick, onPoiClick, onPoiRightClick, onMultiSelect, gameMode, placementType, localPlayerId }) => {
     return (
         <div className="w-full h-screen relative z-0">
             <MapContainer
@@ -342,7 +344,7 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
                     gameMode={gameMode}
                 />
 
-                <DragSelection units={units} onSelectionComplete={onMultiSelect} />
+                <DragSelection units={units} localPlayerId={localPlayerId} onSelectionComplete={onMultiSelect} />
 
                 {gameMode !== 'SELECTION' && (
                     <>
