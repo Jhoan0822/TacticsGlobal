@@ -1,7 +1,7 @@
-import { GameState, UnitClass, POIType } from '../types';
-import { GameAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload, ClaimPOIPayload } from './schemas';
+import { GameState, UnitClass, POIType, NuclearMissile } from '../types';
+import { GameAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload, ClaimPOIPayload, LaunchNukePayload } from './schemas';
 import { spawnUnit } from './gameLogic';
-import { UNIT_CONFIG } from '../constants';
+import { UNIT_CONFIG, NUKE_CONFIG } from '../constants';
 
 /**
  * Apply a network action to the game state IMMEDIATELY
@@ -192,6 +192,44 @@ export function applyAction(state: GameState, action: GameAction): GameState {
                 return p;
             });
             console.log('[APPLY ACTION] POI claimed:', payload.poiId);
+            break;
+        }
+
+        case 'LAUNCH_NUKE': {
+            const payload = action.payload as LaunchNukePayload;
+
+            // Deduct launch cost
+            deductResources(NUKE_CONFIG.LAUNCH_COST);
+
+            // Find the silo and set its cooldown
+            const silo = nextState.units.find(u => u.id === payload.siloId && u.unitClass === UnitClass.MISSILE_SILO);
+            if (silo) {
+                silo.cooldown = NUKE_CONFIG.COOLDOWN_TICKS;
+
+                // Create nuclear missile in flight
+                const nuke: NuclearMissile = {
+                    id: payload.nukeId,
+                    siloId: payload.siloId,
+                    factionId: action.playerId,
+                    fromPos: { lat: silo.position.lat, lng: silo.position.lng },
+                    toPos: { lat: payload.targetLat, lng: payload.targetLng },
+                    launchTime: Date.now(),
+                    flightDuration: NUKE_CONFIG.FLIGHT_TIME_MS,
+                    progress: 0
+                };
+
+                nextState.nukesInFlight = [...(nextState.nukesInFlight || []), nuke];
+
+                // Add log message
+                const message = {
+                    id: Math.random().toString(36),
+                    text: `☢️ NUCLEAR LAUNCH DETECTED!`,
+                    type: 'alert' as const,
+                    timestamp: Date.now()
+                };
+                nextState.messages = [...nextState.messages, message];
+                console.log('[APPLY ACTION] Nuclear missile launched from silo:', payload.siloId);
+            }
             break;
         }
     }

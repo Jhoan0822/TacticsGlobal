@@ -1,6 +1,6 @@
 
-import { GameState, GameUnit, Faction, Projectile, POIType, UnitClass, POI, LogMessage, WeaponType, Explosion } from '../types';
-import { DIPLOMACY, POI_CONFIG, UNIT_CONFIG, AI_CONFIG, WEAPON_MAPPING, TIER_MULTIPLIER } from '../constants';
+import { GameState, GameUnit, Faction, Projectile, POIType, UnitClass, POI, LogMessage, WeaponType, Explosion, NuclearMissile } from '../types';
+import { DIPLOMACY, POI_CONFIG, UNIT_CONFIG, AI_CONFIG, WEAPON_MAPPING, TIER_MULTIPLIER, NUKE_CONFIG } from '../constants';
 import { updateAI } from './aiService';
 import { TerrainService } from './terrainService';
 import { Intent } from './schemas';
@@ -494,6 +494,97 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         }
     }
 
+    // ========================================
+    // NUCLEAR MISSILE PROCESSING
+    // ========================================
+    const isAirUnit = (unitClass: UnitClass): boolean => {
+        return [UnitClass.FIGHTER_JET, UnitClass.HEAVY_BOMBER, UnitClass.TROOP_TRANSPORT,
+        UnitClass.HELICOPTER, UnitClass.RECON_DRONE].includes(unitClass);
+    };
+
+    const isSeaUnit = (unitClass: UnitClass): boolean => {
+        return [UnitClass.AIRCRAFT_CARRIER, UnitClass.DESTROYER, UnitClass.FRIGATE,
+        UnitClass.BATTLESHIP, UnitClass.SUBMARINE, UnitClass.PATROL_BOAT,
+        UnitClass.MINELAYER].includes(unitClass);
+    };
+
+    const isStructure = (unitClass: UnitClass): boolean => {
+        return [UnitClass.COMMAND_CENTER, UnitClass.MOBILE_COMMAND_CENTER, UnitClass.MILITARY_BASE,
+        UnitClass.AIRBASE, UnitClass.PORT, UnitClass.MISSILE_SILO].includes(unitClass);
+    };
+
+    // Process nuclear missiles in flight
+    let nextNukes: NuclearMissile[] = [];
+    const nukesInFlight = currentState.nukesInFlight || [];
+
+    for (const nuke of nukesInFlight) {
+        const elapsed = Date.now() - nuke.launchTime;
+        nuke.progress = Math.min(1, elapsed / nuke.flightDuration);
+
+        if (nuke.progress >= 1) {
+            // NUCLEAR IMPACT!
+            const impactPos = nuke.toPos;
+
+            // Create massive nuclear explosion
+            newExplosions.push({
+                id: `NUKE-${Math.random().toString(36)}`,
+                position: impactPos,
+                timestamp: Date.now(),
+                size: 'NUCLEAR'
+            });
+
+            // Apply area damage to units
+            for (const unit of nextUnits) {
+                const dist = getDistanceKm(impactPos.lat, impactPos.lng, unit.position.lat, unit.position.lng);
+                if (dist > NUKE_CONFIG.BLAST_RADIUS_KM) continue;
+                if (unit.factionId === nuke.factionId) continue; // Don't nuke yourself
+
+                // Air units immune (flying above blast)
+                if (isAirUnit(unit.unitClass)) continue;
+
+                // Sea units take partial damage
+                if (isSeaUnit(unit.unitClass)) {
+                    const damage = unit.maxHp * NUKE_CONFIG.SEA_DAMAGE_PERCENT;
+                    unit.hp -= damage;
+                    if (unit.hp < 0) unit.hp = 0;
+                    continue;
+                }
+
+                // Structures near center are destroyed
+                if (isStructure(unit.unitClass) && dist <= NUKE_CONFIG.STRUCTURE_DESTROY_RADIUS_KM) {
+                    unit.hp = 0;
+                    continue;
+                }
+
+                // Ground units take full nuke damage
+                const damage = unit.maxHp * NUKE_CONFIG.GROUND_DAMAGE_PERCENT;
+                unit.hp -= damage;
+                if (unit.hp < 0) unit.hp = 0;
+            }
+
+            // Apply damage to cities
+            for (const poi of nextPOIs) {
+                if (poi.type !== POIType.CITY) continue;
+                const dist = getDistanceKm(impactPos.lat, impactPos.lng, poi.position.lat, poi.position.lng);
+                if (dist <= NUKE_CONFIG.BLAST_RADIUS_KM) {
+                    const damage = poi.maxHp * NUKE_CONFIG.CITY_DAMAGE_PERCENT;
+                    poi.hp -= damage;
+                    if (poi.hp < 0) poi.hp = 0;
+
+                    // Log city damage
+                    logEvent(messages, `☢️ ${poi.name} devastated by nuclear strike!`, 'alert');
+                }
+            }
+
+            // Log impact
+            logEvent(messages, `☢️ NUCLEAR DETONATION - Massive casualties reported!`, 'alert');
+
+        } else {
+            // Nuke still in flight
+            nextNukes.push(nuke);
+        }
+    }
+
     // BUILD SPATIAL GRID
     // OPTIMIZATION: Use the persistent grid
     spatialGrid.clear();
@@ -916,7 +1007,8 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         playerResources: nextPlayerResources,
         gameTick: currentState.gameTick + 1,
         messages: messages,
-        gameStats: currentState.gameStats
+        gameStats: currentState.gameStats,
+        nukesInFlight: nextNukes
     };
 
     // VICTORY/DEFEAT CHECK (Every 60 ticks = ~2 seconds)

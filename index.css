@@ -666,6 +666,68 @@ body {
     height: 80px;
 }
 
+/* NUCLEAR EXPLOSION - Massive devastating effect */
+@keyframes nuclear-explosion {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 1;
+    }
+    30% {
+        transform: translate(-50%, -50%) scale(2);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(4);
+        opacity: 0;
+    }
+}
+
+@keyframes nuclear-shockwave {
+    0% {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(6);
+        opacity: 0;
+    }
+}
+
+.explosion-nuclear {
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, 
+        #ffffff 0%, 
+        #fff59d 10%, 
+        #ff9800 25%, 
+        #ff5722 40%, 
+        #f44336 55%, 
+        #880e4f 70%, 
+        transparent 90%);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    animation: nuclear-explosion 3s ease-out forwards;
+    box-shadow: 
+        0 0 100px 50px rgba(255, 152, 0, 0.8),
+        0 0 200px 100px rgba(255, 87, 34, 0.6),
+        0 0 300px 150px rgba(244, 67, 54, 0.4);
+    z-index: 9999;
+}
+
+.explosion-nuclear::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 400px;
+    height: 400px;
+    border: 3px solid rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    animation: nuclear-shockwave 2s ease-out forwards;
+}
+
 /* ============================================
    ANIMATED BACKGROUNDS
    ============================================ */

@@ -28,6 +28,9 @@ export enum UnitClass {
   SUBMARINE = 'SUBMARINE',
   PATROL_BOAT = 'PATROL_BOAT',
   MINELAYER = 'MINELAYER',
+
+  // STRATEGIC
+  MISSILE_SILO = 'MISSILE_SILO',
 }
 
 export enum POIType {
@@ -168,7 +171,7 @@ export interface Explosion {
   id: string;
   position: { lat: number; lng: number };
   timestamp: number;
-  size: 'SMALL' | 'MEDIUM' | 'LARGE';
+  size: 'SMALL' | 'MEDIUM' | 'LARGE' | 'NUCLEAR';
 }
 
 export interface LogMessage {
@@ -176,6 +179,18 @@ export interface LogMessage {
   text: string;
   type: 'info' | 'alert' | 'success' | 'combat';
   timestamp: number;
+}
+
+// Nuclear Missile State
+export interface NuclearMissile {
+  id: string;
+  siloId: string;
+  factionId: string;
+  fromPos: { lat: number; lng: number };
+  toPos: { lat: number; lng: number };
+  launchTime: number;
+  flightDuration: number;  // ms - how long to reach target
+  progress: number;        // 0-1
 }
 
 export enum Difficulty {
@@ -221,6 +236,8 @@ export interface GameState {
   // Network Sync Fields (NEW)
   stateVersion: number;    // Authoritative state version from host
   hostTick: number;        // Last known host tick for reconciliation
+  // Nuclear missiles in flight
+  nukesInFlight: NuclearMissile[];
 }
 
 export interface LobbyPlayer {

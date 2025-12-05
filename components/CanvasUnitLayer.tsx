@@ -117,6 +117,22 @@ const getUnitSprite = (type: UnitClass, color: string): HTMLCanvasElement => {
             ctx.fillRect(-6, -6, 12, 12);
             ctx.strokeRect(-6, -6, 12, 12);
             break;
+        case UnitClass.MISSILE_SILO:
+            // Nuclear silo - distinctive hazard icon
+            ctx.fillStyle = '#4a044e';  // Dark purple base
+            ctx.beginPath();
+            ctx.arc(0, 0, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#facc15';  // Yellow warning border
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            // Radiation symbol
+            ctx.fillStyle = '#facc15';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('☢', 0, 0);
+            break;
         case UnitClass.DESTROYER:
         case UnitClass.FRIGATE:
         case UnitClass.PATROL_BOAT:
@@ -340,27 +356,64 @@ const CanvasUnitLayer: React.FC<Props> = ({ units, factions, selectedUnitIds, pr
             // --- DRAW EXPLOSIONS ---
             currentExplosions.forEach(exp => {
                 const age = Date.now() - exp.timestamp;
-                if (age > 500) return;
+                const duration = exp.size === 'NUCLEAR' ? 3000 : 500;
+                if (age > duration) return;
 
                 const pos = map.latLngToContainerPoint([exp.position.lat, exp.position.lng]);
 
                 // CULLING
                 if (pos.x < -buffer || pos.y < -buffer || pos.x > mapSize.x + buffer || pos.y > mapSize.y + buffer) return;
 
-                const progress = age / 500;
-                const radius = (exp.size === 'MEDIUM' ? 20 : 10) * Math.sin(progress * Math.PI);
-                const alpha = 1 - progress;
+                const progress = age / duration;
 
                 ctx.save();
                 ctx.translate(pos.x, pos.y);
-                ctx.beginPath();
-                ctx.arc(0, 0, radius, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 100, 0, ${alpha})`;
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(0, 0, radius * 0.7, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
-                ctx.fill();
+
+                if (exp.size === 'NUCLEAR') {
+                    // Nuclear explosion - massive multi-ring effect
+                    const baseRadius = 80;
+                    const scale = 0.5 + progress * 3;  // Expand rapidly
+                    const alpha = Math.max(0, 1 - progress);
+
+                    // Outer shockwave ring
+                    ctx.beginPath();
+                    ctx.arc(0, 0, baseRadius * scale * 1.5, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.5})`;
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+
+                    // Main fireball (gradient)
+                    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, baseRadius * scale);
+                    gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+                    gradient.addColorStop(0.2, `rgba(255, 200, 100, ${alpha})`);
+                    gradient.addColorStop(0.5, `rgba(255, 100, 0, ${alpha * 0.8})`);
+                    gradient.addColorStop(0.8, `rgba(200, 50, 50, ${alpha * 0.5})`);
+                    gradient.addColorStop(1, `rgba(100, 0, 50, 0)`);
+
+                    ctx.beginPath();
+                    ctx.arc(0, 0, baseRadius * scale, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+
+                    // Inner core
+                    ctx.beginPath();
+                    ctx.arc(0, 0, baseRadius * scale * 0.3, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 200, ${alpha})`;
+                    ctx.fill();
+                } else {
+                    // Standard explosion
+                    const radius = (exp.size === 'MEDIUM' ? 20 : (exp.size === 'LARGE' ? 30 : 10)) * Math.sin(progress * Math.PI);
+                    const alpha = 1 - progress;
+
+                    ctx.beginPath();
+                    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 100, 0, ${alpha})`;
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(0, 0, radius * 0.7, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
+                    ctx.fill();
+                }
                 ctx.restore();
             });
 

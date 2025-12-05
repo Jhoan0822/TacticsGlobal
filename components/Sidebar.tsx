@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GameState, UnitClass, Faction, POIType, Difficulty } from '../types';
-import { UNIT_CONFIG, POI_CONFIG, DIPLOMACY } from '../constants';
+import { UNIT_CONFIG, POI_CONFIG, DIPLOMACY, NUKE_CONFIG } from '../constants';
 
 import { evaluateAllianceRequest } from '../services/gameLogic';
 import { useTooltip } from './Tooltip';
@@ -119,7 +119,7 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
 
 
 
-    const structures = [UnitClass.AIRBASE, UnitClass.PORT, UnitClass.MILITARY_BASE];
+    const structures = [UnitClass.AIRBASE, UnitClass.PORT, UnitClass.MILITARY_BASE, UnitClass.MISSILE_SILO];
     const seaUnits = [UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.SUBMARINE, UnitClass.AIRCRAFT_CARRIER, UnitClass.BATTLESHIP, UnitClass.PATROL_BOAT, UnitClass.MINELAYER];
     const airUnits = [UnitClass.FIGHTER_JET, UnitClass.HEAVY_BOMBER, UnitClass.TROOP_TRANSPORT, UnitClass.HELICOPTER];
     const groundUnits = [UnitClass.INFANTRY, UnitClass.GROUND_TANK, UnitClass.MISSILE_LAUNCHER, UnitClass.SAM_LAUNCHER, UnitClass.MOBILE_COMMAND_CENTER];
@@ -394,6 +394,32 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                             DEPLOY SPECOPS
                         </button>
                     )}
+                    {/* NUCLEAR SILO CONTROLS */}
+                    {selectedUnit.unitClass === UnitClass.MISSILE_SILO && (() => {
+                        const canAffordNuke = (playerFaction?.gold ?? 0) >= NUKE_CONFIG.LAUNCH_COST.gold &&
+                            (playerFaction?.oil ?? 0) >= NUKE_CONFIG.LAUNCH_COST.oil;
+                        const isOnCooldown = (selectedUnit.cooldown ?? 0) > 0;
+                        const cooldownSeconds = Math.ceil((selectedUnit.cooldown ?? 0) / 25);
+
+                        return (
+                            <div className="space-y-2">
+                                <button
+                                    onClick={() => onUnitAction('LAUNCH_NUKE', selectedUnit.id)}
+                                    disabled={!canAffordNuke || isOnCooldown}
+                                    className={`w-full py-3 rounded-lg font-bold text-sm transition-all border ${!canAffordNuke || isOnCooldown
+                                            ? 'bg-slate-900/50 border-slate-700/30 text-slate-500 cursor-not-allowed'
+                                            : 'bg-gradient-to-r from-red-600 to-orange-600 border-red-500/50 text-white hover:from-red-500 hover:to-orange-500 shadow-[0_0_20px_rgba(239,68,68,0.3)]'
+                                        }`}
+                                >
+                                    ☢️ LAUNCH NUCLEAR STRIKE
+                                </button>
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-slate-400">Cost: <span className="text-yellow-400">{NUKE_CONFIG.LAUNCH_COST.gold}G</span> + <span className="text-cyan-400">{NUKE_CONFIG.LAUNCH_COST.oil}O</span></span>
+                                    {isOnCooldown && <span className="text-red-400">Cooldown: {cooldownSeconds}s</span>}
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
 

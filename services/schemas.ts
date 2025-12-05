@@ -13,7 +13,8 @@ export type GameActionType =
     | 'ATTACK_TARGET'
     | 'BUILD_STRUCTURE'
     | 'SELECT_BASE'
-    | 'CLAIM_POI';
+    | 'CLAIM_POI'
+    | 'LAUNCH_NUKE';
 
 // Core action structure - simple and fast
 export interface GameAction {
@@ -61,6 +62,13 @@ export interface SelectBasePayload {
 export interface ClaimPOIPayload {
     poiId: string;
     factionId: string;
+}
+
+export interface LaunchNukePayload {
+    siloId: string;
+    targetLat: number;
+    targetLng: number;
+    nukeId: string;
 }
 
 // Network message types
@@ -132,7 +140,7 @@ export function createAction(
 
 // Legacy Intent Interface (for processGameTick compatibility)
 export interface Intent {
-    type: 'SPAWN' | 'MOVE' | 'ATTACK' | 'BUILD_STRUCTURE' | 'SET_TARGET' | 'CHEAT_RESOURCES';
+    type: 'SPAWN' | 'MOVE' | 'ATTACK' | 'BUILD_STRUCTURE' | 'SET_TARGET' | 'CHEAT_RESOURCES' | 'LAUNCH_NUKE';
     clientId: string;
     unitClass?: UnitClass;
     lat?: number;
@@ -144,4 +152,7 @@ export interface Intent {
     unitId?: string;
     gold?: number;
     oil?: number;
+    siloId?: string;
+    targetLat?: number;
+    targetLng?: number;
 }

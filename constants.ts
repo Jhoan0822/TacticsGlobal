@@ -5,6 +5,19 @@ export const GAME_TICK_MS = 30; // Faster tick for "Frenetic" feel
 export const COMBAT_RADIUS_KM = 30;
 export const MAX_UNITS_ON_MAP = 200;
 
+// NUCLEAR STRIKE CONFIGURATION
+export const NUKE_CONFIG = {
+  LAUNCH_COST: { gold: 3000, oil: 1500 },    // Cost PER launch
+  FLIGHT_TIME_MS: 8000,                       // 8 seconds to reach target
+  MAX_RANGE_KM: 500,                          // Maximum strike range
+  COOLDOWN_TICKS: 2400,                       // ~60 seconds at 40ms/tick
+  BLAST_RADIUS_KM: 50,                        // Area of effect
+  GROUND_DAMAGE_PERCENT: 0.75,                // 75% max HP to ground units
+  SEA_DAMAGE_PERCENT: 0.50,                   // 50% max HP to sea units
+  CITY_DAMAGE_PERCENT: 0.50,                  // 50% max HP to cities
+  STRUCTURE_DESTROY_RADIUS_KM: 30,            // Structures within this die
+};
+
 export const DIFFICULTY_CONFIG = {
   [Difficulty.EASY]: {
     WAVE_INTERVAL_MS: 60000, // Faster than before
@@ -149,6 +162,7 @@ const CAT_ALL = [
   UnitClass.INFANTRY, UnitClass.SPECIAL_FORCES, UnitClass.GROUND_TANK, UnitClass.MISSILE_LAUNCHER, UnitClass.SAM_LAUNCHER, UnitClass.MOBILE_COMMAND_CENTER, UnitClass.MILITARY_BASE, UnitClass.AIRBASE, UnitClass.PORT,
   UnitClass.FIGHTER_JET, UnitClass.HEAVY_BOMBER, UnitClass.TROOP_TRANSPORT, UnitClass.HELICOPTER, UnitClass.RECON_DRONE,
   UnitClass.AIRCRAFT_CARRIER, UnitClass.DESTROYER, UnitClass.FRIGATE, UnitClass.BATTLESHIP, UnitClass.SUBMARINE, UnitClass.PATROL_BOAT, UnitClass.MINELAYER,
+  UnitClass.MISSILE_SILO,
   'CITY'
 ];
 
@@ -175,6 +189,7 @@ export const WEAPON_MAPPING: Record<UnitClass, WeaponType> = {
   [UnitClass.SUBMARINE]: WeaponType.MISSILE,
   [UnitClass.PATROL_BOAT]: WeaponType.TRACER,
   [UnitClass.MINELAYER]: WeaponType.TRACER,
+  [UnitClass.MISSILE_SILO]: WeaponType.MISSILE,
 };
 
 // UNRESTRICTED COMBAT CONFIG
@@ -279,6 +294,12 @@ export const UNIT_CONFIG: Record<UnitClass, ExtendedUnitStats> = {
     hp: 400, maxHp: 400, attack: 300, range: 20, speed: 3.0, vision: 50,
     cost: { gold: 300, oil: 100 },
     validTargets: CAT_ALL
+  },
+  // STRATEGIC
+  [UnitClass.MISSILE_SILO]: {
+    hp: 5000, maxHp: 5000, attack: 0, range: 0, speed: 0, vision: 300,
+    cost: { gold: 5000, oil: 2000 },
+    validTargets: []
   },
 };
 

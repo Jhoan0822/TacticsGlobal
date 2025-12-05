@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GameState, GameUnit, POI, UnitClass, POIType, Faction, Difficulty, NetworkRequest, NetworkResponse, GameMode } from '../types';
-import { UNIT_CONFIG } from '../constants';
+import { UNIT_CONFIG, NUKE_CONFIG } from '../constants';
 import { processGameTick, spawnUnit } from '../services/gameLogic';
 import { NetworkService } from '../services/networkService';
 import { AudioService } from '../services/audioService';
 import { AudioEvents } from '../services/audioEventDispatcher';
 import { TerrainService } from '../services/terrainService';
-import { GameAction, createAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload } from '../services/schemas';
+import { GameAction, createAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload, LaunchNukePayload } from '../services/schemas';
 import { applyAction } from '../services/applyAction';
 import { Scenario } from '../types';
 import { getMockCities } from '../services/mockDataService';
@@ -33,12 +33,17 @@ export const useGameLoop = () => {
         placementType: null,
         // Network sync fields
         stateVersion: 0,
-        hostTick: 0
+        hostTick: 0,
+        nukesInFlight: []
     });
 
     const [center, setCenter] = useState<{ lat: number; lng: number }>({ lat: 20, lng: 0 });
     const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
     const lastRightClickTime = useRef<number>(0);
+
+    // NUCLEAR TARGETING MODE
+    const [nukeLaunchMode, setNukeLaunchMode] = useState<boolean>(false);
+    const [selectedSiloId, setSelectedSiloId] = useState<string | null>(null);
 
     // Game loop control
     const animationFrameId = useRef<number>(0);
@@ -785,6 +790,42 @@ export const useGameLoop = () => {
     };
 
     const handleMapClick = (lat: number, lng: number) => {
+        // NUCLEAR TARGETING MODE
+        if (nukeLaunchMode && selectedSiloId) {
+            const silo = gameState.units.find(u => u.id === selectedSiloId && u.unitClass === UnitClass.MISSILE_SILO);
+            if (silo) {
+                // Check range
+                const distKm = Math.sqrt(
+                    Math.pow((lat - silo.position.lat) * 111, 2) +
+                    Math.pow((lng - silo.position.lng) * 111 * Math.cos(silo.position.lat * Math.PI / 180), 2)
+                );
+
+                if (distKm > NUKE_CONFIG.MAX_RANGE_KM) {
+                    AudioService.playError();
+                    console.log('[NUKE] Target out of range! Distance:', distKm.toFixed(0), 'km, Max:', NUKE_CONFIG.MAX_RANGE_KM);
+                    setNukeLaunchMode(false);
+                    setSelectedSiloId(null);
+                    return;
+                }
+
+                // Launch nuke!
+                const payload: LaunchNukePayload = {
+                    siloId: selectedSiloId,
+                    targetLat: lat,
+                    targetLng: lng,
+                    nukeId: `NUKE-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+                };
+                const action = createAction(gameState.localPlayerId, 'LAUNCH_NUKE', payload);
+                setGameState(prev => applyAction(prev, action));
+                NetworkService.broadcastAction(action);
+                AudioService.playAlert();
+                console.log('[NUKE] Nuclear strike launched at', lat.toFixed(2), lng.toFixed(2));
+            }
+            setNukeLaunchMode(false);
+            setSelectedSiloId(null);
+            return;
+        }
+
         if (gameState.gameMode === 'PLACING_STRUCTURE') {
             if (!gameState.placementType) return;
             const type = gameState.placementType;
@@ -793,7 +834,7 @@ export const useGameLoop = () => {
             let spawnLat = lat;
             let spawnLng = lng;
 
-            // PORT PLACEMENT: Click on land near coast → snap to nearest coast point
+            // PORT PLACEMENT: Click on land near coast â†’ snap to nearest coast point
             if (type === UnitClass.PORT) {
                 const coastPoint = TerrainService.findNearestCoastPoint(lat, lng);
                 if (!coastPoint) {
@@ -1148,6 +1189,25 @@ export const useGameLoop = () => {
             setGameState(prev => applyAction(prev, action));
             NetworkService.broadcastAction(action);
             AudioService.playUnitSpawn();
+        }
+        // NUCLEAR SILO: Enter targeting mode
+        else if (actionType === 'LAUNCH_NUKE') {
+            const silo = gameState.units.find(u => u.id === unitId && u.unitClass === UnitClass.MISSILE_SILO);
+            if (silo && (!silo.cooldown || silo.cooldown <= 0)) {
+                const playerFaction = gameState.factions.find(f => f.id === gameState.localPlayerId);
+                const canAfford = (playerFaction?.gold ?? 0) >= NUKE_CONFIG.LAUNCH_COST.gold &&
+                    (playerFaction?.oil ?? 0) >= NUKE_CONFIG.LAUNCH_COST.oil;
+                if (canAfford) {
+                    setNukeLaunchMode(true);
+                    setSelectedSiloId(unitId);
+                    console.log('[NUKE] Targeting mode activated. Click on map to select target.');
+                    AudioService.playSuccess();
+                } else {
+                    AudioService.playError();
+                }
+            } else {
+                AudioService.playError();
+            }
         }
     };
 
