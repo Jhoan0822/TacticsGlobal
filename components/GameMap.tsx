@@ -39,6 +39,22 @@ const DragSelection: React.FC<{
     const [currentPoint, setCurrentPoint] = useState<L.Point | null>(null);
     const [isDragging, setIsDragging] = useState(false);
 
+    // Use refs to avoid stale closures in event handlers
+    const isDraggingRef = React.useRef(isDragging);
+    const startPointRef = React.useRef(startPoint);
+    const currentPointRef = React.useRef(currentPoint);
+    const unitsRef = React.useRef(units);
+    const onSelectionCompleteRef = React.useRef(onSelectionComplete);
+
+    // Keep refs in sync
+    React.useEffect(() => {
+        isDraggingRef.current = isDragging;
+        startPointRef.current = startPoint;
+        currentPointRef.current = currentPoint;
+        unitsRef.current = units;
+        onSelectionCompleteRef.current = onSelectionComplete;
+    });
+
     useEffect(() => {
         const container = map.getContainer();
 
@@ -53,24 +69,24 @@ const DragSelection: React.FC<{
         };
 
         const onMouseMove = (e: MouseEvent) => {
-            if (isDragging) {
+            if (isDraggingRef.current) {
                 const point = map.mouseEventToContainerPoint(e);
                 setCurrentPoint(point);
             }
         };
 
         const onMouseUp = (e: MouseEvent) => {
-            if (isDragging && startPoint && currentPoint) {
-                const p1 = map.containerPointToLatLng(startPoint);
-                const p2 = map.containerPointToLatLng(currentPoint);
+            if (isDraggingRef.current && startPointRef.current && currentPointRef.current) {
+                const p1 = map.containerPointToLatLng(startPointRef.current);
+                const p2 = map.containerPointToLatLng(currentPointRef.current);
                 const bounds = L.latLngBounds(p1, p2);
 
-                const selectedIds = units.filter(u =>
+                const selectedIds = unitsRef.current.filter(u =>
                     u.factionId === 'PLAYER' &&
                     bounds.contains({ lat: u.position.lat, lng: u.position.lng })
                 ).map(u => u.id);
 
-                onSelectionComplete(selectedIds);
+                onSelectionCompleteRef.current(selectedIds);
 
                 setStartPoint(null);
                 setCurrentPoint(null);
@@ -87,7 +103,7 @@ const DragSelection: React.FC<{
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
         };
-    }, [map, isDragging, startPoint, currentPoint, units, onSelectionComplete]);
+    }, [map]); // Only depends on map now - handlers use refs
 
     if (!isDragging || !startPoint || !currentPoint) return null;
 

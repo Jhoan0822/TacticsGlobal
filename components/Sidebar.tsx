@@ -25,7 +25,7 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
     // ============================================
     // SELECT BASE MODE
     // ============================================
-    if (gameState.gameMode === 'SELECT_BASE') {
+    if (gameState.gameMode === 'SELECTION') {
         return (
             <div className="absolute top-6 left-6 glass-panel rounded-2xl p-6 z-[2000] max-w-sm animate-slide-up border border-cyan-500/20">
                 <div className="flex items-center gap-3 mb-4">
@@ -55,12 +55,12 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                                 key={diff}
                                 onClick={() => onSetDifficulty(diff)}
                                 className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all border ${gameState.difficulty === diff
-                                        ? diff === Difficulty.HARD
-                                            ? 'bg-red-500/20 border-red-500/50 text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
-                                            : diff === Difficulty.MEDIUM
-                                                ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
-                                                : 'bg-green-500/20 border-green-500/50 text-green-300'
-                                        : 'bg-slate-800/50 border-slate-600/30 text-slate-500 hover:bg-slate-700/50'
+                                    ? diff === Difficulty.HARD
+                                        ? 'bg-red-500/20 border-red-500/50 text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
+                                        : diff === Difficulty.MEDIUM
+                                            ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
+                                            : 'bg-green-500/20 border-green-500/50 text-green-300'
+                                    : 'bg-slate-800/50 border-slate-600/30 text-slate-500 hover:bg-slate-700/50'
                                     }`}
                             >
                                 {diff}
@@ -177,8 +177,8 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                             }}
                             onMouseLeave={hideTooltip}
                             className={`w-full text-left p-3 rounded-xl border flex justify-between items-center transition-all group ${disabled
-                                    ? 'bg-slate-900/30 border-slate-800/50 opacity-40 cursor-not-allowed'
-                                    : 'bg-slate-800/40 border-slate-600/30 hover:bg-slate-700/50 hover:border-cyan-500/30 hover:shadow-[0_0_15px_rgba(6,182,212,0.1)]'
+                                ? 'bg-slate-900/30 border-slate-800/50 opacity-40 cursor-not-allowed'
+                                : 'bg-slate-800/40 border-slate-600/30 hover:bg-slate-700/50 hover:border-cyan-500/30 hover:shadow-[0_0_15px_rgba(6,182,212,0.1)]'
                                 }`}
                         >
                             <div className="flex items-center gap-3">
@@ -271,8 +271,8 @@ const Sidebar: React.FC<Props> = ({ gameState, onBuyUnit, onAllianceRequest, sel
                     <button
                         key={tab}
                         className={`flex-1 py-3.5 text-center text-xs tracking-wider transition-all relative font-medium ${activeTab === (tab === 'UNITS' ? 'UNITS' : tab === 'DIPLOMACY' ? 'DIPLOMACY' : 'BUILD')
-                                ? 'text-cyan-400 bg-slate-800/30'
-                                : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/20'
+                            ? 'text-cyan-400 bg-slate-800/30'
+                            : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/20'
                             }`}
                         onClick={() => setActiveTab(tab === 'UNITS' ? 'UNITS' : tab === 'DIPLOMACY' ? 'DIPLOMACY' : 'BUILD')}
                     >

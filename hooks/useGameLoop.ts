@@ -236,7 +236,7 @@ export const useGameLoop = () => {
                                 newUnits.push({
                                     id: unitId,
                                     unitClass: isTank ? UnitClass.GROUND_TANK : UnitClass.INFANTRY,
-                                    factionId: 'NEUTRAL',
+                                    factionId: 'NEUTRAL_DEFENDER', // Use NEUTRAL_DEFENDER for combat targeting
                                     position: {
                                         lat: city.position.lat + (Math.random() - 0.5) * 0.02,
                                         lng: city.position.lng + (Math.random() - 0.5) * 0.02
@@ -246,8 +246,10 @@ export const useGameLoop = () => {
                                     maxHp: 100,
                                     attack: isTank ? 15 : 5,
                                     range: isTank ? 50 : 20,
-                                    speed: 0,
-                                    vision: 50
+                                    speed: isTank ? 1.5 : 1.0, // Give them some speed to patrol
+                                    vision: 50,
+                                    autoMode: 'DEFEND' as const, // Activate defensive AI
+                                    homePosition: { lat: city.position.lat, lng: city.position.lng }
                                 });
                             }
                         });

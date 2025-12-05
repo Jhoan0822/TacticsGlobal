@@ -44,7 +44,10 @@ const getRelation = (f1: Faction, f2Id: string): number => {
 
 const isHostile = (f1: Faction, f2Id: string): boolean => {
     if (f1.id === f2Id) return false;
+    // Only skip pure NEUTRAL (cities without defenders), not NEUTRAL_DEFENDER units
     if (f2Id === 'NEUTRAL') return false;
+    // NEUTRAL_DEFENDER is always hostile to everyone (city guards)
+    if (f2Id === 'NEUTRAL_DEFENDER') return true;
     return getRelation(f1, f2Id) <= DIPLOMACY.WAR_THRESHOLD;
 };
 
@@ -505,7 +508,8 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
         // RETALIATION LOGIC
         if (!targetId && !currentDestination && unit.lastAttackerId) {
             const attacker = nextUnits.find(u => u.id === unit.lastAttackerId);
-            if (attacker && attacker.hp > 0 && isHostile(factions.find(f => f.id === unit.factionId)!, attacker.factionId)) {
+            const unitFaction = factions.find(f => f.id === unit.factionId);
+            if (attacker && attacker.hp > 0 && unitFaction && isHostile(unitFaction, attacker.factionId)) {
                 targetId = unit.lastAttackerId;
             }
         }
