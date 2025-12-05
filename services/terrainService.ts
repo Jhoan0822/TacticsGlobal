@@ -81,12 +81,29 @@ export const TerrainService = {
 
     isPointLand: (lat: number, lng: number): boolean => {
         if (terrainCtx) {
-            const x = Math.floor((lng + 180) * (TERRAIN_WIDTH / 360));
-            const y = Math.floor((90 - lat) * (TERRAIN_HEIGHT / 180));
+            // Normalize longitude to -180 to 180 range
+            let normLng = lng;
+            while (normLng > 180) normLng -= 360;
+            while (normLng < -180) normLng += 360;
+
+            // Clamp latitude to valid range
+            const normLat = Math.max(-85, Math.min(85, lat));
+
+            // Convert to canvas coordinates using equirectangular projection
+            const x = Math.floor((normLng + 180) * (TERRAIN_WIDTH / 360));
+            const y = Math.floor((90 - normLat) * (TERRAIN_HEIGHT / 180));
+
+            // Ensure we're within canvas bounds
             const safeX = Math.max(0, Math.min(TERRAIN_WIDTH - 1, x));
             const safeY = Math.max(0, Math.min(TERRAIN_HEIGHT - 1, y));
-            const pixel = terrainCtx.getImageData(safeX, safeY, 1, 1).data;
-            return pixel[0] > 128;
+
+            try {
+                const pixel = terrainCtx.getImageData(safeX, safeY, 1, 1).data;
+                return pixel[0] > 128;
+            } catch (e) {
+                console.warn('[TERRAIN] Failed to read pixel at', safeX, safeY);
+                return false;
+            }
         }
         if (worldGeoJson) {
             return d3.geoContains(worldGeoJson, [lng, lat]);
@@ -109,20 +126,34 @@ export const TerrainService = {
         }
 
         const isLand = TerrainService.isPointLand(lat, lng);
-        const offset = 0.08;
+
+        // IMPROVED: Use 8-direction sampling with larger offset (~13km instead of ~9km)
+        const offset = 0.12;
+        const diagonalOffset = offset * 0.707; // cos(45°)
+
         const neighbors = [
-            TerrainService.isPointLand(lat + offset, lng),
-            TerrainService.isPointLand(lat - offset, lng),
-            TerrainService.isPointLand(lat, lng + offset),
-            TerrainService.isPointLand(lat, lng - offset)
+            TerrainService.isPointLand(lat + offset, lng),           // N
+            TerrainService.isPointLand(lat - offset, lng),           // S
+            TerrainService.isPointLand(lat, lng + offset),           // E
+            TerrainService.isPointLand(lat, lng - offset),           // W
+            TerrainService.isPointLand(lat + diagonalOffset, lng + diagonalOffset),  // NE
+            TerrainService.isPointLand(lat + diagonalOffset, lng - diagonalOffset),  // NW
+            TerrainService.isPointLand(lat - diagonalOffset, lng + diagonalOffset),  // SE
+            TerrainService.isPointLand(lat - diagonalOffset, lng - diagonalOffset)   // SW
         ];
 
-        const hasLandNeighbor = neighbors.some(n => n);
-        const hasOceanNeighbor = neighbors.some(n => !n);
+        const landCount = neighbors.filter(n => n).length;
+        const oceanCount = neighbors.filter(n => !n).length;
 
-        let result: 'LAND' | 'OCEAN' | 'COAST' = isLand ? 'LAND' : 'OCEAN';
-        if (hasLandNeighbor && hasOceanNeighbor) {
-            result = 'COAST';
+        let result: 'LAND' | 'OCEAN' | 'COAST';
+
+        // Determine terrain type based on current point and neighbors
+        if (isLand) {
+            // If center is land but has any ocean neighbors, it's coast
+            result = oceanCount > 0 ? 'COAST' : 'LAND';
+        } else {
+            // If center is ocean but has any land neighbors, it's coast
+            result = landCount > 0 ? 'COAST' : 'OCEAN';
         }
 
         terrainTypeCache.set(key, result);
@@ -209,13 +240,19 @@ export const TerrainService = {
     },
 
     // Find nearest water point for naval unit spawning
-    findNearestWater: (lat: number, lng: number): { lat: number, lng: number } => {
+    // IMPROVED: Larger search radius and validates terrain type
+    findNearestWater: (lat: number, lng: number, pois: POI[] = []): { lat: number, lng: number } => {
+        // If already in water (OCEAN or COAST), return current position
         if (!TerrainService.isPointLand(lat, lng)) {
             return { lat, lng };
         }
 
-        const steps = [0.05, 0.1, 0.15, 0.2, 0.3];
-        const angles = [0, 45, 90, 135, 180, 225, 270, 315];
+        // Extended search radius for better water finding
+        const steps = [0.03, 0.06, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5];
+        const angles = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+
+        let bestWaterPoint: { lat: number; lng: number } | null = null;
+        let bestDistance = Infinity;
 
         for (const step of steps) {
             for (const angle of angles) {
@@ -223,12 +260,32 @@ export const TerrainService = {
                 const testLat = lat + step * Math.cos(radians);
                 const testLng = lng + step * Math.sin(radians);
 
+                // Check if this point is water
                 if (!TerrainService.isPointLand(testLat, testLng)) {
-                    return { lat: testLat, lng: testLng };
+                    // Prefer pure OCEAN over COAST for naval units
+                    const terrainType = TerrainService.getTerrainType(testLat, testLng, pois);
+                    if (terrainType === 'OCEAN' || terrainType === 'COAST') {
+                        const dist = step;
+                        if (dist < bestDistance) {
+                            bestDistance = dist;
+                            bestWaterPoint = { lat: testLat, lng: testLng };
+                            // If we found OCEAN (not coast), prefer it and stop early
+                            if (terrainType === 'OCEAN') {
+                                console.log(`[TERRAIN] Found water at distance ${(step * 111).toFixed(1)}km, type: ${terrainType}`);
+                                return bestWaterPoint;
+                            }
+                        }
+                    }
                 }
+            }
+            // If we found any water point at this step level, return it
+            if (bestWaterPoint) {
+                console.log(`[TERRAIN] Found water (coast) at distance ${(bestDistance * 111).toFixed(1)}km`);
+                return bestWaterPoint;
             }
         }
 
+        console.warn('[TERRAIN] No water found within search radius!');
         return { lat, lng };
     },
 

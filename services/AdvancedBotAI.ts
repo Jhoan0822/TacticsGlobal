@@ -659,14 +659,33 @@ function executeProduction(brain: BotBrain, analysis: GameAnalysis, faction: Fac
             unitToSpawn = UnitClass.FRIGATE;
         }
 
-        // Spawn at port location (water)
+        // Spawn at port location (water) - IMPROVED
         if (unitToSpawn && analysis.myPorts.length > 0) {
             const port = analysis.myPorts[0];
-            const waterPoint = TerrainService.findNearestWater(port.position.lat, port.position.lng);
-            spawnLocation = {
-                lat: waterPoint.lat + (Math.random() - 0.5) * 0.02,
-                lng: waterPoint.lng + (Math.random() - 0.5) * 0.02
-            };
+            // Pass POIs to findNearestWater for better terrain type detection
+            const waterPoint = TerrainService.findNearestWater(port.position.lat, port.position.lng, state.pois);
+
+            // Add randomness but validate spawn location is still water
+            let spawnAttempts = 0;
+            let validSpawn = false;
+            while (!validSpawn && spawnAttempts < 5) {
+                const candidateLat = waterPoint.lat + (Math.random() - 0.5) * 0.02;
+                const candidateLng = waterPoint.lng + (Math.random() - 0.5) * 0.02;
+
+                // Validate this is actually water
+                if (!TerrainService.isPointLand(candidateLat, candidateLng)) {
+                    spawnLocation = { lat: candidateLat, lng: candidateLng };
+                    validSpawn = true;
+                    console.log(`[BOT AI] Naval spawn at (${candidateLat.toFixed(3)}, ${candidateLng.toFixed(3)}) - VALID WATER`);
+                }
+                spawnAttempts++;
+            }
+
+            // Fallback to exact water point if random failed
+            if (!validSpawn) {
+                spawnLocation = waterPoint;
+                console.log(`[BOT AI] Naval spawn fallback to water point`);
+            }
         }
     }
 

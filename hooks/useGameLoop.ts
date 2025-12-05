@@ -1066,6 +1066,7 @@ export const useGameLoop = () => {
         if (airUnits.includes(type)) {
             validSites = gameState.units.filter(u => u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.AIRBASE);
         } else if (seaUnits.includes(type)) {
+            // Sea units spawn from ports - need to find valid water location
             validSites = gameState.units.filter(u => u.factionId === gameState.localPlayerId && u.unitClass === UnitClass.PORT);
         } else if (landUnits.includes(type)) {
             validSites = [
@@ -1085,13 +1086,38 @@ export const useGameLoop = () => {
             const site = validSites[Math.floor(Math.random() * validSites.length)];
             spawnLat = site.position.lat;
             spawnLng = site.position.lng;
+
+            // For sea units, find valid water location near the port
+            if (seaUnits.includes(type)) {
+                const waterPoint = TerrainService.findNearestWater(spawnLat, spawnLng, gameState.pois);
+
+                // Try to find valid water spawn with some randomness
+                let validSpawn = false;
+                for (let attempt = 0; attempt < 5 && !validSpawn; attempt++) {
+                    const candidateLat = waterPoint.lat + (Math.random() - 0.5) * 0.02;
+                    const candidateLng = waterPoint.lng + (Math.random() - 0.5) * 0.02;
+
+                    if (!TerrainService.isPointLand(candidateLat, candidateLng)) {
+                        spawnLat = candidateLat;
+                        spawnLng = candidateLng;
+                        validSpawn = true;
+                        console.log(`[PLAYER] Naval spawn at (${candidateLat.toFixed(3)}, ${candidateLng.toFixed(3)}) - VALID WATER`);
+                    }
+                }
+
+                if (!validSpawn) {
+                    spawnLat = waterPoint.lat;
+                    spawnLng = waterPoint.lng;
+                    console.log(`[PLAYER] Naval spawn fallback to water point`);
+                }
+            }
         }
 
         if (spawnLat !== null && spawnLng !== null) {
             const payload: SpawnUnitPayload = {
                 unitClass: type,
-                lat: spawnLat + (Math.random() - 0.5) * 0.05,
-                lng: spawnLng + (Math.random() - 0.5) * 0.05,
+                lat: seaUnits.includes(type) ? spawnLat : spawnLat + (Math.random() - 0.5) * 0.05,
+                lng: seaUnits.includes(type) ? spawnLng : spawnLng + (Math.random() - 0.5) * 0.05,
                 unitId: `UNIT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
             };
             const action = createAction(gameState.localPlayerId, 'SPAWN_UNIT', payload);

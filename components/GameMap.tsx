@@ -7,6 +7,7 @@ import TerritoryLayer from './TerritoryLayer';
 import PlacementOverlay from './PlacementOverlay';
 import GameCanvas from './GameCanvas';
 import TerrainLayer from './TerrainLayer';
+import TerrainDebugLayer from './TerrainDebugLayer';
 import SmoothZoom from './SmoothZoom';
 
 interface Props {
@@ -321,6 +322,8 @@ const GameMap: React.FC<Props> = ({ units, factions, pois = [], projectiles, exp
 
                 {/* LAYER 1: STATIC TERRAIN (Z: 200) */}
                 <TerrainLayer />
+                {/* LAYER 1.5: TERRAIN DEBUG (Z: 250) - Toggle with F3 */}
+                <TerrainDebugLayer pois={pois} />
                 {/* LAYER 3: UNITS & POIS (Z: 600) */}
                 <GameCanvas
                     units={units}
