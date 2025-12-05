@@ -297,12 +297,22 @@ export const useGameLoop = () => {
                             }
                         });
 
-                        // Spawn Defenders for Neutral/Remaining Cities
-                        const neutralCities = finalPois.filter(p => p.type === POIType.CITY && !p.ownerFactionId);
+                        // CRITICAL FIX: Mark remaining unclaimed cities as NEUTRAL FIRST
+                        // This ensures defenders "know" they're already guarding this city
+                        // and don't attempt to capture it
+                        finalPois = finalPois.map(p => {
+                            if (p.type === POIType.CITY && !p.ownerFactionId) {
+                                return { ...p, ownerFactionId: 'NEUTRAL' };
+                            }
+                            return p;
+                        });
+
+                        // Spawn Defenders for Neutral Cities (now properly marked)
+                        const neutralCities = finalPois.filter(p => p.type === POIType.CITY && p.ownerFactionId === 'NEUTRAL');
                         const newUnits: GameUnit[] = [];
 
                         neutralCities.forEach(city => {
-                            // Spawn 1-2 defenders
+                            // Spawn 1-2 defenders per neutral city
                             const count = 1 + Math.floor(Math.random() * 2);
                             for (let i = 0; i < count; i++) {
                                 const isTank = Math.random() > 0.7;
@@ -310,7 +320,7 @@ export const useGameLoop = () => {
                                 newUnits.push({
                                     id: unitId,
                                     unitClass: isTank ? UnitClass.GROUND_TANK : UnitClass.INFANTRY,
-                                    factionId: 'NEUTRAL_DEFENDER', // Use NEUTRAL_DEFENDER for combat targeting
+                                    factionId: 'NEUTRAL_DEFENDER', // NEUTRAL_DEFENDER is hostile to everyone
                                     position: {
                                         lat: city.position.lat + (Math.random() - 0.5) * 0.02,
                                         lng: city.position.lng + (Math.random() - 0.5) * 0.02
@@ -320,10 +330,11 @@ export const useGameLoop = () => {
                                     maxHp: 100,
                                     attack: isTank ? 15 : 5,
                                     range: isTank ? 50 : 20,
-                                    speed: isTank ? 1.5 : 1.0, // Give them some speed to patrol
+                                    speed: isTank ? 1.5 : 1.0,
                                     vision: 50,
-                                    autoMode: 'DEFEND' as const, // Activate defensive AI
-                                    homePosition: { lat: city.position.lat, lng: city.position.lng }
+                                    autoMode: 'DEFEND' as const, // Defensive AI - stays near home
+                                    homePosition: { lat: city.position.lat, lng: city.position.lng },
+                                    guardingCityId: city.id // CRITICAL: Link defender to their city
                                 });
                             }
                         });

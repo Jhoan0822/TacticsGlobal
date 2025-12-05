@@ -19,6 +19,7 @@ import {
     UNIT_CONFIG, DIPLOMACY, PERSONALITY_CONFIG, POI_CONFIG
 } from '../constants';
 import { spawnUnit, getDistanceKm } from './gameLogic';
+import { TerrainService } from './terrainService';
 
 // =============================================================================
 // CONSTANTS - CRITICAL GAME MECHANICS
@@ -158,6 +159,25 @@ interface GameAnalysis {
     citiesOwned: number;
     totalCities: number;
     neutralCitiesAvailable: number;
+
+    // === FACILITY TRACKING ===
+    myAirbases: GameUnit[];
+    myPorts: GameUnit[];
+    myMilitaryBases: GameUnit[];
+    hasCoastalCity: boolean;
+
+    // Naval units
+    myNavalUnits: GameUnit[];
+    myAirUnits: GameUnit[];
+    myCarriers: GameUnit[];
+    myTransports: GameUnit[];
+
+    // Strategic needs
+    needsAirbase: boolean;
+    needsPort: boolean;
+    needsMilitaryBase: boolean;
+    needsNavalPower: boolean;
+    needsAirPower: boolean;
 }
 
 function analyzeGameState(faction: Faction, state: GameState, brain: BotBrain): GameAnalysis {
@@ -178,6 +198,31 @@ function analyzeGameState(faction: Faction, state: GameState, brain: BotBrain): 
         u.unitClass === UnitClass.MISSILE_LAUNCHER
     );
 
+    // === FACILITY TRACKING ===
+    const myAirbases = myUnits.filter(u => u.unitClass === UnitClass.AIRBASE);
+    const myPorts = myUnits.filter(u => u.unitClass === UnitClass.PORT);
+    const myMilitaryBases = myUnits.filter(u => u.unitClass === UnitClass.MILITARY_BASE);
+    const hasCoastalCity = myCities.some(c => c.isCoastal);
+
+    // === NAVAL AND AIR UNITS ===
+    const myNavalUnits = myUnits.filter(u =>
+        u.unitClass === UnitClass.DESTROYER ||
+        u.unitClass === UnitClass.FRIGATE ||
+        u.unitClass === UnitClass.BATTLESHIP ||
+        u.unitClass === UnitClass.SUBMARINE ||
+        u.unitClass === UnitClass.PATROL_BOAT ||
+        u.unitClass === UnitClass.AIRCRAFT_CARRIER
+    );
+    const myAirUnits = myUnits.filter(u =>
+        u.unitClass === UnitClass.FIGHTER_JET ||
+        u.unitClass === UnitClass.HEAVY_BOMBER ||
+        u.unitClass === UnitClass.HELICOPTER ||
+        u.unitClass === UnitClass.RECON_DRONE ||
+        u.unitClass === UnitClass.TROOP_TRANSPORT
+    );
+    const myCarriers = myUnits.filter(u => u.unitClass === UnitClass.AIRCRAFT_CARRIER);
+    const myTransports = myUnits.filter(u => u.unitClass === UnitClass.TROOP_TRANSPORT);
+
     // Find idle units (not assigned to any task force)
     const assignedUnitIds = new Set(brain.taskForces.flatMap(tf => tf.unitIds));
     const idleUnits = myUnits.filter(u =>
@@ -196,6 +241,17 @@ function analyzeGameState(faction: Faction, state: GameState, brain: BotBrain): 
 
     const enemyUnits = state.units.filter(u =>
         enemyFactionIds.includes(u.factionId) && u.hp > 0
+    );
+
+    // Check enemy naval/air presence
+    const enemyNavalUnits = enemyUnits.filter(u =>
+        u.unitClass === UnitClass.DESTROYER ||
+        u.unitClass === UnitClass.AIRCRAFT_CARRIER ||
+        u.unitClass === UnitClass.BATTLESHIP
+    );
+    const enemyAirUnits = enemyUnits.filter(u =>
+        u.unitClass === UnitClass.FIGHTER_JET ||
+        u.unitClass === UnitClass.HEAVY_BOMBER
     );
 
     // Cities
@@ -236,6 +292,18 @@ function analyzeGameState(faction: Faction, state: GameState, brain: BotBrain): 
     const needMoreInfantry = infantryCount < Math.max(3, neutralCities.length * 2);
     const needMoreCombat = combatUnitCount < infantryCount * 2; // Combat should escort infantry
 
+    // === STRATEGIC NEEDS ===
+    // Need airbase after owning 2+ cities and having gold
+    const needsAirbase = myCities.length >= 2 && myAirbases.length === 0 && faction.gold >= 800;
+    // Need port if we have a coastal city and don't have one yet
+    const needsPort = hasCoastalCity && myPorts.length === 0 && faction.gold >= 600;
+    // Need military base when expanding
+    const needsMilitaryBase = myCities.length >= 3 && myMilitaryBases.length === 0 && faction.gold >= 500;
+    // Need naval power if enemies have ships or coastal targets exist
+    const needsNavalPower = myPorts.length > 0 && (enemyNavalUnits.length > 0 || hasCoastalCity) && myNavalUnits.length < 3;
+    // Need air power if enemies have air or we have an airbase
+    const needsAirPower = myAirbases.length > 0 && (enemyAirUnits.length > 0 || myAirUnits.length < 2);
+
     return {
         myUnits,
         myCities,
@@ -256,7 +324,23 @@ function analyzeGameState(faction: Faction, state: GameState, brain: BotBrain): 
         needMoreCombat,
         citiesOwned: myCities.length,
         totalCities: state.pois.filter(p => p.type === POIType.CITY).length,
-        neutralCitiesAvailable: neutralCities.length
+        neutralCitiesAvailable: neutralCities.length,
+        // Facility tracking
+        myAirbases,
+        myPorts,
+        myMilitaryBases,
+        hasCoastalCity,
+        // Naval and Air units
+        myNavalUnits,
+        myAirUnits,
+        myCarriers,
+        myTransports,
+        // Strategic needs
+        needsAirbase,
+        needsPort,
+        needsMilitaryBase,
+        needsNavalPower,
+        needsAirPower
     };
 }
 
@@ -457,13 +541,75 @@ function executeProduction(brain: BotBrain, analysis: GameAnalysis, faction: Fac
     if (spendable < 50) return newState;
 
     // ================================================================
-    // PRODUCTION PRIORITY: INFANTRY FIRST FOR CAPTURE!
+    // PRODUCTION PRIORITY SYSTEM (NEW!)
+    // 1. FACILITIES (enable new unit types)
+    // 2. Infantry (for capture - critical)
+    // 3. Naval Units (from Ports)
+    // 4. Air Units (from Airbases)
+    // 5. Combat Units (tanks, etc)
     // ================================================================
-    let unitToSpawn: UnitClass | null = null;
 
-    // CRITICAL: We need infantry to capture cities!
-    if (analysis.needMoreInfantry && analysis.neutralCitiesAvailable > 0) {
-        // Check if any capture task force needs infantry
+    let unitToSpawn: UnitClass | null = null;
+    let spawnLocation: { lat: number; lng: number } | null = null;
+
+    // ================================================================
+    // PRIORITY 1: BUILD FACILITIES
+    // ================================================================
+
+    // AIRBASE - enables air unit production
+    if (!unitToSpawn && analysis.needsAirbase) {
+        const airbaseCost = UNIT_CONFIG[UnitClass.AIRBASE]?.cost;
+        if (airbaseCost && spendable >= airbaseCost.gold) {
+            // Build at first city (inland preferred)
+            const targetCity = analysis.myCities[0];
+            unitToSpawn = UnitClass.AIRBASE;
+            spawnLocation = {
+                lat: targetCity.position.lat + (Math.random() - 0.5) * 0.02,
+                lng: targetCity.position.lng + (Math.random() - 0.5) * 0.02
+            };
+            console.log(`[BOT AI] ${faction.name}: Building AIRBASE at ${targetCity.name || 'city'}`);
+        }
+    }
+
+    // PORT - enables naval unit production (requires coastal city)
+    if (!unitToSpawn && analysis.needsPort && analysis.hasCoastalCity) {
+        const portCost = UNIT_CONFIG[UnitClass.PORT]?.cost;
+        if (portCost && spendable >= portCost.gold) {
+            // Find coastal city
+            const coastalCity = analysis.myCities.find(c => c.isCoastal);
+            if (coastalCity) {
+                // Find nearest coast point
+                const coastPoint = TerrainService.findNearestCoastPoint(
+                    coastalCity.position.lat,
+                    coastalCity.position.lng
+                );
+                if (coastPoint) {
+                    unitToSpawn = UnitClass.PORT;
+                    spawnLocation = coastPoint;
+                    console.log(`[BOT AI] ${faction.name}: Building PORT near ${coastalCity.name || 'coastal city'}`);
+                }
+            }
+        }
+    }
+
+    // MILITARY BASE - enables more army production
+    if (!unitToSpawn && analysis.needsMilitaryBase) {
+        const baseCost = UNIT_CONFIG[UnitClass.MILITARY_BASE]?.cost;
+        if (baseCost && spendable >= baseCost.gold) {
+            const targetCity = analysis.myCities[Math.floor(Math.random() * analysis.myCities.length)];
+            unitToSpawn = UnitClass.MILITARY_BASE;
+            spawnLocation = {
+                lat: targetCity.position.lat + (Math.random() - 0.5) * 0.03,
+                lng: targetCity.position.lng + (Math.random() - 0.5) * 0.03
+            };
+            console.log(`[BOT AI] ${faction.name}: Building MILITARY_BASE`);
+        }
+    }
+
+    // ================================================================
+    // PRIORITY 2: INFANTRY FOR CAPTURE (Critical!)
+    // ================================================================
+    if (!unitToSpawn && analysis.needMoreInfantry && analysis.neutralCitiesAvailable > 0) {
         const needsInfantry = brain.taskForces.some(tf =>
             tf.type === 'CAPTURE' &&
             tf.unitIds.filter(uid => analysis.myInfantry.some(u => u.id === uid)).length < tf.requiredInfantry
@@ -474,7 +620,71 @@ function executeProduction(brain: BotBrain, analysis: GameAnalysis, faction: Fac
         }
     }
 
-    // Then produce combat units
+    // ================================================================
+    // PRIORITY 3: NAVAL UNITS (from Ports)
+    // ================================================================
+    if (!unitToSpawn && analysis.myPorts.length > 0 && analysis.needsNavalPower) {
+        // Decide which naval unit to build
+        const rand = Math.random();
+        if (rand < 0.15 && analysis.myCarriers.length === 0) {
+            // Build Aircraft Carrier (powerful mobile airbase)
+            const carrierCost = UNIT_CONFIG[UnitClass.AIRCRAFT_CARRIER]?.cost;
+            if (carrierCost && spendable >= carrierCost.gold && (faction.oil || 0) >= (carrierCost.oil || 0)) {
+                unitToSpawn = UnitClass.AIRCRAFT_CARRIER;
+                console.log(`[BOT AI] ${faction.name}: Building AIRCRAFT_CARRIER!`);
+            }
+        } else if (rand < 0.5) {
+            // Build Destroyer (versatile naval combat)
+            unitToSpawn = UnitClass.DESTROYER;
+        } else {
+            // Build Frigate (cheaper naval option)
+            unitToSpawn = UnitClass.FRIGATE;
+        }
+
+        // Spawn at port location (water)
+        if (unitToSpawn && analysis.myPorts.length > 0) {
+            const port = analysis.myPorts[0];
+            const waterPoint = TerrainService.findNearestWater(port.position.lat, port.position.lng);
+            spawnLocation = {
+                lat: waterPoint.lat + (Math.random() - 0.5) * 0.02,
+                lng: waterPoint.lng + (Math.random() - 0.5) * 0.02
+            };
+        }
+    }
+
+    // ================================================================
+    // PRIORITY 4: AIR UNITS (from Airbases)
+    // ================================================================
+    if (!unitToSpawn && analysis.myAirbases.length > 0 && analysis.needsAirPower) {
+        const rand = Math.random();
+        if (rand < 0.2 && analysis.myTransports.length < 2 && analysis.infantryCount >= 3) {
+            // Build Troop Transport for rapid infantry deployment
+            unitToSpawn = UnitClass.TROOP_TRANSPORT;
+            console.log(`[BOT AI] ${faction.name}: Building TROOP_TRANSPORT for paradrop ops!`);
+        } else if (rand < 0.6) {
+            // Build Fighter Jet (air superiority)
+            unitToSpawn = UnitClass.FIGHTER_JET;
+        } else if (rand < 0.8) {
+            // Build Helicopter (close air support)
+            unitToSpawn = UnitClass.HELICOPTER;
+        } else {
+            // Build Heavy Bomber (ground attack)
+            unitToSpawn = UnitClass.HEAVY_BOMBER;
+        }
+
+        // Spawn at airbase
+        if (unitToSpawn && analysis.myAirbases.length > 0) {
+            const airbase = analysis.myAirbases[0];
+            spawnLocation = {
+                lat: airbase.position.lat + (Math.random() - 0.5) * 0.02,
+                lng: airbase.position.lng + (Math.random() - 0.5) * 0.02
+            };
+        }
+    }
+
+    // ================================================================
+    // PRIORITY 5: COMBAT UNITS (backup production)
+    // ================================================================
     if (!unitToSpawn && analysis.needMoreCombat) {
         // Personality-based combat unit selection
         if (faction.personality === BotPersonality.AGGRESSIVE) {
@@ -505,19 +715,24 @@ function executeProduction(brain: BotBrain, analysis: GameAnalysis, faction: Fac
         unitToSpawn = UnitClass.INFANTRY;
         const infCost = UNIT_CONFIG[UnitClass.INFANTRY].cost;
         if (!infCost || spendable < infCost.gold) return newState;
+        spawnLocation = null; // Reset to use city
     }
 
-    // Spawn at random city
-    const spawnCity = analysis.myCities[Math.floor(Math.random() * analysis.myCities.length)];
-    const finalCost = UNIT_CONFIG[unitToSpawn].cost!;
+    // Default spawn location: random city
+    if (!spawnLocation) {
+        const spawnCity = analysis.myCities[Math.floor(Math.random() * analysis.myCities.length)];
+        spawnLocation = {
+            lat: spawnCity.position.lat + (Math.random() - 0.5) * 0.02,
+            lng: spawnCity.position.lng + (Math.random() - 0.5) * 0.02
+        };
+    }
 
-    const offsetLat = (Math.random() - 0.5) * 0.02;
-    const offsetLng = (Math.random() - 0.5) * 0.02;
+    const finalCost = UNIT_CONFIG[unitToSpawn].cost!;
 
     const newUnit = spawnUnit(
         unitToSpawn,
-        spawnCity.position.lat + offsetLat,
-        spawnCity.position.lng + offsetLng,
+        spawnLocation.lat,
+        spawnLocation.lng,
         faction.id
     );
 

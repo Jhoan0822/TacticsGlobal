@@ -143,6 +143,7 @@ export interface GameUnit extends UnitStats {
   autoMode?: 'NONE' | 'DEFEND' | 'ATTACK' | 'PATROL';
   autoTarget?: boolean; // Auto-engage enemies in range
   homePosition?: { lat: number; lng: number }; // For patrol/defend
+  guardingCityId?: string; // For neutral defenders - the city they protect
 
   // INTERPOLATION: Visual position for smooth client rendering
   visualPosition?: { lat: number; lng: number };
