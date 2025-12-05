@@ -11,6 +11,9 @@ const TERRAIN_WIDTH = 4096;
 const TERRAIN_HEIGHT = 2048;
 let terrainCtx: CanvasRenderingContext2D | null = null;
 
+// CRITICAL: Store the projection used for rasterization so we can use it for lookups
+let terrainProjection: d3.GeoProjection | null = null;
+
 // Spatial Cache
 const terrainTypeCache = new Map<string, 'LAND' | 'OCEAN' | 'COAST'>();
 
@@ -46,16 +49,17 @@ const loadGeoJson = async () => {
                 ctx.fillRect(0, 0, TERRAIN_WIDTH, TERRAIN_HEIGHT);
                 ctx.fillStyle = '#FFFFFF';
 
-                const projection = d3.geoEquirectangular()
+                // Create and STORE the projection
+                terrainProjection = d3.geoEquirectangular()
                     .fitSize([TERRAIN_WIDTH, TERRAIN_HEIGHT], worldGeoJson);
-                const path = d3.geoPath().projection(projection).context(ctx);
+                const path = d3.geoPath().projection(terrainProjection).context(ctx);
 
                 ctx.beginPath();
                 path(worldGeoJson);
                 ctx.fill();
 
                 terrainCtx = ctx;
-                console.log("Terrain Rasterized @ 4096x2048");
+                console.log("Terrain Rasterized @ 4096x2048 with stored projection");
             }
         }
     } catch (e) {
@@ -80,7 +84,8 @@ export const TerrainService = {
     getWorldData: () => worldGeoJson,
 
     isPointLand: (lat: number, lng: number): boolean => {
-        if (terrainCtx) {
+        // Use the stored projection if available (same one used for rasterization)
+        if (terrainCtx && terrainProjection) {
             // Normalize longitude to -180 to 180 range
             let normLng = lng;
             while (normLng > 180) normLng -= 360;
@@ -89,9 +94,12 @@ export const TerrainService = {
             // Clamp latitude to valid range
             const normLat = Math.max(-85, Math.min(85, lat));
 
-            // Convert to canvas coordinates using equirectangular projection
-            const x = Math.floor((normLng + 180) * (TERRAIN_WIDTH / 360));
-            const y = Math.floor((90 - normLat) * (TERRAIN_HEIGHT / 180));
+            // CRITICAL FIX: Use the SAME projection that was used to rasterize!
+            const projected = terrainProjection([normLng, normLat]);
+            if (!projected) return false;
+
+            const x = Math.floor(projected[0]);
+            const y = Math.floor(projected[1]);
 
             // Ensure we're within canvas bounds
             const safeX = Math.max(0, Math.min(TERRAIN_WIDTH - 1, x));
