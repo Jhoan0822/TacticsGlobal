@@ -253,13 +253,38 @@ class NetworkServiceImpl {
     // ============================================
 
     sendRequest(request: import('../types').NetworkRequest) {
+        console.log('[NETWORK] sendRequest called, isHost:', this.isHost, 'request:', request.type);
+
         if (this.isHost) {
             // If I am host, loopback immediately
+            console.log('[NETWORK] Host loopback for request:', request.type);
             this.notify({ type: 'REQUEST', request, fromPeerId: this.myPeerId });
             return;
         }
+
         if (this.hostConn && this.hostConn.open) {
+            console.log('[NETWORK] Client sending request to host:', request.type);
             this.hostConn.send({ type: 'REQUEST', payload: request });
+        } else {
+            // CONNECTION NOT READY - This is a critical failure case
+            console.error('[NETWORK] CRITICAL: Cannot send request - host connection not open!',
+                'hostConn:', !!this.hostConn,
+                'open:', this.hostConn?.open,
+                'request:', request.type
+            );
+
+            // Retry after a small delay if connection exists but not open
+            if (this.hostConn) {
+                console.log('[NETWORK] Attempting retry in 500ms...');
+                setTimeout(() => {
+                    if (this.hostConn && this.hostConn.open) {
+                        console.log('[NETWORK] Retry succeeded, sending request');
+                        this.hostConn.send({ type: 'REQUEST', payload: request });
+                    } else {
+                        console.error('[NETWORK] Retry FAILED - connection still not open');
+                    }
+                }, 500);
+            }
         }
     }
 
