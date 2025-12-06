@@ -285,10 +285,13 @@ export class ParticleSystem {
             const screenX = (d.x[idx] - offsetX) * zoom + halfW;
             const screenY = (d.y[idx] - offsetY) * zoom + halfH;
 
-            ctx.globalAlpha = d.alpha[idx];
+            // CRITICAL: Ensure radius is never negative (was causing client crash)
+            const radius = Math.max(0.1, d.size[idx] * zoom);
+
+            ctx.globalAlpha = Math.max(0, Math.min(1, d.alpha[idx])); // Clamp alpha too
             ctx.fillStyle = `rgb(${d.r[idx]}, ${d.g[idx]}, ${d.b[idx]})`;
             ctx.beginPath();
-            ctx.arc(screenX, screenY, d.size[idx] * zoom, 0, Math.PI * 2);
+            ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
             ctx.fill();
         }
 
