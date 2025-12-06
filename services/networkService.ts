@@ -43,6 +43,7 @@ class NetworkServiceImpl {
     private orderedPeers: string[] = []; // For deterministic backup host selection
     private lastKnownState: GameState | null = null;
     private onHostMigration: ((newHostId: string) => void) | null = null;
+    private hostMigrationInProgress: boolean = false; // Mutex for host migration
 
     private static readonly HOST_TIMEOUT_MS = 5000; // 5 seconds to declare host dead
     private static readonly HEARTBEAT_INTERVAL_MS = 1000; // Send heartbeat every second
@@ -104,12 +105,48 @@ class NetworkServiceImpl {
         });
     }
 
-    connect(hostId: string) {
-        if (!this.peer) return;
-        console.log('[NETWORK] Connecting to host:', hostId);
-        const conn = this.peer.connect(hostId, { reliable: true });
-        this.hostConn = conn;
-        this.handleConnection(conn);
+    connect(hostId: string, timeoutMs: number = 10000): Promise<boolean> {
+        return new Promise((resolve) => {
+            if (!this.peer) {
+                console.error('[NETWORK] Cannot connect - peer not initialized');
+                resolve(false);
+                return;
+            }
+            console.log('[NETWORK] Connecting to host:', hostId);
+            const conn = this.peer.connect(hostId, { reliable: true });
+            this.hostConn = conn;
+
+            let resolved = false;
+            const timeout = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    console.error('[NETWORK] Connection timeout to host:', hostId);
+                    conn.close();
+                    this.hostConn = null;
+                    resolve(false);
+                }
+            }, timeoutMs);
+
+            conn.on('open', () => {
+                if (!resolved) {
+                    resolved = true;
+                    clearTimeout(timeout);
+                    console.log('[NETWORK] Connection established to host:', hostId);
+                    resolve(true);
+                }
+            });
+
+            conn.on('error', (err) => {
+                if (!resolved) {
+                    resolved = true;
+                    clearTimeout(timeout);
+                    console.error('[NETWORK] Connection error to host:', hostId, err);
+                    resolve(false);
+                }
+            });
+
+            this.handleConnection(conn);
+        });
     }
 
     private handleConnection(conn: DataConnection) {
@@ -164,8 +201,27 @@ class NetworkServiceImpl {
 
 
     private handleMessage(msg: NetworkMessage, conn: DataConnection) {
+        // Validate message structure before processing
+        if (!msg || typeof msg !== 'object' || !msg.type) {
+            console.warn('[NETWORK] Invalid message received - missing type:', msg);
+            return;
+        }
+
+        const validTypes = ['ACTION', 'FULL_STATE', 'LOBBY_UPDATE', 'START_GAME',
+            'REQUEST', 'RESPONSE', 'HEARTBEAT', 'NEW_HOST'];
+        if (!validTypes.includes(msg.type)) {
+            console.warn('[NETWORK] Unknown message type:', msg.type);
+            return;
+        }
+
         switch (msg.type) {
             case 'ACTION':
+                // Validate action structure
+                if (!msg.action || !msg.action.actionId || !msg.action.actionType) {
+                    console.warn('[NETWORK] Invalid ACTION message - missing action data');
+                    return;
+                }
+
                 // Deduplicate actions
                 if (this.processedActions.has(msg.action.actionId)) {
                     console.log('[NETWORK] Duplicate action ignored:', msg.action.actionId);
@@ -173,10 +229,12 @@ class NetworkServiceImpl {
                 }
                 this.processedActions.add(msg.action.actionId);
 
-                // Clean old entries (keep last 1000)
+                // Clean old entries (keep last 500) - batch cleanup for efficiency
                 if (this.processedActions.size > 1000) {
-                    const first = this.processedActions.values().next().value;
-                    this.processedActions.delete(first);
+                    const entries = Array.from(this.processedActions);
+                    const toDelete = entries.slice(0, entries.length - 500);
+                    toDelete.forEach(id => this.processedActions.delete(id));
+                    console.log('[NETWORK] Cleaned', toDelete.length, 'old action IDs');
                 }
 
                 console.log('[NETWORK] Action received:', msg.action.actionType, 'from', msg.action.playerId);
@@ -457,6 +515,13 @@ class NetworkServiceImpl {
      * Uses deterministic peer ordering - first peer in sorted list becomes new host
      */
     private initiateHostMigration() {
+        // Prevent concurrent migrations (race condition fix)
+        if (this.hostMigrationInProgress) {
+            console.log('[NETWORK] Host migration already in progress, skipping');
+            return;
+        }
+        this.hostMigrationInProgress = true;
+
         // Stop checking for heartbeats
         this.stopHeartbeat();
 
@@ -503,6 +568,11 @@ class NetworkServiceImpl {
         if (this.onHostMigration) {
             this.onHostMigration(newHostId);
         }
+
+        // Reset migration flag after a delay to allow for completion
+        setTimeout(() => {
+            this.hostMigrationInProgress = false;
+        }, 5000);
     }
 
     /**

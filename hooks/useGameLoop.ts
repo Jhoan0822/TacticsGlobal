@@ -174,7 +174,9 @@ export const useGameLoop = () => {
                                 ...hostUnit,
                                 visualPosition: prevUnit.visualPosition,
                                 visualHeading: prevUnit.visualHeading,
-                                lastServerUpdate: Date.now()
+                                lastServerUpdate: Date.now(),
+                                // PRESERVE local formation data until explicitly changed by action
+                                formationOffset: prevUnit.formationOffset
                             };
                         }
                         return {
@@ -205,6 +207,7 @@ export const useGameLoop = () => {
                         gameResult: hostState.gameResult,
                         gameStats: hostState.gameStats,
                         pendingBotFactions: hostState.pendingBotFactions,
+                        nukesInFlight: hostState.nukesInFlight || [], // Ensure always initialized
 
                         // === LOCAL UI STATE (preserved) ===
                         gameMode: finalGameMode,

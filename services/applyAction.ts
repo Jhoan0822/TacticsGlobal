@@ -1,4 +1,4 @@
-import { GameState, UnitClass, POIType, NuclearMissile } from '../types';
+import { GameState, UnitClass, POIType, NuclearMissile, Faction } from '../types';
 import { GameAction, SpawnUnitPayload, MoveUnitsPayload, AttackTargetPayload, BuildStructurePayload, SelectBasePayload, ClaimPOIPayload, LaunchNukePayload } from './schemas';
 import { spawnUnit } from './gameLogic';
 import { UNIT_CONFIG, NUKE_CONFIG } from '../constants';
@@ -214,15 +214,16 @@ export function applyAction(state: GameState, action: GameAction): GameState {
             // CRITICAL: Ensure player faction exists in factions array for resource generation
             const existingFaction = nextState.factions.find(f => f.id === action.playerId);
             if (!existingFaction) {
-                // Create new faction for this player
-                const newFaction: any = {
+                // Create new faction for this player with proper type safety
+                const newFaction: Faction = {
                     id: action.playerId,
                     name: action.playerId.startsWith('BOT_') ? `Bot ${action.playerId.slice(4)}` : 'Player',
                     color: action.playerId.startsWith('BOT_') ? '#666666' : '#3b82f6', // Blue for player
                     type: action.playerId.startsWith('BOT_') ? 'BOT' : 'PLAYER',
                     gold: 10000, // Starting gold
                     oil: 1000,   // Starting oil
-                    relations: {}
+                    relations: {},
+                    aggression: action.playerId.startsWith('BOT_') ? 1.0 : 0 // Bots have aggression
                 };
                 nextState.factions = [...nextState.factions, newFaction];
                 console.log('[APPLY ACTION] Created new faction for player:', action.playerId);

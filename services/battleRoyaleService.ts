@@ -96,6 +96,7 @@ class BattleRoyaleServiceImpl {
 
     /**
      * Join Battle Royale by taking over a bot faction (LOCAL)
+     * Uses immutable updates to prevent React rendering issues
      */
     requestTakeoverBot(botFactionId: string): boolean {
         const gameState = PhantomHostService.getGameState();
@@ -113,36 +114,42 @@ class BattleRoyaleServiceImpl {
             return false;
         }
 
-        // Generate player ID
-        const playerId = 'PLAYER_' + Date.now().toString(36);
-
-        // Convert bot to player
-        botFaction.type = 'PLAYER';
+        // Generate unique player ID with random component to prevent collisions on rapid joins
+        const playerId = 'PLAYER_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
         const oldId = botFaction.id;
-        botFaction.id = playerId;
 
-        // Update all units owned by bot
-        gameState.units.forEach(u => {
-            if (u.factionId === oldId) {
-                u.factionId = playerId;
-            }
-        });
+        // IMMUTABLE UPDATES - don't mutate original objects!
+        // Update factions array
+        const newFactions = gameState.factions.map(f =>
+            f.id === botFactionId
+                ? { ...f, type: 'PLAYER' as const, id: playerId }
+                : f
+        );
+        gameState.factions = newFactions;
 
-        // Update cities owned by bot
-        gameState.pois.forEach(p => {
-            if (p.ownerFactionId === oldId) {
-                p.ownerFactionId = playerId;
-            }
-        });
+        // Update all units owned by bot (immutable)
+        const newUnits = gameState.units.map(u =>
+            u.factionId === oldId
+                ? { ...u, factionId: playerId }
+                : u
+        );
+        gameState.units = newUnits;
 
-        // Update BR state
-        const botPlayer = brState.players.find(p => p.factionId === oldId);
-        if (botPlayer) {
-            botPlayer.peerId = playerId;
-            botPlayer.factionId = playerId;
-            botPlayer.isBot = false;
-            botPlayer.replacedBotId = oldId;
-        }
+        // Update cities owned by bot (immutable)
+        const newPois = gameState.pois.map(p =>
+            p.ownerFactionId === oldId
+                ? { ...p, ownerFactionId: playerId }
+                : p
+        );
+        gameState.pois = newPois;
+
+        // Update BR state (immutable)
+        const newPlayers = brState.players.map(p =>
+            p.factionId === oldId
+                ? { ...p, peerId: playerId, factionId: playerId, isBot: false, replacedBotId: oldId }
+                : p
+        );
+        brState.players = newPlayers;
 
         console.log('[BR] Player took over bot:', oldId, '-> new ID:', playerId);
 
@@ -159,6 +166,7 @@ class BattleRoyaleServiceImpl {
 
     /**
      * Join Battle Royale with a new faction at a specific city (LOCAL)
+     * Uses immutable updates to prevent React rendering issues
      */
     requestNewFaction(targetCityId: string): boolean {
         const gameState = PhantomHostService.getGameState();
@@ -176,8 +184,8 @@ class BattleRoyaleServiceImpl {
             return false;
         }
 
-        // Generate player ID and create faction with UNUSED color
-        const playerId = 'PLAYER_' + Date.now().toString(36);
+        // Generate unique player ID with random component
+        const playerId = 'PLAYER_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
 
         // Find a faction preset that's not already used
         const usedColors = gameState.factions.map(f => f.color);
@@ -200,14 +208,18 @@ class BattleRoyaleServiceImpl {
             aggression: 0
         };
 
-        gameState.factions.push(newFaction);
+        // IMMUTABLE UPDATES
+        gameState.factions = [...gameState.factions, newFaction];
 
-        // Claim city
-        city.ownerFactionId = playerId;
-        city.tier = 1;
+        // Claim city (immutable)
+        gameState.pois = gameState.pois.map(p =>
+            p.id === targetCityId
+                ? { ...p, ownerFactionId: playerId, tier: 1 }
+                : p
+        );
 
-        // Spawn HQ
-        gameState.units.push({
+        // Spawn HQ (immutable)
+        const hqUnit = {
             id: `HQ-${playerId}-${Date.now()}`,
             unitClass: UnitClass.COMMAND_CENTER,
             factionId: playerId,
@@ -219,16 +231,17 @@ class BattleRoyaleServiceImpl {
             range: UNIT_CONFIG[UnitClass.COMMAND_CENTER].range,
             speed: 0,
             vision: UNIT_CONFIG[UnitClass.COMMAND_CENTER].vision
-        } as any);
+        } as any;
+        gameState.units = [...gameState.units, hqUnit];
 
-        // Add to BR players
-        brState.players.push({
+        // Add to BR players (immutable)
+        brState.players = [...brState.players, {
             peerId: playerId,
             factionId: playerId,
             joinTime: Date.now(),
             isBot: false,
             isPhantomHost: false
-        });
+        }];
 
         console.log('[BR] Player started new faction at:', city.name, 'ID:', playerId);
 

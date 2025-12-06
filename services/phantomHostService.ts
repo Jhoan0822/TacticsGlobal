@@ -99,19 +99,66 @@ class PhantomHostServiceImpl {
 
     /**
      * Save state to localStorage for persistence
+     * Includes size checks and fallback on failure
      */
     private saveState(): void {
         if (!this.gameState || !this.brState) return;
 
         try {
+            // Create a clean copy trimmed of temporary/visual data
+            const trimmedGameState = {
+                ...this.gameState,
+                // Remove visual-only fields that don't need persistence
+                projectiles: [],
+                explosions: [],
+                messages: this.gameState.messages.slice(-50), // Keep last 50 messages max
+            };
+
+            // Clear visual position data from units to reduce size
+            trimmedGameState.units = trimmedGameState.units.map(u => {
+                const { visualPosition, visualHeading, lastServerUpdate, ...rest } = u as any;
+                return rest;
+            });
+
             const state = {
-                gameState: this.gameState,
+                gameState: trimmedGameState,
                 brState: this.brState,
                 savedAt: Date.now()
             };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+            const serialized = JSON.stringify(state);
+
+            // Check size before saving (localStorage typically 5-10MB limit)
+            // Warn if over 2MB, fail-safe if over 4MB
+            if (serialized.length > 4 * 1024 * 1024) {
+                console.warn('[PHANTOM] State too large, further trimming...');
+                state.gameState.messages = [];
+                state.gameState.units = state.gameState.units.slice(-200); // Keep last 200 units
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            } else {
+                localStorage.setItem(STORAGE_KEY, serialized);
+            }
         } catch (e) {
-            console.warn('[PHANTOM] Failed to save state:', e);
+            console.error('[PHANTOM] Failed to save state:', e);
+            // Fallback: Try to save minimal state for room persistence
+            try {
+                const minimalState = {
+                    brState: {
+                        roomId: this.brState.roomId,
+                        config: this.brState.config,
+                        roundNumber: this.brState.roundNumber,
+                        currentScenarioIndex: this.brState.currentScenarioIndex,
+                        roundStartTime: this.brState.roundStartTime,
+                        isRoundActive: this.brState.isRoundActive,
+                        players: this.brState.players.filter(p => p.isBot || p.isPhantomHost) // Only persist bots
+                    },
+                    savedAt: Date.now()
+                };
+                localStorage.setItem(STORAGE_KEY + '_MINIMAL', JSON.stringify(minimalState));
+                console.log('[PHANTOM] Saved minimal fallback state');
+            } catch (e2) {
+                console.error('[PHANTOM] Even minimal save failed:', e2);
+            }
         }
     }
 
@@ -288,6 +335,16 @@ class PhantomHostServiceImpl {
             .sort(() => Math.random() - 0.5);
 
         const units: any[] = [];
+
+        // Add phantom host as a "player" to track it (ONLY ONCE - outside the loop!)
+        this.brState!.players.push({
+            peerId: this.roomId,
+            factionId: 'PHANTOM',
+            joinTime: Date.now(),
+            isBot: false,
+            isPhantomHost: true
+        });
+
         botFactions.forEach((bot, idx) => {
             if (idx < shuffledCities.length) {
                 const city = shuffledCities[idx];
@@ -330,15 +387,6 @@ class PhantomHostServiceImpl {
                     });
                 }
             }
-
-            // Add phantom host as a "player" to track it
-            this.brState!.players.push({
-                peerId: this.roomId,
-                factionId: 'PHANTOM',
-                joinTime: Date.now(),
-                isBot: false,
-                isPhantomHost: true
-            });
 
             // Add bots to player list
             this.brState!.players.push({
