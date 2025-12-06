@@ -5,37 +5,38 @@ export const GAME_TICK_MS = 30; // Faster tick for "Frenetic" feel
 export const COMBAT_RADIUS_KM = 30;
 export const MAX_UNITS_ON_MAP = 200;
 
-// NUCLEAR STRIKE CONFIGURATION
+// NUCLEAR STRIKE CONFIGURATION - REBALANCED
 export const NUKE_CONFIG = {
-  LAUNCH_COST: { gold: 3000, oil: 1500 },    // Cost PER launch
-  FLIGHT_TIME_MS: 8000,                       // 8 seconds to reach target
-  MAX_RANGE_KM: 500,                          // Maximum strike range
-  COOLDOWN_TICKS: 2400,                       // ~60 seconds at 40ms/tick
-  BLAST_RADIUS_KM: 50,                        // Area of effect
-  GROUND_DAMAGE_PERCENT: 0.75,                // 75% max HP to ground units
-  SEA_DAMAGE_PERCENT: 0.50,                   // 50% max HP to sea units
-  CITY_DAMAGE_PERCENT: 0.50,                  // 50% max HP to cities
-  STRUCTURE_DESTROY_RADIUS_KM: 30,            // Structures within this die
+  LAUNCH_COST: { gold: 2000, oil: 1000 },    // More affordable than before
+  FLIGHT_TIME_MS: 10000,                      // Slower, more interceptable
+  MAX_RANGE_KM: 400,                          // Reduced range
+  COOLDOWN_TICKS: 1800,                       // ~45 seconds
+  BLAST_RADIUS_KM: 40,                        // Smaller blast
+  GROUND_DAMAGE_PERCENT: 0.60,                // Less devastating
+  SEA_DAMAGE_PERCENT: 0.40,
+  CITY_DAMAGE_PERCENT: 0.35,                  // Cities more resilient
+  STRUCTURE_DESTROY_RADIUS_KM: 20,            // Smaller instant-kill zone
 };
 
+// DIFFICULTY CONFIGURATION - SMOOTHED PROGRESSION
 export const DIFFICULTY_CONFIG = {
   [Difficulty.EASY]: {
-    WAVE_INTERVAL_MS: 60000, // Faster than before
-    INTENSITY_GAIN: 0.1,
-    AGGRESSION_MODIFIER: 0.8,
-    RESOURCE_MULTIPLIER: 1.0,
+    WAVE_INTERVAL_MS: 90000,     // Slower waves (90s)
+    INTENSITY_GAIN: 0.05,        // Calmer pacing
+    AGGRESSION_MODIFIER: 0.6,    // Less aggressive
+    RESOURCE_MULTIPLIER: 0.8,    // Fewer resources for AI
   },
   [Difficulty.MEDIUM]: {
-    WAVE_INTERVAL_MS: 30000, // 30s waves
-    INTENSITY_GAIN: 0.2,
-    AGGRESSION_MODIFIER: 1.5,
-    RESOURCE_MULTIPLIER: 1.5,
+    WAVE_INTERVAL_MS: 50000,     // Moderate waves (50s)
+    INTENSITY_GAIN: 0.15,
+    AGGRESSION_MODIFIER: 1.0,    // Fair
+    RESOURCE_MULTIPLIER: 1.0,
   },
   [Difficulty.HARD]: {
-    WAVE_INTERVAL_MS: 10000, // 10s waves (CHAOS)
-    INTENSITY_GAIN: 0.5, // Instant chaos
-    AGGRESSION_MODIFIER: 3.0, // Relentless
-    RESOURCE_MULTIPLIER: 2.0, // Infinite money basically
+    WAVE_INTERVAL_MS: 30000,     // Faster but not spam (30s)
+    INTENSITY_GAIN: 0.3,
+    AGGRESSION_MODIFIER: 1.5,    // Aggressive but beatable
+    RESOURCE_MULTIPLIER: 1.3,
   }
 };
 
@@ -140,17 +141,18 @@ export const FACTION_PRESETS = [
   { name: 'Black Sea Union', color: '#6366f1' },
 ];
 
+// POI CONFIGURATION - REBALANCED with higher city HP for defensive play
 export const POI_CONFIG = {
-  [POIType.CITY]: { incomeGold: 50, incomeOil: 10, captureRadius: 0.1, defaultHp: 2000, captureThreshold: 0 },
-  [POIType.OIL_RIG]: { incomeGold: 10, incomeOil: 80, captureRadius: 0.1, defaultHp: 500, captureThreshold: 0 },
-  [POIType.GOLD_MINE]: { incomeGold: 150, incomeOil: 5, captureRadius: 0.1, defaultHp: 300, captureThreshold: 0 }
+  [POIType.CITY]: { incomeGold: 40, incomeOil: 8, captureRadius: 0.1, defaultHp: 2500, captureThreshold: 0 },
+  [POIType.OIL_RIG]: { incomeGold: 8, incomeOil: 60, captureRadius: 0.1, defaultHp: 600, captureThreshold: 0 },
+  [POIType.GOLD_MINE]: { incomeGold: 100, incomeOil: 3, captureRadius: 0.1, defaultHp: 400, captureThreshold: 0 }
 };
 
-// Tier multiplier for city resource generation (Tier 1 = Capital, Tier 3 = Small town)
+// Tier multiplier - incentivize capturing capitals
 export const TIER_MULTIPLIER: Record<number, number> = {
-  1: 3.0,  // Capital cities (Washington DC, London, Tokyo, etc.) = 3x resources
-  2: 1.5,  // Major cities (Seattle, Barcelona, etc.) = 1.5x resources
-  3: 1.0   // Small cities/towns = base resources
+  1: 2.5,  // Capital cities - high value targets
+  2: 1.5,  // Major cities
+  3: 0.8   // Small cities - less valuable
 };
 
 interface ExtendedUnitStats extends UnitStats {
@@ -192,113 +194,207 @@ export const WEAPON_MAPPING: Record<UnitClass, WeaponType> = {
   [UnitClass.MISSILE_SILO]: WeaponType.MISSILE,
 };
 
-// UNRESTRICTED COMBAT CONFIG
-// All units have 'validTargets' set to everything to support the "No Restrictions" rule.
-// EXTREME OVERHAUL: SPEEDS 5x, ATTACK 3x
+// =============================================
+// UNIT COOLDOWNS (Fire rate differentiation)
+// =============================================
+export const COOLDOWN_CONFIG: Record<UnitClass, number> = {
+  [UnitClass.COMMAND_CENTER]: 15,
+  [UnitClass.MOBILE_COMMAND_CENTER]: 12,
+  [UnitClass.MILITARY_BASE]: 15,
+  [UnitClass.AIRBASE]: 20,
+  [UnitClass.PORT]: 15,
+  [UnitClass.INFANTRY]: 8,           // Fast fire
+  [UnitClass.SPECIAL_FORCES]: 6,     // Elite - faster
+  [UnitClass.GROUND_TANK]: 15,       // Medium
+  [UnitClass.MISSILE_LAUNCHER]: 30,  // Slow artillery
+  [UnitClass.SAM_LAUNCHER]: 25,      // Medium-slow
+  [UnitClass.FIGHTER_JET]: 12,       // Fast
+  [UnitClass.HEAVY_BOMBER]: 40,      // Very slow, high damage
+  [UnitClass.TROOP_TRANSPORT]: 20,   // Slow
+  [UnitClass.HELICOPTER]: 10,        // Fast
+  [UnitClass.RECON_DRONE]: 15,       // Medium
+  [UnitClass.AIRCRAFT_CARRIER]: 25,  // Slow
+  [UnitClass.DESTROYER]: 12,         // Medium-fast
+  [UnitClass.FRIGATE]: 15,           // Medium
+  [UnitClass.BATTLESHIP]: 35,        // Slow bombardment
+  [UnitClass.SUBMARINE]: 20,         // Medium
+  [UnitClass.PATROL_BOAT]: 8,        // Fast
+  [UnitClass.MINELAYER]: 25,         // Medium-slow
+  [UnitClass.MISSILE_SILO]: 100,     // Very slow (nukes are separate)
+};
+
+// =============================================
+// DAMAGE MODIFIERS (Rock-Paper-Scissors counters)
+// =============================================
+export const DAMAGE_MODIFIERS: Partial<Record<UnitClass, Partial<Record<UnitClass | 'CITY' | 'STRUCTURE', number>>>> = {
+  // SAM is devastating vs air
+  [UnitClass.SAM_LAUNCHER]: {
+    [UnitClass.FIGHTER_JET]: 2.0,
+    [UnitClass.HEAVY_BOMBER]: 2.0,
+    [UnitClass.HELICOPTER]: 1.8,
+    [UnitClass.RECON_DRONE]: 2.5,
+    [UnitClass.TROOP_TRANSPORT]: 1.8,
+  },
+  // Fighters dominate air-to-air
+  [UnitClass.FIGHTER_JET]: {
+    [UnitClass.HEAVY_BOMBER]: 1.5,
+    [UnitClass.HELICOPTER]: 1.5,
+    [UnitClass.RECON_DRONE]: 2.0,
+    [UnitClass.TROOP_TRANSPORT]: 1.3,
+  },
+  // Bombers excel vs ground
+  [UnitClass.HEAVY_BOMBER]: {
+    [UnitClass.GROUND_TANK]: 1.5,
+    [UnitClass.INFANTRY]: 2.0,
+    [UnitClass.SPECIAL_FORCES]: 1.5,
+    [UnitClass.MILITARY_BASE]: 1.5,
+    [UnitClass.MISSILE_LAUNCHER]: 1.3,
+    'CITY': 1.3,
+  },
+  // Submarines counter surface ships
+  [UnitClass.SUBMARINE]: {
+    [UnitClass.AIRCRAFT_CARRIER]: 2.0,
+    [UnitClass.BATTLESHIP]: 1.5,
+    [UnitClass.DESTROYER]: 1.3,
+    [UnitClass.FRIGATE]: 1.5,
+  },
+  // Destroyers counter submarines
+  [UnitClass.DESTROYER]: {
+    [UnitClass.SUBMARINE]: 2.0,
+    [UnitClass.PATROL_BOAT]: 1.3,
+  },
+  // Tanks strong vs infantry
+  [UnitClass.GROUND_TANK]: {
+    [UnitClass.INFANTRY]: 1.5,
+    [UnitClass.SPECIAL_FORCES]: 1.3,
+  },
+  // Infantry weak vs vehicles, strong at capturing
+  [UnitClass.INFANTRY]: {
+    [UnitClass.GROUND_TANK]: 0.5,
+    [UnitClass.MISSILE_LAUNCHER]: 0.7,
+    'CITY': 1.5, // Bonus for capturing
+  },
+  // Missile Launcher bonus vs structures
+  [UnitClass.MISSILE_LAUNCHER]: {
+    [UnitClass.MILITARY_BASE]: 1.5,
+    [UnitClass.COMMAND_CENTER]: 1.3,
+    'CITY': 1.4,
+  },
+  // Battleship bombardment
+  [UnitClass.BATTLESHIP]: {
+    [UnitClass.MILITARY_BASE]: 1.5,
+    [UnitClass.PORT]: 1.5,
+    'CITY': 1.3,
+  },
+};
+
+// =============================================
+// UNIT CONFIGURATION - FULLY REBALANCED
+// =============================================
 export const UNIT_CONFIG: Record<UnitClass, ExtendedUnitStats> = {
   // --- BUILDINGS / STATIC ---
-  [UnitClass.COMMAND_CENTER]: { hp: 10000, maxHp: 10000, attack: 600, range: 100, speed: 0, vision: 500, cost: { gold: 0, oil: 0 }, validTargets: CAT_ALL },
-  [UnitClass.MOBILE_COMMAND_CENTER]: { hp: 5000, maxHp: 5000, attack: 150, range: 50, speed: 1.5, vision: 300, cost: { gold: 5000, oil: 2000 }, validTargets: CAT_ALL },
-  [UnitClass.MILITARY_BASE]: { hp: 3000, maxHp: 3000, attack: 300, range: 100, speed: 0, vision: 200, cost: { gold: 1500, oil: 500 }, validTargets: CAT_ALL },
-  [UnitClass.AIRBASE]: { hp: 2000, maxHp: 2000, attack: 0, range: 0, speed: 0, vision: 250, cost: { gold: 2000, oil: 500 }, validTargets: [] },
-  [UnitClass.PORT]: { hp: 3000, maxHp: 3000, attack: 150, range: 50, speed: 0, vision: 200, cost: { gold: 3000, oil: 1000 }, validTargets: CAT_ALL },
+  [UnitClass.COMMAND_CENTER]: { hp: 12000, maxHp: 12000, attack: 500, range: 100, speed: 0, vision: 500, cost: { gold: 0, oil: 0 }, validTargets: CAT_ALL },
+  [UnitClass.MOBILE_COMMAND_CENTER]: { hp: 6000, maxHp: 6000, attack: 150, range: 50, speed: 1.5, vision: 300, cost: { gold: 4000, oil: 1500 }, validTargets: CAT_ALL },
+  [UnitClass.MILITARY_BASE]: { hp: 3500, maxHp: 3500, attack: 250, range: 80, speed: 0, vision: 200, cost: { gold: 1200, oil: 400 }, validTargets: CAT_ALL },
+  [UnitClass.AIRBASE]: { hp: 2500, maxHp: 2500, attack: 0, range: 0, speed: 0, vision: 250, cost: { gold: 1500, oil: 600 }, validTargets: [] },
+  [UnitClass.PORT]: { hp: 3500, maxHp: 3500, attack: 120, range: 50, speed: 0, vision: 200, cost: { gold: 2000, oil: 800 }, validTargets: CAT_ALL },
 
-  // --- INFANTRY ---
+  // --- INFANTRY (Capture specialists) ---
   [UnitClass.INFANTRY]: {
-    hp: 100, maxHp: 100, attack: 45, range: 5, speed: 1.5, vision: 30,
-    cost: { gold: 50, oil: 0 }, canCapture: true,
+    hp: 120, maxHp: 120, attack: 35, range: 8, speed: 2.0, vision: 40,
+    cost: { gold: 75, oil: 0 }, canCapture: true,
     validTargets: CAT_ALL
   },
   [UnitClass.SPECIAL_FORCES]: {
-    hp: 200, maxHp: 200, attack: 120, range: 8, speed: 0.75, vision: 50,
-    cost: { gold: 200, oil: 50 }, canCapture: true,
+    hp: 250, maxHp: 250, attack: 100, range: 15, speed: 1.5, vision: 80,
+    cost: { gold: 300, oil: 75 }, canCapture: true,
     validTargets: CAT_ALL
   },
 
   // --- GROUND VEHICLES ---
   [UnitClass.GROUND_TANK]: {
-    hp: 1200, maxHp: 1200, attack: 270, range: 15, speed: 3.0, vision: 40,
-    cost: { gold: 400, oil: 100 }, canCapture: true,
+    hp: 1000, maxHp: 1000, attack: 220, range: 18, speed: 2.5, vision: 50,
+    cost: { gold: 450, oil: 120 }, canCapture: true,
     validTargets: CAT_ALL
   },
   [UnitClass.MISSILE_LAUNCHER]: {
-    hp: 400, maxHp: 400, attack: 450, range: 100, speed: 0.75, vision: 40,
-    cost: { gold: 600, oil: 200 },
+    hp: 350, maxHp: 350, attack: 400, range: 80, speed: 1.0, vision: 60,
+    cost: { gold: 550, oil: 180 },
     validTargets: CAT_ALL
   },
   [UnitClass.SAM_LAUNCHER]: {
-    hp: 400, maxHp: 400, attack: 360, range: 120, speed: 0.75, vision: 60,
-    cost: { gold: 500, oil: 100 },
+    hp: 350, maxHp: 350, attack: 350, range: 100, speed: 1.0, vision: 80,
+    cost: { gold: 400, oil: 150 },
     validTargets: CAT_ALL
   },
 
-  // --- AIR ---
+  // --- AIR (NERFED - was overpowered) ---
   [UnitClass.FIGHTER_JET]: {
-    hp: 400, maxHp: 400, attack: 240, range: 100, speed: 40.0, vision: 150,
-    cost: { gold: 300, oil: 100 },
+    hp: 300, maxHp: 300, attack: 180, range: 80, speed: 25.0, vision: 120,
+    cost: { gold: 500, oil: 200 },
     validTargets: CAT_ALL
   },
   [UnitClass.HEAVY_BOMBER]: {
-    hp: 1000, maxHp: 1000, attack: 750, range: 200, speed: 8.0, vision: 100,
-    cost: { gold: 800, oil: 400 },
+    hp: 800, maxHp: 800, attack: 600, range: 150, speed: 6.0, vision: 100,
+    cost: { gold: 1200, oil: 600 },
     validTargets: CAT_ALL
   },
   [UnitClass.TROOP_TRANSPORT]: {
-    hp: 800, maxHp: 800, attack: 30, range: 50, speed: 9.0, vision: 80,
-    cost: { gold: 300, oil: 200 }, canCapture: false,
+    hp: 600, maxHp: 600, attack: 20, range: 30, speed: 12.0, vision: 80,
+    cost: { gold: 400, oil: 250 }, canCapture: false,
     validTargets: CAT_ALL
   },
   [UnitClass.HELICOPTER]: {
-    hp: 300, maxHp: 300, attack: 120, range: 40, speed: 5.0, vision: 60,
-    cost: { gold: 200, oil: 50 }, canCapture: false,
+    hp: 350, maxHp: 350, attack: 150, range: 35, speed: 6.0, vision: 70,
+    cost: { gold: 350, oil: 100 }, canCapture: true, // NEW: can capture
     validTargets: CAT_ALL
   },
   [UnitClass.RECON_DRONE]: {
-    hp: 100, maxHp: 100, attack: 15, range: 50, speed: 12.0, vision: 300,
-    cost: { gold: 100, oil: 0 },
+    hp: 80, maxHp: 80, attack: 10, range: 40, speed: 15.0, vision: 300,
+    cost: { gold: 150, oil: 50 },
     validTargets: CAT_ALL
   },
 
-  // --- SEA ---
+  // --- SEA (BUFFED - was underutilized) ---
   [UnitClass.AIRCRAFT_CARRIER]: {
-    hp: 5000, maxHp: 5000, attack: 150, range: 300, speed: 2.0, vision: 200,
-    cost: { gold: 2500, oil: 1500 },
+    hp: 4000, maxHp: 4000, attack: 100, range: 250, speed: 2.5, vision: 200,
+    cost: { gold: 2000, oil: 1200 },
     validTargets: CAT_ALL
   },
   [UnitClass.DESTROYER]: {
-    hp: 2500, maxHp: 2500, attack: 360, range: 150, speed: 10.0, vision: 120,
-    cost: { gold: 800, oil: 500 },
+    hp: 2000, maxHp: 2000, attack: 300, range: 120, speed: 8.0, vision: 120,
+    cost: { gold: 700, oil: 400 },
     validTargets: CAT_ALL
   },
   [UnitClass.FRIGATE]: {
-    hp: 1800, maxHp: 1800, attack: 240, range: 100, speed: 5.0, vision: 100,
-    cost: { gold: 600, oil: 300 },
+    hp: 1500, maxHp: 1500, attack: 250, range: 100, speed: 6.0, vision: 100,
+    cost: { gold: 500, oil: 250 },
     validTargets: CAT_ALL
   },
   [UnitClass.BATTLESHIP]: {
-    hp: 4000, maxHp: 4000, attack: 900, range: 200, speed: 2.5, vision: 100,
-    cost: { gold: 1500, oil: 800 },
+    hp: 5000, maxHp: 5000, attack: 700, range: 180, speed: 2.0, vision: 100,
+    cost: { gold: 1800, oil: 1000 },
     validTargets: CAT_ALL
   },
   [UnitClass.SUBMARINE]: {
-    hp: 1200, maxHp: 1200, attack: 600, range: 80, speed: 3.0, vision: 60,
-    cost: { gold: 1000, oil: 400 },
+    hp: 1000, maxHp: 1000, attack: 500, range: 70, speed: 4.0, vision: 60,
+    cost: { gold: 800, oil: 350 },
     validTargets: CAT_ALL
   },
   [UnitClass.PATROL_BOAT]: {
-    hp: 300, maxHp: 300, attack: 120, range: 40, speed: 6.0, vision: 60,
-    cost: { gold: 150, oil: 50 }, canCapture: true, // ENABLED CAPTURE
+    hp: 200, maxHp: 200, attack: 80, range: 30, speed: 10.0, vision: 80,
+    cost: { gold: 100, oil: 25 }, canCapture: true,
     validTargets: CAT_ALL
   },
   [UnitClass.MINELAYER]: {
-    hp: 400, maxHp: 400, attack: 300, range: 20, speed: 3.0, vision: 50,
-    cost: { gold: 300, oil: 100 },
+    hp: 350, maxHp: 350, attack: 400, range: 15, speed: 4.0, vision: 50,
+    cost: { gold: 250, oil: 80 },
     validTargets: CAT_ALL
   },
   // STRATEGIC
   [UnitClass.MISSILE_SILO]: {
-    hp: 5000, maxHp: 5000, attack: 0, range: 0, speed: 0, vision: 300,
-    cost: { gold: 5000, oil: 2000 },
+    hp: 4000, maxHp: 4000, attack: 0, range: 0, speed: 0, vision: 300,
+    cost: { gold: 3500, oil: 1500 },
     validTargets: []
   },
 };

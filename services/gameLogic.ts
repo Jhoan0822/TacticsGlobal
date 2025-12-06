@@ -1,6 +1,6 @@
 
 import { GameState, GameUnit, Faction, Projectile, POIType, UnitClass, POI, LogMessage, WeaponType, Explosion, NuclearMissile } from '../types';
-import { DIPLOMACY, POI_CONFIG, UNIT_CONFIG, AI_CONFIG, WEAPON_MAPPING, TIER_MULTIPLIER, NUKE_CONFIG } from '../constants';
+import { DIPLOMACY, POI_CONFIG, UNIT_CONFIG, AI_CONFIG, WEAPON_MAPPING, TIER_MULTIPLIER, NUKE_CONFIG, COOLDOWN_CONFIG, DAMAGE_MODIFIERS } from '../constants';
 import { updateAI } from './aiService';
 import { TerrainService } from './terrainService';
 import { Intent } from './schemas';
@@ -781,7 +781,25 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
             if (dist <= u1.range) {
                 const weaponType = WEAPON_MAPPING[u1.unitClass] || WeaponType.TRACER;
                 const isMissile = weaponType === WeaponType.MISSILE;
-                let damage = Math.max(5, u1.attack * 0.5);
+
+                // ========== DAMAGE CALCULATION WITH MODIFIERS ==========
+                let baseDamage = Math.max(5, u1.attack * 0.5);
+
+                // Apply rock-paper-scissors damage modifiers
+                let damageModifier = 1.0;
+                const attackerModifiers = DAMAGE_MODIFIERS[u1.unitClass];
+                if (attackerModifiers) {
+                    if ('unitClass' in target) {
+                        const targetMod = attackerModifiers[target.unitClass as UnitClass];
+                        if (targetMod) damageModifier = targetMod;
+                    } else if ('type' in target) {
+                        // POI target - check for CITY modifier
+                        const cityMod = attackerModifiers['CITY' as any];
+                        if (cityMod) damageModifier = cityMod;
+                    }
+                }
+
+                let damage = baseDamage * damageModifier;
 
                 // ========== TERRAIN COMBAT BONUSES ==========
                 // Units defending in cities get +25% defense (damage reduction)
@@ -854,7 +872,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
                         const tFaction = factions.find(f => f.id === target.factionId);
                         logEvent(messages, `${tFaction?.name || 'Enemy'} ${target.unitClass} destroyed!`, 'info');
 
-                        // VETERANCY LOGIC
+                        // VETERANCY LOGIC - REBALANCED (Additive, not multiplicative)
                         u1.kills = (u1.kills || 0) + 1;
                         const currentLevel = u1.veterancy || 0;
                         let newLevel = currentLevel;
@@ -865,11 +883,13 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
 
                         if (newLevel > currentLevel) {
                             u1.veterancy = newLevel;
-                            // Level Up Bonus: Heal + Stats
-                            u1.maxHp *= 1.2;
+                            // ADDITIVE BONUSES: 10% per level, max 30% (not exponential 73%)
+                            const baseStats = UNIT_CONFIG[u1.unitClass];
+                            const veterancyBonus = 0.10 * newLevel; // 10%, 20%, or 30%
+                            u1.maxHp = Math.floor(baseStats.maxHp * (1 + veterancyBonus));
                             u1.hp = u1.maxHp; // Full Heal
-                            u1.attack *= 1.2;
-                            logEvent(messages, `${u1.unitClass} promoted to Rank ${newLevel}!`, 'success');
+                            u1.attack = Math.floor(baseStats.attack * (1 + veterancyBonus * 0.5)); // Attack grows slower
+                            logEvent(messages, `${u1.unitClass} promoted to Rank ${newLevel}! (+${Math.floor(veterancyBonus * 100)}% HP)`, 'success');
                         }
                     }
                 }
@@ -885,7 +905,7 @@ export const processGameTick = (currentState: GameState, intents: Intent[] = [],
                 );
                 nextProjectiles.push(proj);
 
-                u1.cooldown = 10; // Frames until next shot
+                u1.cooldown = COOLDOWN_CONFIG[u1.unitClass] || 10; // Unit-specific fire rate
 
                 // If unit, mark retaliation
                 if (!('type' in target)) {

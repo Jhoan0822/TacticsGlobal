@@ -321,8 +321,8 @@ export const fetchWorldData = async (centerLat: number, centerLng: number, radiu
     name: 'Global Command (You)',
     color: '#3b82f6',
     type: 'PLAYER',
-    gold: 50000, // HIGH STARTING RESOURCES
-    oil: 10000,
+    gold: 5000, // BALANCED STARTING RESOURCES (was 50000)
+    oil: 1500,  // (was 10000)
     relations: {}
   });
 
@@ -347,8 +347,8 @@ export const fetchWorldData = async (centerLat: number, centerLng: number, radiu
       name: preset.name,
       color: preset.color,
       type: 'AI',
-      gold: 50000, // HIGH STARTING RESOURCES
-      oil: 10000,
+      gold: 5000, // BALANCED STARTING RESOURCES (was 50000)
+      oil: 1500,  // (was 10000)
       relations: { 'PLAYER': -50 }, // Dislike player by default
       aggression: 0.8 + Math.random() * 0.2, // VERY AGGRESSIVE (0.8 - 1.0)
       lastAiUpdate: 0,

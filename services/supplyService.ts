@@ -7,18 +7,18 @@ import { GameUnit, POI, POIType, UnitClass } from '../types';
 
 // Supply configuration
 const SUPPLY_CONFIG = {
-    BASE_SUPPLY_RADIUS_KM: 100,      // Base supply radius from HQ/cities
-    MILITARY_BASE_BONUS_KM: 50,      // Bonus radius from military bases
-    CARRIER_SUPPLY_RADIUS_KM: 80,    // Aircraft carriers supply nearby units
+    BASE_SUPPLY_RADIUS_KM: 150,      // Larger supply radius (was 100)
+    MILITARY_BASE_BONUS_KM: 75,      // Bonus radius from military bases (was 50)
+    CARRIER_SUPPLY_RADIUS_KM: 100,   // Aircraft carriers supply nearby units (was 80)
 
-    // Attrition settings
-    OUT_OF_SUPPLY_THRESHOLD: 0,      // When supply drops below this, attrition begins
-    ATTRITION_RATE_PER_TICK: 0.1,    // HP lost per tick when out of supply
-    MORALE_PENALTY_PERCENT: 20,      // Attack reduction when low supply
-    SPEED_PENALTY_PERCENT: 30,       // Speed reduction when low supply
+    // Attrition settings - ENABLED
+    OUT_OF_SUPPLY_THRESHOLD: 25,     // When supply drops below 25%, attrition begins (was 0 = disabled)
+    ATTRITION_RATE_PER_TICK: 0.05,   // HP lost per tick when out of supply (was 0.1)
+    MORALE_PENALTY_PERCENT: 15,      // Attack reduction when low supply (was 20)
+    SPEED_PENALTY_PERCENT: 20,       // Speed reduction when low supply (was 30)
 
     // Supply recovery
-    SUPPLY_RECOVERY_RATE: 2,         // Supply restored per tick in supply range
+    SUPPLY_RECOVERY_RATE: 3,         // Supply restored per tick in supply range (was 2)
     MAX_SUPPLY: 100                  // Maximum supply level
 };
 
