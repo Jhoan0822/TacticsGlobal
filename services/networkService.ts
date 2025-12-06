@@ -135,6 +135,7 @@ class NetworkServiceImpl {
             console.log('[NETWORK] Connection closed:', conn.peer);
             this.conns = this.conns.filter(c => c !== conn);
             if (this.hostConn === conn) this.hostConn = null;
+            this.cleanupDisconnectedPlayer(conn.peer);
             this.notify({ type: 'DISCONNECT', peerId: conn.peer });
         });
 
@@ -142,6 +143,25 @@ class NetworkServiceImpl {
             console.error('[NETWORK] Connection error:', err);
         });
     }
+
+    /**
+     * Clean up state related to a disconnected player
+     * Prevents memory leaks and ID conflicts on reconnection
+     */
+    cleanupDisconnectedPlayer(peerId: string) {
+        // Clear processed actions from this peer to prevent dedup issues on reconnect
+        const toDelete: string[] = [];
+        this.processedActions.forEach(actionId => {
+            if (actionId.startsWith(peerId)) toDelete.push(actionId);
+        });
+        toDelete.forEach(id => this.processedActions.delete(id));
+
+        // Remove from ordered peers (for host migration)
+        this.orderedPeers = this.orderedPeers.filter(p => p !== peerId);
+
+        console.log('[NETWORK] Cleaned up peer:', peerId, 'removed', toDelete.length, 'cached actions');
+    }
+
 
     private handleMessage(msg: NetworkMessage, conn: DataConnection) {
         switch (msg.type) {

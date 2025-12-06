@@ -14,7 +14,9 @@ export type GameActionType =
     | 'BUILD_STRUCTURE'
     | 'SELECT_BASE'
     | 'CLAIM_POI'
-    | 'LAUNCH_NUKE';
+    | 'LAUNCH_NUKE'
+    | 'SET_AUTO_MODE'
+    | 'SET_FORMATION';
 
 // Core action structure - simple and fast
 export interface GameAction {
@@ -69,6 +71,20 @@ export interface LaunchNukePayload {
     targetLat: number;
     targetLng: number;
     nukeId: string;
+}
+
+// Auto-control action payloads (for network sync)
+export interface SetAutoModePayload {
+    unitIds: string[];
+    mode: 'NONE' | 'DEFEND' | 'ATTACK' | 'PATROL';
+}
+
+export interface SetFormationPayload {
+    unitIds: string[];
+    formation: 'NONE' | 'LINE' | 'COLUMN' | 'WEDGE' | 'SQUARE' | 'CIRCLE' | 'SPREAD';
+    centerLat: number;
+    centerLng: number;
+    facingAngle: number;
 }
 
 // Network message types

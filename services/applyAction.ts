@@ -4,6 +4,89 @@ import { spawnUnit } from './gameLogic';
 import { UNIT_CONFIG, NUKE_CONFIG } from '../constants';
 
 /**
+ * Calculate formation positions for units
+ * Simplified version that returns lat/lng positions for each unit index
+ */
+function calculateFormationOffsets(
+    unitCount: number,
+    formation: string,
+    centerLat: number,
+    centerLng: number,
+    facingAngle: number
+): { lat: number; lng: number }[] {
+    const positions: { lat: number; lng: number }[] = [];
+    const spacing = 0.5; // ~55km spacing between units
+    const angleRad = (facingAngle * Math.PI) / 180;
+
+    for (let i = 0; i < unitCount; i++) {
+        let offsetX = 0;
+        let offsetY = 0;
+
+        switch (formation) {
+            case 'LINE': {
+                // Horizontal line perpendicular to facing direction
+                const linePos = i - (unitCount - 1) / 2;
+                offsetX = linePos * spacing * Math.cos(angleRad + Math.PI / 2);
+                offsetY = linePos * spacing * Math.sin(angleRad + Math.PI / 2);
+                break;
+            }
+            case 'COLUMN': {
+                // Vertical column in facing direction
+                const colPos = i - (unitCount - 1) / 2;
+                offsetX = colPos * spacing * Math.cos(angleRad);
+                offsetY = colPos * spacing * Math.sin(angleRad);
+                break;
+            }
+            case 'WEDGE': {
+                // V-shape pointing in facing direction
+                const row = Math.floor(i / 2);
+                const side = i % 2 === 0 ? -1 : 1;
+                offsetX = -row * spacing * Math.cos(angleRad) + side * row * spacing * 0.5 * Math.cos(angleRad + Math.PI / 2);
+                offsetY = -row * spacing * Math.sin(angleRad) + side * row * spacing * 0.5 * Math.sin(angleRad + Math.PI / 2);
+                break;
+            }
+            case 'SQUARE': {
+                // Square grid formation
+                const gridSize = Math.ceil(Math.sqrt(unitCount));
+                const row = Math.floor(i / gridSize);
+                const col = i % gridSize;
+                offsetX = (col - (gridSize - 1) / 2) * spacing;
+                offsetY = (row - (gridSize - 1) / 2) * spacing;
+                break;
+            }
+            case 'CIRCLE': {
+                // Circular formation
+                const angle = (2 * Math.PI * i) / unitCount;
+                const radius = spacing * 0.5;
+                offsetX = radius * Math.cos(angle);
+                offsetY = radius * Math.sin(angle);
+                break;
+            }
+            case 'SPREAD': {
+                // Maximum spread to avoid AoE
+                const spreadSpacing = 1.5;
+                const spreadGridSize = Math.ceil(Math.sqrt(unitCount));
+                const spreadRow = Math.floor(i / spreadGridSize);
+                const spreadCol = i % spreadGridSize;
+                offsetX = (spreadCol - (spreadGridSize - 1) / 2) * spreadSpacing;
+                offsetY = (spreadRow - (spreadGridSize - 1) / 2) * spreadSpacing;
+                break;
+            }
+            default:
+                // NONE - no offset
+                break;
+        }
+
+        positions.push({
+            lat: centerLat + offsetY,
+            lng: centerLng + offsetX
+        });
+    }
+
+    return positions;
+}
+
+/**
  * Apply a network action to the game state IMMEDIATELY
  * This is called when receiving actions from other players
  * NO latency - executes as soon as message arrives
@@ -234,6 +317,68 @@ export function applyAction(state: GameState, action: GameAction): GameState {
                 nextState.messages = [...nextState.messages, message];
                 console.log('[APPLY ACTION] Nuclear missile launched from silo:', payload.siloId);
             }
+            break;
+        }
+
+        case 'SET_AUTO_MODE': {
+            const payload = action.payload as { unitIds: string[], mode: 'NONE' | 'DEFEND' | 'ATTACK' | 'PATROL' };
+            nextState.units = nextState.units.map(u => {
+                if (payload.unitIds.includes(u.id) && u.factionId === action.playerId) {
+                    return {
+                        ...u,
+                        autoMode: payload.mode,
+                        homePosition: payload.mode !== 'NONE' ? { ...u.position } : undefined,
+                        targetId: null,
+                        destination: null
+                    };
+                }
+                return u;
+            });
+            console.log('[APPLY ACTION] Auto-mode set:', payload.mode, 'for', payload.unitIds.length, 'units');
+            break;
+        }
+
+        case 'SET_FORMATION': {
+            const payload = action.payload as {
+                unitIds: string[],
+                formation: string,
+                centerLat: number,
+                centerLng: number,
+                facingAngle: number
+            };
+
+            // Calculate formation offsets for each unit
+            const unitsToUpdate = nextState.units.filter(
+                u => payload.unitIds.includes(u.id) && u.factionId === action.playerId
+            );
+
+            if (unitsToUpdate.length === 0) break;
+
+            // Calculate positions based on formation type
+            const positions = calculateFormationOffsets(
+                unitsToUpdate.length,
+                payload.formation,
+                payload.centerLat,
+                payload.centerLng,
+                payload.facingAngle
+            );
+
+            nextState.units = nextState.units.map(u => {
+                const unitIndex = payload.unitIds.indexOf(u.id);
+                if (unitIndex !== -1 && u.factionId === action.playerId && positions[unitIndex]) {
+                    const pos = positions[unitIndex];
+                    return {
+                        ...u,
+                        formationOffset: {
+                            lat: pos.lat - payload.centerLat,
+                            lng: pos.lng - payload.centerLng
+                        },
+                        destination: { lat: pos.lat, lng: pos.lng }
+                    };
+                }
+                return u;
+            });
+            console.log('[APPLY ACTION] Formation applied:', payload.formation, 'for', payload.unitIds.length, 'units');
             break;
         }
     }

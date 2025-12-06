@@ -67,6 +67,57 @@ export const useGameLoop = () => {
     // ============================================
     useEffect(() => {
         const unsub = NetworkService.subscribe((event) => {
+            // 0. PLAYER DISCONNECT - Clean up orphaned entities (Host only)
+            if (event.type === 'DISCONNECT') {
+                setGameState(prev => {
+                    if (prev.isClient) return prev; // Only host handles this
+
+                    const disconnectedPlayerId = event.peerId;
+                    console.log('[HOST] Player disconnected:', disconnectedPlayerId);
+
+                    // Convert disconnected player's units to neutral defenders
+                    const neutralizedUnits = prev.units.map(u =>
+                        u.factionId === disconnectedPlayerId
+                            ? {
+                                ...u,
+                                factionId: 'NEUTRAL_DEFENDER',
+                                autoMode: 'DEFEND' as const,
+                                homePosition: { ...u.position },
+                                targetId: null,
+                                destination: null
+                            }
+                            : u
+                    );
+
+                    // Remove faction from active players
+                    const remainingFactions = prev.factions.filter(f =>
+                        f.id !== disconnectedPlayerId
+                    );
+
+                    // Release owned POIs to neutral
+                    const releasedPois = prev.pois.map(p =>
+                        p.ownerFactionId === disconnectedPlayerId
+                            ? { ...p, ownerFactionId: 'NEUTRAL' }
+                            : p
+                    );
+
+                    console.log('[HOST] Neutralized',
+                        prev.units.filter(u => u.factionId === disconnectedPlayerId).length,
+                        'units and',
+                        prev.pois.filter(p => p.ownerFactionId === disconnectedPlayerId).length,
+                        'POIs from disconnected player'
+                    );
+
+                    return {
+                        ...prev,
+                        units: neutralizedUnits,
+                        factions: remainingFactions,
+                        pois: releasedPois
+                    };
+                });
+                return;
+            }
+
             // 1. GAMEPLAY ACTIONS
             if (event.type === 'ACTION') {
                 setGameState(prev => {
@@ -591,8 +642,9 @@ export const useGameLoop = () => {
                 const nextState = processGameTick(prevState, [], true);
 
                 // HOST: Broadcast state to clients periodically
-                // Every 5 ticks (~200ms) for smoother sync
-                if (nextState.gameTick % 5 === 0) {
+                // Every 15 ticks (~600ms) - reduced from 5 for bandwidth optimization
+                // Actions are still sent immediately for low-latency
+                if (nextState.gameTick % 15 === 0) {
                     NetworkService.incrementStateVersion();
                     // IMPORTANT: Never broadcast PLACING_STRUCTURE - it's a local UI mode
                     // Always send PLAYING to clients so the game continues for them
@@ -1148,37 +1200,31 @@ export const useGameLoop = () => {
         const group = gameState.controlGroups[groupNum];
         if (!group || group.length === 0) return;
 
-        setGameState(prev => ({
-            ...prev,
-            units: prev.units.map(u => {
-                if (!group.includes(u.id)) return u;
-                if (u.factionId !== prev.localPlayerId) return u;
+        // Filter to only our units that are still alive
+        const validUnitIds = group.filter(id => {
+            const unit = gameState.units.find(u => u.id === id);
+            return unit && unit.factionId === gameState.localPlayerId;
+        });
 
-                switch (order) {
-                    case 'DEFEND':
-                        return {
-                            ...u,
-                            autoMode: 'DEFEND' as const,
-                            homePosition: { ...u.position },
-                            targetId: null,
-                            destination: null
-                        };
-                    case 'ATTACK':
-                        return {
-                            ...u,
-                            autoMode: 'ATTACK' as const,
-                            targetId: null
-                        };
-                    case 'MOVE':
-                    default:
-                        return {
-                            ...u,
-                            autoMode: 'NONE' as const
-                        };
-                }
-            })
-        }));
+        if (validUnitIds.length === 0) return;
+
+        // Map order to auto-mode
+        const mode = order === 'DEFEND' ? 'DEFEND' : order === 'ATTACK' ? 'ATTACK' : 'NONE';
+
+        // Create and broadcast network action
+        const action = createAction(gameState.localPlayerId, 'SET_AUTO_MODE', {
+            unitIds: validUnitIds,
+            mode: mode
+        });
+
+        // Apply locally (optimistic)
+        setGameState(prev => applyAction(prev, action));
+
+        // Broadcast to network
+        NetworkService.broadcastAction(action);
+
         AudioService.playSuccess();
+        console.log(`[GROUP] Set ${validUnitIds.length} units to ${mode} mode`);
     };
 
     const handleBuyUnit = (type: UnitClass) => {
