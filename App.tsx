@@ -15,6 +15,8 @@ import { Scenario, Faction, LobbyState, Difficulty, UnitClass, POIType } from '.
 import { SCENARIOS, UNIT_CONFIG } from './constants';
 import { TooltipProvider } from './components/Tooltip';
 import { FormationType, calculateFormationPositions, getGroupCenter, getFacingAngle } from './services/formationService';
+import { createAction } from './services/schemas';
+import { applyAction } from './services/applyAction';
 
 
 const App: React.FC = () => {
@@ -233,29 +235,31 @@ const App: React.FC = () => {
         }));
     }, [selectedUnitIds, setGameState]);
 
-    // Auto-Control: Cycle through auto-modes
+    // Auto-Control: Cycle through auto-modes (WITH NETWORK SYNC)
     const handleCycleAutoMode = useCallback(() => {
         if (selectedUnitIds.length === 0) return;
+
+        // Get first selected unit's current mode to determine next
+        const firstUnit = gameState.units.find(u => selectedUnitIds.includes(u.id) && u.factionId === gameState.localPlayerId);
+        if (!firstUnit) return;
+
         const modes: Array<'NONE' | 'DEFEND' | 'ATTACK' | 'PATROL'> = ['NONE', 'DEFEND', 'ATTACK', 'PATROL'];
-        setGameState(prev => ({
-            ...prev,
-            units: prev.units.map(u => {
-                if (selectedUnitIds.includes(u.id) && u.factionId === prev.localPlayerId) {
-                    const currentMode = u.autoMode || 'NONE';
-                    const nextIdx = (modes.indexOf(currentMode) + 1) % modes.length;
-                    const newMode = modes[nextIdx];
-                    return {
-                        ...u,
-                        autoMode: newMode,
-                        homePosition: newMode !== 'NONE' ? { ...u.position } : undefined,
-                        targetId: null,
-                        destination: null
-                    };
-                }
-                return u;
-            })
-        }));
-    }, [selectedUnitIds, setGameState]);
+        const currentMode = firstUnit.autoMode || 'NONE';
+        const nextIdx = (modes.indexOf(currentMode) + 1) % modes.length;
+        const newMode = modes[nextIdx];
+
+        // Create and broadcast network action
+        const action = createAction(gameState.localPlayerId, 'SET_AUTO_MODE', {
+            unitIds: selectedUnitIds.filter(id => {
+                const u = gameState.units.find(unit => unit.id === id);
+                return u && u.factionId === gameState.localPlayerId;
+            }),
+            mode: newMode
+        });
+
+        setGameState(prev => applyAction(prev, action));
+        NetworkService.broadcastAction(action);
+    }, [selectedUnitIds, setGameState, gameState]);
 
     useHotkeys({
         onBuyUnit: originalHandleBuyUnit,
@@ -296,21 +300,23 @@ const App: React.FC = () => {
                     onSetDifficulty={setDifficulty}
                     onSetAutoMode={(mode) => {
                         if (selectedUnitIds.length === 0) return;
-                        setGameState(prev => ({
-                            ...prev,
-                            units: prev.units.map(u => {
-                                if (selectedUnitIds.includes(u.id) && u.factionId === prev.localPlayerId) {
-                                    return {
-                                        ...u,
-                                        autoMode: mode,
-                                        homePosition: mode !== 'NONE' ? { ...u.position } : undefined,
-                                        targetId: null,
-                                        destination: null
-                                    };
-                                }
-                                return u;
-                            })
-                        }));
+
+                        // Filter to only our units
+                        const validUnitIds = selectedUnitIds.filter(id => {
+                            const u = gameState.units.find(unit => unit.id === id);
+                            return u && u.factionId === gameState.localPlayerId;
+                        });
+
+                        if (validUnitIds.length === 0) return;
+
+                        // Create and broadcast network action
+                        const action = createAction(gameState.localPlayerId, 'SET_AUTO_MODE', {
+                            unitIds: validUnitIds,
+                            mode: mode
+                        });
+
+                        setGameState(prev => applyAction(prev, action));
+                        NetworkService.broadcastAction(action);
                     }}
                     onToggleAutoTarget={handleToggleAutoTarget}
                     onSetFormation={(formation) => {
@@ -327,38 +333,19 @@ const App: React.FC = () => {
                         // Get current center of the group
                         const groupCenter = getGroupCenter(selectedUnits);
 
-                        // Calculate formation positions (facing north by default)
-                        const positions = calculateFormationPositions(
-                            selectedUnits,
-                            formation,
-                            groupCenter.lat,
-                            groupCenter.lng,
-                            0 // Face north
-                        );
+                        console.log('[FORMATION] Broadcasting SET_FORMATION action');
 
-                        console.log('[FORMATION] Setting formation with offsets');
+                        // Create and broadcast network action
+                        const action = createAction(gameState.localPlayerId, 'SET_FORMATION', {
+                            unitIds: selectedUnits.map(u => u.id),
+                            formation: formation,
+                            centerLat: groupCenter.lat,
+                            centerLng: groupCenter.lng,
+                            facingAngle: 0 // Face north
+                        });
 
-                        // Apply formation positions AND save offsets for future moves
-                        setGameState(prev => ({
-                            ...prev,
-                            units: prev.units.map(u => {
-                                const pos = positions.find(p => p.unitId === u.id);
-                                if (pos) {
-                                    // Calculate offset from group center
-                                    const offset = {
-                                        lat: pos.lat - groupCenter.lat,
-                                        lng: pos.lng - groupCenter.lng
-                                    };
-                                    return {
-                                        ...u,
-                                        destination: { lat: pos.lat, lng: pos.lng },
-                                        targetId: null,
-                                        formationOffset: offset // Save offset for future moves
-                                    };
-                                }
-                                return u;
-                            })
-                        }));
+                        setGameState(prev => applyAction(prev, action));
+                        NetworkService.broadcastAction(action);
 
                         AudioService.playUnitSelect();
                     }}
